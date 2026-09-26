@@ -64,6 +64,7 @@ export default function Navbar() {
               <Link
                 key={item.href}
                 href={item.href}
+                aria-current={isActive ? 'page' : undefined}
                 className={`transition-colors hover:text-[#B68D40] ${
                   isActive ? 'text-[#B68D40] font-semibold border-b-2 border-[#B68D40] pb-1' : 'text-gray-300'
                 }`}
@@ -76,7 +77,7 @@ export default function Navbar() {
 
         {/* Brand Logo in Center */}
         <div className="flex-shrink-0 mx-4 flex items-center gap-2">
-          <Link href="/" className="flex items-center gap-2.5 group">
+          <Link href="/" className="flex items-center gap-2.5 group" aria-label="The Himalayan Trail Home">
             <div className="relative w-10 h-10 md:w-11 md:h-11 rounded-full bg-neutral-900 border border-[#B68D40]/40 overflow-hidden flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
               <img
                 src="/logo.png"
@@ -98,6 +99,7 @@ export default function Navbar() {
               <Link
                 key={item.href}
                 href={item.href}
+                aria-current={isActive ? 'page' : undefined}
                 className={`transition-colors hover:text-[#B68D40] ${
                   isActive ? 'text-[#B68D40] font-semibold border-b-2 border-[#B68D40] pb-1' : 'text-gray-300'
                 }`}
@@ -119,8 +121,10 @@ export default function Navbar() {
         <div className="flex md:hidden items-center">
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-2 text-gray-300 hover:text-white focus:outline-none"
-            aria-label="Toggle Navigation"
+            className="p-2 text-gray-300 hover:text-white focus:outline-none focus:ring-2 focus:ring-[#B68D40]/50 rounded-lg"
+            aria-label="Toggle Navigation Menu"
+            aria-expanded={mobileMenuOpen}
+            aria-controls="mobile-navigation"
           >
             {mobileMenuOpen ? <X className="h-7 w-7 text-[#B68D40]" /> : <Menu className="h-7 w-7" />}
           </button>
@@ -129,7 +133,12 @@ export default function Navbar() {
 
       {/* Mobile Drawer */}
       {mobileMenuOpen && (
-        <div className="md:hidden bg-neutral-950 border-b border-neutral-800 px-4 pt-3 pb-6 space-y-4 animate-in slide-in-from-top duration-300">
+        <div
+          id="mobile-navigation"
+          role="region"
+          aria-label="Mobile Navigation Menu"
+          className="md:hidden bg-neutral-950 border-b border-neutral-800 px-4 pt-3 pb-6 space-y-4 animate-in slide-in-from-top duration-300"
+        >
           <div className="text-xs font-semibold text-[#B68D40] uppercase tracking-widest px-2 pt-1 border-b border-neutral-800 pb-2">
             Himalayan Explorer Navigation
           </div>
