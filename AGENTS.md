@@ -20,5 +20,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 - **Object-Oriented Map Architecture**: Use polymorphic map controllers (`IMapController`) coordinating 2D Leaflet and 3D Cesium engines via `MapEngineManager`.
 - **Cesium 3D Globe**: Integrate CesiumJS for 3D Himalayan terrain topography and summit fly-to controls.
-- **Glassmorphism & GSAP Motion**: Design modern frosted-glass components (`backdrop-blur-xl bg-black/60 border border-white/10`) with GSAP kinetic animations.
+- **HeroUI Component Architecture**: Standardize components using compound patterns and explicit semantic slots (`data-slot="base"`, `data-slot="content"`, `data-slot="header"`, `data-slot="body"`, `data-slot="footer"`, `data-slot="indicator"`). Expose interaction attributes (`data-hovered`, `data-pressed`, `data-focus-visible`).
+- **Standard Tailwind Theme Tokens**: Use standard semantic theme tokens (`background`, `foreground`, `surface`, `surface-foreground`, `overlay`, `accent`, `accent-foreground`, `muted`, `border`, `separator`, `focus`). Strictly pair every background token with its corresponding `-foreground` token.
+- **Glassmorphism & GSAP Motion**: Design modern frosted-glass components (`backdrop-blur-xl bg-surface/70 border border-border/40 text-surface-foreground`) with GSAP kinetic animations and `#B68D40` gold accent highlights.
 - **Universal Responsiveness**: Ensure high UX value across mobile (375px+), tablet, and desktop form factors.
+- **Reference**: See `.agents/rules/heroui_component_theme_rules.md` for full implementation details.
+

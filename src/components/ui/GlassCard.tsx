@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import gsap from 'gsap';
 
 interface GlassCardProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -9,6 +9,50 @@ interface GlassCardProps extends React.HTMLAttributes<HTMLDivElement> {
   animateOnMount?: boolean;
   delay?: number;
   className?: string;
+}
+
+export function GlassCardHeader({
+  children,
+  className = '',
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      data-slot="header"
+      className={`flex items-center justify-between pb-3 border-b border-border/20 ${className}`}
+      {...props}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function GlassCardBody({
+  children,
+  className = '',
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div data-slot="body" className={`py-3 ${className}`} {...props}>
+      {children}
+    </div>
+  );
+}
+
+export function GlassCardFooter({
+  children,
+  className = '',
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      data-slot="footer"
+      className={`flex items-center justify-between pt-3 border-t border-border/20 ${className}`}
+      {...props}
+    >
+      {children}
+    </div>
+  );
 }
 
 export default function GlassCard({
@@ -20,6 +64,7 @@ export default function GlassCard({
   ...props
 }: GlassCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
+  const [isHovered, setIsHovered] = useState(false);
 
   useEffect(() => {
     if (!animateOnMount || !cardRef.current) return;
@@ -39,6 +84,7 @@ export default function GlassCard({
   }, [animateOnMount, delay]);
 
   const handleMouseEnter = () => {
+    setIsHovered(true);
     if (variant === 'interactive' && cardRef.current) {
       gsap.to(cardRef.current, {
         scale: 1.015,
@@ -51,6 +97,7 @@ export default function GlassCard({
   };
 
   const handleMouseLeave = () => {
+    setIsHovered(false);
     if (variant === 'interactive' && cardRef.current) {
       gsap.to(cardRef.current, {
         scale: 1.0,
@@ -62,26 +109,37 @@ export default function GlassCard({
     }
   };
 
-  const baseStyles = 'relative rounded-2xl backdrop-blur-xl border transition-colors overflow-hidden';
+  const baseStyles = 'relative rounded-2xl backdrop-blur-xl border transition-colors overflow-hidden text-surface-foreground';
 
   const variantStyles = {
-    default: 'bg-black/60 border-white/10 shadow-xl shadow-black/50',
-    glow: 'bg-neutral-950/70 border-[#B68D40]/30 shadow-2xl shadow-[#B68D40]/10',
-    accent: 'bg-gradient-to-b from-[#B68D40]/10 to-black/80 border-[#B68D40]/40 shadow-xl',
-    interactive: 'bg-neutral-900/60 border-white/10 hover:border-[#B68D40]/50 cursor-pointer shadow-lg',
+    default: 'bg-surface/70 border-border/40 shadow-xl shadow-black/50',
+    glow: 'bg-surface/80 border-accent/40 shadow-2xl shadow-accent/10',
+    accent: 'bg-gradient-to-b from-accent/15 to-surface/90 border-accent/40 shadow-xl',
+    interactive: 'bg-surface/70 border-border/40 hover:border-accent/60 cursor-pointer shadow-lg',
   };
 
   return (
     <div
       ref={cardRef}
+      data-slot="base"
+      data-variant={variant}
+      data-hovered={isHovered ? 'true' : 'false'}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       className={`${baseStyles} ${variantStyles[variant]} ${className}`}
       {...props}
     >
       {/* Subtle glass reflection highlight */}
-      <div className="absolute inset-0 bg-gradient-to-tr from-white/[0.03] to-transparent pointer-events-none" />
-      <div className="relative z-10">{children}</div>
+      <div
+        data-slot="highlight"
+        className="absolute inset-0 bg-gradient-to-tr from-white/[0.04] to-transparent pointer-events-none"
+      />
+      <div data-slot="content" className="relative z-10">{children}</div>
     </div>
   );
 }
+
+// Compound component attachments
+GlassCard.Header = GlassCardHeader;
+GlassCard.Body = GlassCardBody;
+GlassCard.Footer = GlassCardFooter;

@@ -52,8 +52,16 @@ Every feature must be verifiable from end to end:
    - Encapsulate 2D (Leaflet) and 3D (Cesium) engines in dedicated controller classes coordinated via a centralized `MapEngineManager`.
 2. **Cesium 3D Globe Integration**:
    - Seamlessly integrate Cesium for 3D Himalayan terrain visualization, altitude perspective, and summit fly-to controls.
-3. **Glassmorphism Design & GSAP Animations**:
-   - Use high-fidelity frosted glass interfaces (`backdrop-blur-xl bg-black/60 border border-white/10 shadow-2xl` with `#B68D40` gold accents).
+3. **HeroUI Component Architecture & Compound Patterns**:
+   - Implement components using compound patterns and explicit semantic slots (`data-slot="base"`, `data-slot="content"`, `data-slot="header"`, `data-slot="body"`, `data-slot="footer"`, `data-slot="trigger"`, `data-slot="indicator"`).
+   - Expose interactive state via data attributes (`data-hovered`, `data-pressed`, `data-focus-visible`, `data-disabled`).
+   - Adhere to React Aria headless accessibility standards with prominent focus rings (`focus-visible:ring-2 focus-visible:ring-focus`).
+4. **Standard Tailwind Theme Token System**:
+   - Style all surfaces and elements using semantic tokens (`background`, `foreground`, `surface`, `surface-foreground`, `overlay`, `accent`, `accent-foreground`, `muted`, `border`, `separator`, `focus`).
+   - Strict contrast rule: background tokens must always be paired with their matching `-foreground` tokens (e.g. `bg-surface text-surface-foreground`, `bg-accent text-accent-foreground`).
+5. **Glassmorphism Design & GSAP Animations**:
+   - Use high-fidelity frosted glass interfaces (`backdrop-blur-xl bg-surface/70 border border-border/40 shadow-2xl` with `#B68D40` gold accents).
    - Animate interactions using **GSAP** (kinetic reveals, staggered card transitions, smooth drawer animations).
-4. **Universal Multi-Device Responsiveness**:
+6. **Universal Multi-Device Responsiveness**:
    - Ensure every component provides high UX value across all devices (mobile 375px+, tablets, and desktops).
+
