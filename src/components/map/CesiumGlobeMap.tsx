@@ -3,6 +3,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { CesiumController } from '@/lib/map/CesiumController';
 import type { GeoPoint, MapMarker, MapPolyline } from '@/lib/map/types';
+import type { Trail, HimalayanRange } from '@/types';
+import { ROUTE_TRACKS } from '@/data/routeTracks';
 import GlassCard from '@/components/ui/GlassCard';
 import GlassBadge from '@/components/ui/GlassBadge';
 import {
@@ -10,10 +12,11 @@ import {
   Mountain,
   Eye,
   RotateCcw,
+  Sparkles,
   Layers,
+  MapPin,
   ChevronDown,
   ChevronUp,
-  Sparkles,
   Maximize2
 } from 'lucide-react';
 import gsap from 'gsap';
@@ -23,6 +26,7 @@ interface CesiumGlobeMapProps {
   polyline?: MapPolyline;
   markers?: MapMarker[];
   scrubberPoint?: GeoPoint | null;
+  activeTrail?: Trail | null;
   height?: string;
   onClose3D?: () => void;
 }
@@ -40,6 +44,7 @@ export default function CesiumGlobeMap({
   polyline,
   markers = [],
   scrubberPoint,
+  activeTrail,
   height = 'h-[600px]',
   onClose3D,
 }: CesiumGlobeMapProps) {
@@ -51,7 +56,23 @@ export default function CesiumGlobeMap({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [hudExpanded, setHudExpanded] = useState(true);
   const [activeSummit, setActiveSummit] = useState<string>('Mt. Everest');
+  const [ranges, setRanges] = useState<HimalayanRange[]>([]);
+  const [selectedRange, setSelectedRange] = useState<string>('All');
+  const [perspective, setPerspective] = useState<'topo' | 'ridge' | 'summit'>('ridge');
 
+  // 1. Fetch official Himalayan ranges from persistent DB API
+  useEffect(() => {
+    fetch('/api/ranges')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: HimalayanRange[]) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setRanges(data);
+        }
+      })
+      .catch((err) => console.warn('Failed to load ranges from API:', err));
+  }, []);
+
+  // 2. Initialize Cesium Engine
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -65,24 +86,31 @@ export default function CesiumGlobeMap({
 
         if (polyline) {
           controller.setTrailPolyline(polyline);
+        } else if (activeTrail) {
+          syncActiveTrailPolyline(controller, activeTrail);
         }
+
         if (markers.length > 0) {
           controller.addMarkers(markers);
         }
 
-        // GSAP entrance for HUD
+        if (ranges.length > 0) {
+          controller.setRangeBoundaries(ranges);
+        }
+
+        // Kinetic GSAP entrance for HUD
         if (hudRef.current) {
           gsap.from(hudRef.current, {
             opacity: 0,
-            y: 30,
-            duration: 0.8,
+            y: 40,
+            duration: 0.9,
             ease: 'power3.out',
           });
         }
       })
       .catch((err) => {
         console.error('Cesium Globe initialization failed:', err);
-        setLoadError(err.message || 'Failed to initialize Cesium 3D Globe');
+        setLoadError(err.message || 'Failed to initialize Cesium 3D Globe WebGL Context');
         setIsLoading(false);
       });
 
@@ -92,12 +120,53 @@ export default function CesiumGlobeMap({
     };
   }, []);
 
-  // Sync polyline updates
+  // Sync ranges when loaded
   useEffect(() => {
-    if (controllerRef.current?.isInitialized && polyline) {
-      controllerRef.current.setTrailPolyline(polyline);
+    if (controllerRef.current?.isInitialized && ranges.length > 0) {
+      controllerRef.current.setRangeBoundaries(ranges, selectedRange === 'All' ? undefined : selectedRange);
     }
-  }, [polyline]);
+  }, [ranges, selectedRange]);
+
+  // Sync trail polyline helper
+  const syncActiveTrailPolyline = (ctrl: CesiumController, trail: Trail) => {
+    let points: GeoPoint[] = [];
+
+    if (trail.routeCoordinates && trail.routeCoordinates.length > 0) {
+      points = trail.routeCoordinates.map((c) => ({
+        lat: c[0],
+        lng: c[1],
+        altitude: c[2] || trail.maxElevation || 4000,
+      }));
+    } else {
+      const track = ROUTE_TRACKS[trail.id];
+      if (track && track.coords.length > 0) {
+        points = track.coords.map((c) => ({
+          lat: c[0],
+          lng: c[1],
+          altitude: trail.maxElevation ? trail.maxElevation - 500 : 4000,
+        }));
+      }
+    }
+
+    if (points.length > 0) {
+      ctrl.setTrailPolyline({
+        id: `trail-3d-${trail.id}`,
+        points,
+        color: '#B68D40',
+        weight: 5,
+      });
+    }
+  };
+
+  // Sync active trail updates
+  useEffect(() => {
+    if (!controllerRef.current?.isInitialized) return;
+    if (polyline) {
+      controllerRef.current.setTrailPolyline(polyline);
+    } else if (activeTrail) {
+      syncActiveTrailPolyline(controllerRef.current, activeTrail);
+    }
+  }, [polyline, activeTrail]);
 
   // Sync markers
   useEffect(() => {
@@ -118,11 +187,45 @@ export default function CesiumGlobeMap({
 
   const handleFlyToSummit = (summit: typeof HIMALAYAN_SUMMITS[0]) => {
     setActiveSummit(summit.name);
-    controllerRef.current?.flyTo(summit.coords, summit.coords.altitude || 9000, 3);
+    controllerRef.current?.flyTo(summit.coords, summit.coords.altitude || 9000, 2.5);
+  };
+
+  const handleSelectRange = (rangeName: string) => {
+    setSelectedRange(rangeName);
+    if (!controllerRef.current?.isInitialized) return;
+
+    if (rangeName === 'All') {
+      controllerRef.current.setRangeBoundaries(ranges);
+      controllerRef.current.flyTo(initialCenter, 35000, 3);
+      return;
+    }
+
+    const range = ranges.find((r) => r.name.toLowerCase() === rangeName.toLowerCase());
+    if (range) {
+      controllerRef.current.setRangeBoundaries(ranges, range.name);
+      controllerRef.current.flyTo({ lat: range.center[0], lng: range.center[1] }, 26000, 2.5);
+
+      // Add range summit POIs to map
+      if (range.pois && range.pois.length > 0) {
+        const poiMarkers: MapMarker[] = range.pois.map((p, idx) => ({
+          id: `poi-summit-${idx}`,
+          position: { lat: p.coord[0], lng: p.coord[1] },
+          title: p.name,
+          elevation: 7500,
+        }));
+        controllerRef.current.clearMarkers();
+        controllerRef.current.addMarkers(poiMarkers);
+      }
+    }
+  };
+
+  const handlePerspectiveChange = (mode: 'topo' | 'ridge' | 'summit') => {
+    setPerspective(mode);
+    controllerRef.current?.setPerspective(mode);
   };
 
   return (
-    <div className={`relative w-full ${height} overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950`}>
+    <div className={`relative w-full ${height} overflow-hidden rounded-2xl border border-border/40 bg-neutral-950`}>
       {/* 3D WebGL Canvas Container */}
       <div ref={containerRef} className="w-full h-full" />
 
@@ -137,7 +240,7 @@ export default function CesiumGlobeMap({
             <p className="text-sm font-bold tracking-wider text-[#E2C085] uppercase">
               Initializing Cesium 3D Globe
             </p>
-            <p className="text-xs text-gray-400">Loading Himalayan Digital Elevation Models & Atmosphere...</p>
+            <p className="text-xs text-gray-400">Loading Himalayan Terrain Elevation Models & 3D Topography...</p>
           </div>
         </div>
       )}
@@ -159,35 +262,74 @@ export default function CesiumGlobeMap({
         </div>
       )}
 
-      {/* TOP HUD: Status & Engine Badge */}
+      {/* TOP FLOATING CONTROLS: Engine Badge, Range Selector, Perspective Switcher */}
       {!isLoading && !loadError && (
-        <div className="absolute top-4 left-4 z-10 flex flex-wrap items-center gap-2 pointer-events-auto">
-          <GlassBadge variant="gold" pulse>
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Cesium 3D Globe Active</span>
-          </GlassBadge>
+        <div className="absolute top-4 left-4 right-4 z-10 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+          <div className="flex flex-wrap items-center gap-2 pointer-events-auto">
+            <GlassBadge variant="gold" pulse>
+              <Sparkles className="w-3.5 h-3.5 text-[#B68D40]" />
+              <span className="font-semibold">Cesium 3D Terrain Engine</span>
+            </GlassBadge>
 
-          {onClose3D && (
+            {onClose3D && (
+              <button
+                onClick={onClose3D}
+                className="px-3 py-1.5 rounded-full text-xs font-semibold bg-black/70 hover:bg-black/95 text-gray-300 hover:text-white border border-border/40 backdrop-blur-xl transition"
+              >
+                Switch to 2D Map
+              </button>
+            )}
+          </div>
+
+          {/* Perspective Preset Buttons */}
+          <div className="flex items-center gap-1 bg-black/75 backdrop-blur-xl border border-border/40 rounded-xl p-1 pointer-events-auto">
             <button
-              onClick={onClose3D}
-              className="px-3 py-1 rounded-full text-xs font-semibold bg-black/60 hover:bg-black/90 text-gray-300 hover:text-white border border-white/10 backdrop-blur-md transition-colors"
+              onClick={() => handlePerspectiveChange('topo')}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
+                perspective === 'topo' ? 'bg-[#B68D40] text-black font-bold' : 'text-gray-400 hover:text-white'
+              }`}
+              title="Top-down Topographic View"
             >
-              Switch to 2D Map
+              Topo
             </button>
-          )}
+            <button
+              onClick={() => handlePerspectiveChange('ridge')}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
+                perspective === 'ridge' ? 'bg-[#B68D40] text-black font-bold' : 'text-gray-400 hover:text-white'
+              }`}
+              title="45-degree Ridge Profile"
+            >
+              Ridge (45°)
+            </button>
+            <button
+              onClick={() => handlePerspectiveChange('summit')}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
+                perspective === 'summit' ? 'bg-[#B68D40] text-black font-bold' : 'text-gray-400 hover:text-white'
+              }`}
+              title="Low-angle Summit Horizon View"
+            >
+              Summit
+            </button>
+          </div>
         </div>
       )}
 
       {/* BOTTOM FLOATING GLASSMORPHIC HUD */}
       {!isLoading && !loadError && (
         <div ref={hudRef} className="absolute bottom-4 left-4 right-4 z-10 pointer-events-none">
-          <GlassCard variant="glow" className="max-w-2xl mx-auto p-3 sm:p-4 pointer-events-auto shadow-2xl">
-            <div className="flex items-center justify-between border-b border-white/10 pb-2 mb-2.5">
+          <GlassCard variant="glow" className="max-w-3xl mx-auto p-3 sm:p-4 pointer-events-auto shadow-2xl backdrop-blur-2xl bg-surface/75 border border-border/40 text-surface-foreground">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-border/30 pb-2 mb-2.5">
               <div className="flex items-center gap-2">
                 <Mountain className="w-4 h-4 text-[#B68D40]" />
                 <span className="text-xs font-bold text-white uppercase tracking-wider">
-                  Himalayan Summit Navigation
+                  Himalayan Mountain Ranges & Summit Fly-To
                 </span>
+                {activeTrail && (
+                  <span className="text-[11px] text-[#B68D40] font-mono hidden sm:inline">
+                    • Active: {activeTrail.name}
+                  </span>
+                )}
               </div>
 
               <button
@@ -201,34 +343,79 @@ export default function CesiumGlobeMap({
 
             {hudExpanded && (
               <div className="space-y-3 animate-in fade-in duration-200">
-                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                  {HIMALAYAN_SUMMITS.map((summit) => {
-                    const isActive = activeSummit === summit.name;
-                    return (
+                {/* 1. Himalayan Ranges Navigator */}
+                {ranges.length > 0 && (
+                  <div className="space-y-1">
+                    <span className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">
+                      Explore Range Boundaries:
+                    </span>
+                    <div className="flex flex-wrap items-center gap-1.5">
                       <button
-                        key={summit.name}
-                        onClick={() => handleFlyToSummit(summit)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                          isActive
-                            ? 'bg-[#B68D40] text-black font-bold shadow-lg shadow-[#B68D40]/30 scale-105'
-                            : 'bg-neutral-900/80 hover:bg-neutral-800 text-gray-300 border border-white/10 hover:border-[#B68D40]/40'
+                        onClick={() => handleSelectRange('All')}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
+                          selectedRange === 'All'
+                            ? 'bg-[#B68D40] text-black font-bold shadow'
+                            : 'bg-neutral-900/80 hover:bg-neutral-800 text-gray-300 border border-border/40'
                         }`}
                       >
-                        <Compass className={`w-3 h-3 ${isActive ? 'text-black' : 'text-[#B68D40]'}`} />
-                        <span>{summit.name}</span>
-                        <span className={`text-[10px] font-mono ${isActive ? 'text-black/80' : 'text-gray-400'}`}>
-                          {summit.elevation}m
-                        </span>
+                        All Ranges
                       </button>
-                    );
-                  })}
+                      {ranges.map((r) => {
+                        const isSelected = selectedRange.toLowerCase() === r.name.toLowerCase();
+                        return (
+                          <button
+                            key={r.name}
+                            onClick={() => handleSelectRange(r.name)}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition flex items-center gap-1 ${
+                              isSelected
+                                ? 'bg-[#B68D40] text-black font-bold shadow'
+                                : 'bg-neutral-900/80 hover:bg-neutral-800 text-gray-300 border border-border/40 hover:border-[#B68D40]/50'
+                            }`}
+                          >
+                            <Layers className="w-3 h-3 text-[#B68D40]" />
+                            <span>{r.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. Summit Quick Fly-To */}
+                <div className="space-y-1">
+                  <span className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">
+                    Apex Summits:
+                  </span>
+                  <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                    {HIMALAYAN_SUMMITS.map((summit) => {
+                      const isActive = activeSummit === summit.name;
+                      return (
+                        <button
+                          key={summit.name}
+                          onClick={() => handleFlyToSummit(summit)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                            isActive
+                              ? 'bg-[#B68D40] text-black font-bold shadow-lg shadow-[#B68D40]/30 scale-105'
+                              : 'bg-neutral-900/80 hover:bg-neutral-800 text-gray-300 border border-border/40 hover:border-[#B68D40]/40'
+                          }`}
+                        >
+                          <Compass className={`w-3 h-3 ${isActive ? 'text-black' : 'text-[#B68D40]'}`} />
+                          <span>{summit.name}</span>
+                          <span className={`text-[10px] font-mono ${isActive ? 'text-black/80' : 'text-gray-400'}`}>
+                            {summit.elevation}m
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
-                <div className="text-[11px] text-gray-400 flex items-center justify-between border-t border-white/5 pt-2">
-                  <span>Hold Left-Click to pan • Right-Click + Drag to tilt/orbit • Scroll to zoom</span>
+                {/* Footer Controls & Navigation Tip */}
+                <div className="text-[11px] text-gray-400 flex flex-wrap items-center justify-between border-t border-border/30 pt-2 gap-2">
+                  <span>Hold Left-Click to pan • Right-Click + Drag to orbit/tilt • Scroll to zoom</span>
                   <button
-                    onClick={() => controllerRef.current?.flyTo(initialCenter, 12000, 2)}
-                    className="flex items-center gap-1 text-[#E2C085] hover:text-white transition"
+                    onClick={() => controllerRef.current?.flyTo(initialCenter, 14000, 2)}
+                    className="flex items-center gap-1 text-[#E2C085] hover:text-white transition font-medium"
                   >
                     <RotateCcw className="w-3 h-3" />
                     <span>Reset View</span>
