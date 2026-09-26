@@ -387,6 +387,7 @@ export default function AllTrailsExplorePage() {
               ) : (
                 <CesiumGlobeMap
                   height="h-full"
+                  activeTrail={activeTrail}
                   initialCenter={
                     focusedCoords
                       ? { lat: focusedCoords[0], lng: focusedCoords[1], altitude: 9000 }
