@@ -23,8 +23,10 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - **HeroUI Component Architecture**: Standardize components using compound patterns and explicit semantic slots (`data-slot="base"`, `data-slot="content"`, `data-slot="header"`, `data-slot="body"`, `data-slot="footer"`, `data-slot="indicator"`). Expose interaction attributes (`data-hovered`, `data-pressed`, `data-focus-visible`).
 - **Standard Tailwind Theme Tokens**: Use standard semantic theme tokens (`background`, `foreground`, `surface`, `surface-foreground`, `overlay`, `accent`, `accent-foreground`, `muted`, `border`, `separator`, `focus`). Strictly pair every background token with its corresponding `-foreground` token.
 - **Glassmorphism & GSAP Motion**: Design modern frosted-glass components (`backdrop-blur-xl bg-surface/70 border border-border/40 text-surface-foreground`) with GSAP kinetic animations and `#B68D40` gold accent highlights.
+- **Recharts Data Visualizations**: Use the Recharts library for all data charts (elevation profiles, weather forecasts, booking metrics), styled with frosted glass and synchronized with 2D/3D maps.
 - **Universal Responsiveness**: Ensure high UX value across mobile (375px+), tablet, and desktop form factors.
-- **Reference**: See `.agents/rules/heroui_component_theme_rules.md` for full implementation details.
+- **Reference**: See `.agents/rules/heroui_component_theme_rules.md` and skill `.agents/skills/recharts-charts/SKILL.md`.
+
 
 # GitHub Branching & Vercel Deployment Protocol
 
