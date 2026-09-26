@@ -64,6 +64,10 @@ Every feature must be verifiable from end to end:
    - Animate interactions using **GSAP** (kinetic reveals, staggered card transitions, smooth drawer animations).
 6. **Universal Multi-Device Responsiveness**:
    - Ensure every component provides high UX value across all devices (mobile 375px+, tablets, and desktops).
+7. **Recharts Data Visualizations & Skill Standard**:
+   - Implement all data charts (elevation profiles, weather forecasts, booking analytics) using the Recharts library.
+   - Adhere to the skill guide in [`.agents/skills/recharts-charts/SKILL.md`](file:///c:/Users/acer/Desktop/The%20Himalayan%20Trails/.agents/skills/recharts-charts/SKILL.md) for client boundaries, frosted glass tooltips, and 3-way map synchronization.
+
 
 ---
 
