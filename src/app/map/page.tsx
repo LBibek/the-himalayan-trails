@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import {
   Search,
   Star,
@@ -46,7 +47,11 @@ const CesiumGlobeMap = dynamic(() => import('@/components/map/CesiumGlobeMap'), 
   )
 });
 
-export default function AllTrailsExplorePage() {
+function AllTrailsExploreContent() {
+  const searchParams = useSearchParams();
+  const urlTrail = searchParams.get('trail');
+  const urlEngine = searchParams.get('engine');
+
   const [trails, setTrails] = useState<Trail[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -64,17 +69,28 @@ export default function AllTrailsExplorePage() {
   const [showElevationProfile, setShowElevationProfile] = useState<boolean>(true);
 
   React.useEffect(() => {
+    if (urlEngine === '3d') {
+      setMapEngine('3d');
+    }
+  }, [urlEngine]);
+
+  React.useEffect(() => {
     fetch('/api/trails')
       .then((res) => (res.ok ? res.json() : []))
       .then((data: Trail[]) => {
         setTrails(data);
-        if (data.length > 0 && !selectedTrail) {
-          setSelectedTrail(data[0]);
+        if (data.length > 0) {
+          if (urlTrail) {
+            const match = data.find((t) => t.id === urlTrail || t.slug === urlTrail);
+            setSelectedTrail(match || data[0]);
+          } else if (!selectedTrail) {
+            setSelectedTrail(data[0]);
+          }
         }
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, []);
+  }, [urlTrail]);
 
   // Filter Trails
   const filteredTrails = trails.filter((trail) => {
