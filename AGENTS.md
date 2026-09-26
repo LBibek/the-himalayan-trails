@@ -26,3 +26,11 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - **Universal Responsiveness**: Ensure high UX value across mobile (375px+), tablet, and desktop form factors.
 - **Reference**: See `.agents/rules/heroui_component_theme_rules.md` for full implementation details.
 
+# GitHub Branching & Vercel Deployment Protocol
+
+- **Continuous Vercel Deployment**: Every change and branch pushed to GitHub must build and deploy to Vercel (Production for `main`, Preview for feature/develop branches).
+- **Structured GitHub Branching**: Maintain dedicated branches for development (`develop`, `feature/<name>`, `fix/<name>`). Never commit unverified code directly to `main` without passing tests and builds.
+- **Pre-Flight Verification**: Every branch must pass `npx tsc --noEmit` and `npm run test` before merge or deployment.
+- **Reference**: See `.agents/rules/git_branching_and_deployment_rules.md` for full implementation details.
+
+

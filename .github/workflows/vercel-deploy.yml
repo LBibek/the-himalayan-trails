@@ -1,0 +1,84 @@
+name: Vercel Deploy & Verification Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+      - 'fix/**'
+  pull_request:
+    branches:
+      - main
+      - develop
+
+env:
+  VERCEL_ORG_ID: team_1PFU6XgLintLrw2fW0V9OlKH
+  VERCEL_PROJECT_ID: prj_QBHCvV0AiFZe2LwXQt7riDuhV59c
+
+jobs:
+  test-and-verify:
+    name: Test & Build Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 25
+        uses: actions/setup-node@v4
+        with:
+          node-version: 25
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: TypeScript Type Check
+        run: npx tsc --noEmit
+
+      - name: Automated Integration & Unit Tests
+        run: npm run test
+
+      - name: Production Health Check
+        run: npm run health-check
+
+      - name: Build Next.js 16 Application
+        run: npm run build
+
+  deploy-to-vercel:
+    name: Deploy to Vercel (Preview / Production)
+    needs: test-and-verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 25
+        uses: actions/setup-node@v4
+        with:
+          node-version: 25
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Deploy to Vercel Production (main branch)
+        if: github.ref == 'refs/heads/main' && env.VERCEL_TOKEN != ''
+        run: npx vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }} --yes
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy to Vercel Preview (feature & develop branches)
+        if: github.ref != 'refs/heads/main' && env.VERCEL_TOKEN != ''
+        run: npx vercel deploy --token=${{ secrets.VERCEL_TOKEN }} --yes
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Log Deployment Readiness
+        if: env.VERCEL_TOKEN == ''
+        run: |
+          echo "### Deployment Verification Notice" >> $GITHUB_STEP_SUMMARY
+          echo "Automated tests and Next.js 16 production build succeeded." >> $GITHUB_STEP_SUMMARY
+          echo "To enable direct Vercel CLI deployment from GitHub Actions, configure repository secret **VERCEL_TOKEN**." >> $GITHUB_STEP_SUMMARY
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}

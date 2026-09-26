@@ -65,3 +65,16 @@ Every feature must be verifiable from end to end:
 6. **Universal Multi-Device Responsiveness**:
    - Ensure every component provides high UX value across all devices (mobile 375px+, tablets, and desktops).
 
+---
+
+## 5. Mandatory Vercel Deployment & GitHub Branching Protocol
+1. **GitHub Branching Discipline**:
+   - Maintain a dedicated branching hierarchy (`main` for production, `develop` for integration, `feature/<name>` for new features, `fix/<name>` for bug fixes).
+   - Never commit untested code directly to `main`. Every branch must pass `npx tsc --noEmit` and `npm run test` before merge or deployment.
+2. **Always Deploy to Vercel**:
+   - Every push to `main` must deploy to Vercel Production (`the-himalayan-trails-going-genius-projects.vercel.app`).
+   - Every push to `develop` or `feature/*` must deploy to Vercel Preview.
+   - All deployment configurations (`vercel.json`, `.vercel/project.json`, security headers) must be maintained in the repository.
+   - Reference: [`.agents/rules/git_branching_and_deployment_rules.md`](file:///c:/Users/acer/Desktop/The%20Himalayan%20Trails/.agents/rules/git_branching_and_deployment_rules.md).
+
+
