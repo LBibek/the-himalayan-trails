@@ -19,7 +19,8 @@ import {
   X,
   ChevronUp,
   ChevronDown,
-  Loader2
+  Loader2,
+  Globe
 } from 'lucide-react';
 import { Trail } from '@/types';
 import { ROUTE_TRACKS } from '@/data/routeTracks';
@@ -35,6 +36,16 @@ const LeafletMap = dynamic(() => import('@/components/map/LeafletMap'), {
   )
 });
 
+// Dynamically import Cesium 3D Globe Map without SSR
+const CesiumGlobeMap = dynamic(() => import('@/components/map/CesiumGlobeMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full bg-neutral-900 animate-pulse flex items-center justify-center text-[#B68D40] text-sm font-semibold rounded-2xl border border-neutral-800">
+      Loading Cesium 3D Himalayan Terrain Engine...
+    </div>
+  )
+});
+
 export default function AllTrailsExplorePage() {
   const [trails, setTrails] = useState<Trail[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,6 +54,7 @@ export default function AllTrailsExplorePage() {
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('All');
   const [maxAltitude, setMaxAltitude] = useState<number>(6000);
   const [layoutMode, setLayoutMode] = useState<'split' | 'mapOnly' | 'cardsOnly'>('split');
+  const [mapEngine, setMapEngine] = useState<'2d' | '3d'>('2d');
   
   // Active Selected / Hovered Trail for Elevation Profile & Map Focus
   const [selectedTrail, setSelectedTrail] = useState<Trail | null>(null);
@@ -210,6 +222,29 @@ export default function AllTrailsExplorePage() {
           </button>
         </div>
 
+        {/* Map Engine Toggle: 2D Leaflet vs 3D Cesium */}
+        <div className="flex items-center p-1 rounded-full bg-neutral-900 border border-[#B68D40]/30 text-xs font-semibold shadow-lg">
+          <button
+            onClick={() => setMapEngine('2d')}
+            className={`px-3 py-1.5 rounded-full transition flex items-center gap-1.5 ${
+              mapEngine === '2d' ? 'bg-[#B68D40] text-black font-bold shadow' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <MapIcon className="h-3.5 w-3.5" />
+            <span>2D Topo</span>
+          </button>
+
+          <button
+            onClick={() => setMapEngine('3d')}
+            className={`px-3 py-1.5 rounded-full transition flex items-center gap-1.5 ${
+              mapEngine === '3d' ? 'bg-[#B68D40] text-black font-bold shadow' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <Globe className="h-3.5 w-3.5" />
+            <span>3D Cesium</span>
+          </button>
+        </div>
+
       </header>
 
       {/* 2. SPLIT SCREEN WORKSPACE */}
@@ -340,14 +375,26 @@ export default function AllTrailsExplorePage() {
         {(layoutMode === 'split' || layoutMode === 'mapOnly') && (
           <div className="flex-1 h-full relative flex flex-col justify-between">
             
-            {/* LEAFLET MAP ENGINE */}
+            {/* MAP ENGINE CANVAS (2D LEAFLET OR 3D CESIUM GLOBE) */}
             <div className="flex-1 relative w-full h-full">
-              <LeafletMap
-                selectedRegion={selectedRegion}
-                focusedCoords={focusedCoords}
-                activeTrailId={activeTrail?.id}
-                height="h-full"
-              />
+              {mapEngine === '2d' ? (
+                <LeafletMap
+                  selectedRegion={selectedRegion}
+                  focusedCoords={focusedCoords}
+                  activeTrailId={activeTrail?.id}
+                  height="h-full"
+                />
+              ) : (
+                <CesiumGlobeMap
+                  height="h-full"
+                  initialCenter={
+                    focusedCoords
+                      ? { lat: focusedCoords[0], lng: focusedCoords[1], altitude: 9000 }
+                      : undefined
+                  }
+                  onClose3D={() => setMapEngine('2d')}
+                />
+              )}
             </div>
 
             {/* QUICK TRAIL ELEVATION SWITCHER PILLS BAR */}

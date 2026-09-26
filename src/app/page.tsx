@@ -21,6 +21,8 @@ import {
   Loader2
 } from 'lucide-react';
 import { Trail } from '@/types';
+import GlassCard from '@/components/ui/GlassCard';
+import GlassBadge from '@/components/ui/GlassBadge';
 
 export default function Home() {
   const [featuredTrails, setFeaturedTrails] = React.useState<Trail[]>([]);
@@ -374,38 +376,36 @@ export default function Home() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {userFeatures.map((feature) => {
+            {userFeatures.map((feature, idx) => {
               const IconComponent = feature.icon;
               return (
-                <Link
-                  key={feature.name}
-                  href={feature.href}
-                  className="group relative flex flex-col justify-between p-6 rounded-2xl bg-black border border-neutral-800 hover:border-[#B68D40]/60 transition-all duration-300 hover:shadow-xl hover:shadow-[#B68D40]/10"
-                >
-                  <div>
-                    <div className="flex items-center justify-between mb-4">
-                      <div className={`flex h-12 w-12 items-center justify-center rounded-xl border ${feature.gradient} transition-transform group-hover:scale-110`}>
-                        <IconComponent className="h-6 w-6" />
+                <Link key={feature.name} href={feature.href} className="block group">
+                  <GlassCard variant="interactive" delay={idx * 0.04} className="p-6 h-full flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between mb-4">
+                        <div className={`flex h-12 w-12 items-center justify-center rounded-xl border ${feature.gradient} transition-transform group-hover:scale-110`}>
+                          <IconComponent className="h-6 w-6" />
+                        </div>
+                        <GlassBadge variant="gold">
+                          {feature.badge}
+                        </GlassBadge>
                       </div>
-                      <span className="text-[10px] font-semibold tracking-wider uppercase px-2.5 py-1 rounded-full bg-neutral-900 text-gray-300 border border-neutral-800">
-                        {feature.badge}
-                      </span>
+
+                      <h3 className="text-lg font-bold text-white group-hover:text-[#B68D40] transition-colors flex items-center justify-between">
+                        <span>{feature.name}</span>
+                        <ArrowRight className="h-4 w-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all text-[#B68D40]" />
+                      </h3>
+
+                      <p className="text-xs text-gray-400 mt-2 leading-relaxed">
+                        {feature.desc}
+                      </p>
                     </div>
 
-                    <h3 className="text-lg font-bold text-white group-hover:text-[#B68D40] transition-colors flex items-center justify-between">
-                      <span>{feature.name}</span>
-                      <ArrowRight className="h-4 w-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all text-[#B68D40]" />
-                    </h3>
-
-                    <p className="text-xs text-gray-400 mt-2 leading-relaxed">
-                      {feature.desc}
-                    </p>
-                  </div>
-
-                  <div className="mt-6 pt-4 border-t border-neutral-900 flex items-center justify-between text-xs text-[#B68D40] font-medium">
-                    <span>Open {feature.name}</span>
-                    <span className="text-gray-600 group-hover:text-[#B68D40]">→</span>
-                  </div>
+                    <div className="mt-6 pt-4 border-t border-white/5 flex items-center justify-between text-xs text-[#B68D40] font-medium">
+                      <span>Open {feature.name}</span>
+                      <span className="text-gray-600 group-hover:text-[#B68D40]">→</span>
+                    </div>
+                  </GlassCard>
                 </Link>
               );
             })}
@@ -436,44 +436,49 @@ export default function Home() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {featuredTrails.map((trail) => (
-              <div key={trail.id} className="rounded-2xl border border-neutral-800 bg-neutral-950 overflow-hidden group hover:border-neutral-700 transition-all flex flex-col">
-                <div className="relative h-52 w-full overflow-hidden bg-neutral-900">
-                  <img
-                    src={trail.image}
-                    alt={trail.name}
-                    className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                  <div className="absolute top-3 left-3 bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-md text-[11px] font-semibold text-[#E2C085] border border-[#B68D40]/30">
-                    {trail.region} Region
-                  </div>
-                  <div className="absolute bottom-3 right-3 bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-md text-[11px] font-bold text-amber-400 border border-neutral-800">
-                    Max {trail.maxElevation}m
-                  </div>
-                </div>
-
-                <div className="p-6 space-y-4 flex-1 flex flex-col justify-between">
-                  <div>
-                    <h3 className="text-lg font-bold text-white group-hover:text-[#B68D40] transition-colors">
-                      {trail.name}
-                    </h3>
-                    <p className="text-xs text-gray-400 line-clamp-2 mt-2 leading-relaxed">
-                      {trail.description}
-                    </p>
-                  </div>
-
-                  <div className="pt-4 border-t border-neutral-900 flex items-center justify-between text-xs text-gray-400">
-                    <div>
-                      <span className="text-white font-semibold">{trail.distanceKm} km</span> • {trail.durationDays} Days
+              {featuredTrails.map((trail, idx) => (
+                <GlassCard
+                  key={trail.id}
+                  variant="interactive"
+                  delay={idx * 0.1}
+                  className="overflow-hidden group flex flex-col"
+                >
+                  <div className="relative h-52 w-full overflow-hidden bg-neutral-900">
+                    <img
+                      src={trail.image}
+                      alt={trail.name}
+                      className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
+                    <div className="absolute top-3 left-3 bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-md text-[11px] font-semibold text-[#E2C085] border border-[#B68D40]/30">
+                      {trail.region} Region
                     </div>
-                    <Link href="/trails" className="text-[#B68D40] font-bold hover:underline">
-                      Explore Route →
-                    </Link>
+                    <div className="absolute bottom-3 right-3 bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-md text-[11px] font-bold text-amber-400 border border-neutral-800">
+                      Max {trail.maxElevation}m
+                    </div>
                   </div>
-                </div>
-              </div>
-            ))}
-          </div>
+
+                  <div className="p-6 space-y-4 flex-1 flex flex-col justify-between">
+                    <div>
+                      <h3 className="text-lg font-bold text-white group-hover:text-[#B68D40] transition-colors">
+                        {trail.name}
+                      </h3>
+                      <p className="text-xs text-gray-400 line-clamp-2 mt-2 leading-relaxed">
+                        {trail.description}
+                      </p>
+                    </div>
+
+                    <div className="pt-4 border-t border-white/5 flex items-center justify-between text-xs text-gray-400">
+                      <div>
+                        <span className="text-white font-semibold">{trail.distanceKm} km</span> • {trail.durationDays} Days
+                      </div>
+                      <Link href="/trails" className="text-[#B68D40] font-bold hover:underline">
+                        Explore Route →
+                      </Link>
+                    </div>
+                  </div>
+                </GlassCard>
+              ))}
+            </div>
           )}
 
         </div>

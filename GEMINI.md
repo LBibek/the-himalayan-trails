@@ -43,3 +43,17 @@ Every feature must be verifiable from end to end:
 4. The database stores the record reliably.
 5. The UI receives the real database record and displays it.
 6. A browser refresh confirms persistent state retrieval from the database.
+
+---
+
+## 4. Frontend Component, OOP Map Systems & Glassmorphism Standards
+1. **Object-Oriented Flow for Maps**:
+   - Implement maps using clean Object-Oriented Design (`IMapController` abstraction).
+   - Encapsulate 2D (Leaflet) and 3D (Cesium) engines in dedicated controller classes coordinated via a centralized `MapEngineManager`.
+2. **Cesium 3D Globe Integration**:
+   - Seamlessly integrate Cesium for 3D Himalayan terrain visualization, altitude perspective, and summit fly-to controls.
+3. **Glassmorphism Design & GSAP Animations**:
+   - Use high-fidelity frosted glass interfaces (`backdrop-blur-xl bg-black/60 border border-white/10 shadow-2xl` with `#B68D40` gold accents).
+   - Animate interactions using **GSAP** (kinetic reveals, staggered card transitions, smooth drawer animations).
+4. **Universal Multi-Device Responsiveness**:
+   - Ensure every component provides high UX value across all devices (mobile 375px+, tablets, and desktops).

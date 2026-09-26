@@ -15,3 +15,10 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   - **Frontend**: Real data fetching, validation, and UI state synchronization.
   - **Backend**: Real Next.js App Router API routes (`/api/...`) with validation, proper status codes, and error handling.
   - **Database**: Real persistent database schemas, migrations, relations, and ACID queries.
+
+# Frontend Component Architecture & Modern UI Standards
+
+- **Object-Oriented Map Architecture**: Use polymorphic map controllers (`IMapController`) coordinating 2D Leaflet and 3D Cesium engines via `MapEngineManager`.
+- **Cesium 3D Globe**: Integrate CesiumJS for 3D Himalayan terrain topography and summit fly-to controls.
+- **Glassmorphism & GSAP Motion**: Design modern frosted-glass components (`backdrop-blur-xl bg-black/60 border border-white/10`) with GSAP kinetic animations.
+- **Universal Responsiveness**: Ensure high UX value across mobile (375px+), tablet, and desktop form factors.
