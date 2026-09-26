@@ -79,6 +79,22 @@ describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () =>
       assert.ok(regions.includes('Everest'), 'Must have weather report for Everest');
       assert.ok(regions.includes('Annapurna'), 'Must have weather report for Annapurna');
     });
+
+    test('Himalayan Ranges table contains 7 official massifs with boundary polygons and summit POIs', () => {
+      const stmt = db.prepare('SELECT * FROM ranges;');
+      const ranges = stmt.all();
+      assert.ok(ranges.length >= 7, `Expected at least 7 ranges, found ${ranges.length}`);
+
+      for (const r of ranges) {
+        assert.ok(r.name, 'Range must have a name');
+        assert.ok(r.center_lat >= 26 && r.center_lat <= 31, 'Range latitude must be within Nepal');
+        assert.ok(r.center_lng >= 80 && r.center_lng <= 89, 'Range longitude must be within Nepal');
+        const bounds = JSON.parse(r.bounds_json);
+        assert.ok(Array.isArray(bounds) && bounds.length > 10, 'Range bounds must have boundary points');
+        const pois = JSON.parse(r.pois_json);
+        assert.ok(Array.isArray(pois), 'Range POIs must be valid array');
+      }
+    });
   });
 
   describe('2. Authentication & Cryptographic Security', () => {
