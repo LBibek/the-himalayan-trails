@@ -1,5 +1,5 @@
-import AllTrailsExplorePage from '@/app/map/page';
+import UnifiedDiscoveryHub from '@/components/explorer/UnifiedDiscoveryHub';
 
 export default function ExplorePage() {
-  return <AllTrailsExplorePage />;
+  return <UnifiedDiscoveryHub defaultLayout="split" />;
 }

@@ -25,13 +25,13 @@ export default function Navbar() {
 
   const leftNavItems = [
     { label: 'Home', href: '/' },
-    { label: 'Trails', href: '/trails' },
-    { label: 'Explore MAP', href: '/map' },
+    { label: 'Explore & Trails', href: '/map' },
+    { label: '3D Globe Map', href: '/map?engine=3d' },
     { label: 'Stories', href: '/stories' },
   ];
 
   const rightNavItems = [
-    { label: 'Itineraries', href: '/itineraries' },
+    { label: 'Planner', href: '/itinerary/planner' },
     { label: 'Weather', href: '/weather' },
     { label: 'Dashboard', href: '/dashboard' },
     { label: 'Login', href: '/login' },
@@ -39,15 +39,15 @@ export default function Navbar() {
 
   const allNavItems = [
     { label: 'Home', href: '/', icon: Mountain },
-    { label: 'Dashboard', href: '/dashboard', icon: User },
-    { label: 'Trails View', href: '/trails', icon: Mountain },
-    { label: '3D MAP', href: '/map', icon: MapIcon },
+    { label: 'Explore & Trails', href: '/map', icon: MapIcon },
+    { label: '3D Globe Map', href: '/map?engine=3d', icon: Mountain },
     { label: 'Landmark Guide', href: '/landmarks', icon: MapPin },
-    { label: 'Admin Expedition Studio', href: '/admin', icon: ShieldCheck },
     { label: 'Itinerary Planner', href: '/itinerary/planner', icon: Calendar },
-    { label: 'Itineraries View', href: '/itineraries', icon: Calendar },
+    { label: 'Saved Itineraries', href: '/itineraries', icon: Calendar },
     { label: 'Weather & Status', href: '/weather', icon: CloudSun },
     { label: 'Trekker Stories', href: '/stories', icon: BookOpen },
+    { label: 'User Dashboard', href: '/dashboard', icon: User },
+    { label: 'Admin Studio', href: '/admin', icon: ShieldCheck },
     { label: 'About Us', href: '/about', icon: Heart },
     { label: 'Contact', href: '/contact', icon: User },
   ];

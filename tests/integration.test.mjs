@@ -638,7 +638,41 @@ describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () =>
       assert.ok(content.includes('allElevations'), 'Must calculate unified elevation bounds including landmarks');
     });
   });
+
+  describe('10. Unified Discovery Hub, Merged Explore/Map/Trails & Multi-View Architecture', () => {
+    test('UnifiedDiscoveryHub exists and supports split, mapOnly, and cardsOnly layouts with quick detail modal', () => {
+      const hubPath = path.join(process.cwd(), 'src', 'components', 'explorer', 'UnifiedDiscoveryHub.tsx');
+      assert.ok(fs.existsSync(hubPath), 'UnifiedDiscoveryHub component must exist');
+      const content = fs.readFileSync(hubPath, 'utf8');
+
+      assert.ok(content.includes('layoutMode'), 'Must manage layoutMode state');
+      assert.ok(content.includes('cardsOnly'), 'Must support cardsOnly grid view');
+      assert.ok(content.includes('split'), 'Must support split screen mode');
+      assert.ok(content.includes('mapOnly'), 'Must support mapOnly fullscreen mode');
+      assert.ok(content.includes('detailModalTrail'), 'Must support quick detail modal inspection');
+      assert.ok(content.includes('ElevationProfileChart'), 'Must integrate ElevationProfileChart');
+    });
+
+    test('/map, /explore, and /trails all render the UnifiedDiscoveryHub component', () => {
+      const mapPath = path.join(process.cwd(), 'src', 'app', 'map', 'page.tsx');
+      const explorePath = path.join(process.cwd(), 'src', 'app', 'explore', 'page.tsx');
+      const trailsPath = path.join(process.cwd(), 'src', 'app', 'trails', 'page.tsx');
+
+      assert.ok(fs.existsSync(mapPath), '/map/page.tsx must exist');
+      assert.ok(fs.existsSync(explorePath), '/explore/page.tsx must exist');
+      assert.ok(fs.existsSync(trailsPath), '/trails/page.tsx must exist');
+
+      const mapContent = fs.readFileSync(mapPath, 'utf8');
+      const exploreContent = fs.readFileSync(explorePath, 'utf8');
+      const trailsContent = fs.readFileSync(trailsPath, 'utf8');
+
+      assert.ok(mapContent.includes('UnifiedDiscoveryHub'), '/map must render UnifiedDiscoveryHub');
+      assert.ok(exploreContent.includes('UnifiedDiscoveryHub'), '/explore must render UnifiedDiscoveryHub');
+      assert.ok(trailsContent.includes('UnifiedDiscoveryHub'), '/trails must render UnifiedDiscoveryHub');
+    });
+  });
 });
+
 
 
 
