@@ -27,6 +27,26 @@ export interface MapViewOptions {
   heading?: number;
 }
 
+export interface DroneFlightTelemetry {
+  isPlaying: boolean;
+  speedMultiplier: 1 | 2 | 5;
+  currentDistanceMeters: number;
+  totalDistanceMeters: number;
+  progressRatio: number; // 0.0 to 1.0
+  currentPosition: GeoPoint;
+  currentAltitudeMeters: number;
+  remainingDistanceKm: number;
+  currentSpeedKmh: number;
+  headingDegrees: number;
+  pitchDegrees: number;
+  slopePercent: number;
+  nextLandmark?: {
+    name: string;
+    distanceKm: number;
+    etaSeconds: number;
+  };
+}
+
 export interface IMapController {
   readonly engineType: 'leaflet' | 'cesium';
   readonly isInitialized: boolean;
@@ -39,4 +59,14 @@ export interface IMapController {
   clearMarkers(): void;
   setScrubberPosition(point: GeoPoint | null): void;
   destroy(): void;
+
+  // Drone flight simulator controls and telemetry
+  startDroneFlight?(options?: { speedMultiplier?: 1 | 2 | 5; initialDistanceMeters?: number }): void;
+  pauseDroneFlight?(): void;
+  resumeDroneFlight?(): void;
+  setDroneFlightSpeed?(multiplier: 1 | 2 | 5): void;
+  seekDroneFlight?(distanceMetersOrRatio: number): void;
+  stopDroneFlight?(): void;
+  onDroneTelemetry?(listener: (telemetry: DroneFlightTelemetry) => void): () => void;
 }
+

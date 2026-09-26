@@ -1,5 +1,19 @@
-import type { IMapController, GeoPoint, MapMarker, MapPolyline, MapViewOptions } from './types';
-import type { HimalayanRange } from '@/types';
+import type { IMapController, GeoPoint, MapMarker, MapPolyline, MapViewOptions, DroneFlightTelemetry } from './types';
+import type { HimalayanRange, Landmark } from '@/types';
+
+function computeHaversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
 
 export class CesiumController implements IMapController {
   readonly engineType = 'cesium' as const;
@@ -11,6 +25,26 @@ export class CesiumController implements IMapController {
   private rangeEntities: any[] = [];
   private scrubberEntity: any = null;
   private _isInitialized = false;
+
+  // Drone flight simulator state
+  private droneFlightPath: GeoPoint[] = [];
+  private droneSegments: Array<{
+    p1: GeoPoint;
+    p2: GeoPoint;
+    startDistance: number;
+    endDistance: number;
+    length: number;
+  }> = [];
+  private droneTotalDistanceMeters = 0;
+  private droneCurrentDistanceMeters = 0;
+  private droneSpeedMultiplier: 1 | 2 | 5 = 1;
+  private isDroneFlying = false;
+  private droneBeaconEntity: any = null;
+  private droneTickListener: any = null;
+  private droneTelemetryListeners: Set<(telemetry: DroneFlightTelemetry) => void> = new Set();
+  private droneLandmarkCheckpoints: Array<{ id: string; name: string; distanceMeters: number }> = [];
+  private lastDroneTickTime = 0;
+  private lastPolylineObj: MapPolyline | null = null;
 
   get isInitialized(): boolean {
     return this._isInitialized;
@@ -215,6 +249,8 @@ export class CesiumController implements IMapController {
     if (!this.viewer || !this.Cesium) return;
     this.clearTrailPolyline();
 
+    this.lastPolylineObj = polyline;
+
     const positions = polyline.points.map((p) =>
       this.Cesium.Cartesian3.fromDegrees(p.lng, p.lat, (p.altitude || 3000) + 15)
     );
@@ -234,10 +270,18 @@ export class CesiumController implements IMapController {
       this.flyTo(mid, 14000, 2.5);
     }
 
+    this.setupDroneFlightPath(polyline);
     this.viewer.scene.requestRender();
   }
 
   clearTrailPolyline(): void {
+    this.stopDroneFlight();
+    this.lastPolylineObj = null;
+    this.droneFlightPath = [];
+    this.droneSegments = [];
+    this.droneTotalDistanceMeters = 0;
+    this.droneCurrentDistanceMeters = 0;
+
     if (this.viewer && this.polylinesEntity) {
       this.viewer.entities.remove(this.polylinesEntity);
       this.polylinesEntity = null;
@@ -350,6 +394,10 @@ export class CesiumController implements IMapController {
 
       this.markersEntities.push(entity);
     });
+
+    if (this.droneSegments.length > 0) {
+      this.updateLandmarkCheckpoints(markers);
+    }
 
     this.viewer.scene.requestRender();
   }
@@ -498,8 +546,437 @@ export class CesiumController implements IMapController {
     this.viewer.camera.cancelFlight();
   }
 
+  setupDroneFlightPath(
+    polyline?: MapPolyline,
+    landmarks?: Array<{ id: string; name?: string; title?: string; coordinates?: { lat: number; lng: number }; position?: { lat: number; lng: number }; elevation?: number }>
+  ): void {
+    const poly = polyline || this.lastPolylineObj;
+    if (!poly || !poly.points || poly.points.length < 2) return;
+    this.lastPolylineObj = poly;
+
+    this.droneFlightPath = [...poly.points];
+    this.droneSegments = [];
+    let accum = 0;
+
+    for (let i = 0; i < poly.points.length - 1; i++) {
+      const p1 = poly.points[i];
+      const p2 = poly.points[i + 1];
+      const len = computeHaversineMeters(p1.lat, p1.lng, p2.lat, p2.lng);
+      this.droneSegments.push({
+        p1,
+        p2,
+        startDistance: accum,
+        endDistance: accum + len,
+        length: len,
+      });
+      accum += len;
+    }
+
+    this.droneTotalDistanceMeters = accum;
+    this.droneCurrentDistanceMeters = 0;
+
+    if (landmarks && landmarks.length > 0) {
+      this.updateLandmarkCheckpoints(landmarks);
+    }
+  }
+
+  updateLandmarkCheckpoints(
+    landmarks: Array<{ id: string; name?: string; title?: string; coordinates?: { lat: number; lng: number }; position?: { lat: number; lng: number }; elevation?: number }>
+  ): void {
+    if (!this.droneSegments.length || !landmarks.length) return;
+
+    this.droneLandmarkCheckpoints = [];
+
+    landmarks.forEach((lm) => {
+      const lat = lm.coordinates?.lat ?? lm.position?.lat;
+      const lng = lm.coordinates?.lng ?? lm.position?.lng;
+      const name = lm.name ?? lm.title;
+      if (lat === undefined || lng === undefined || !name) return;
+
+      let bestDistMeters = 0;
+      let minDistanceToTrail = Infinity;
+
+      for (const seg of this.droneSegments) {
+        const d1 = computeHaversineMeters(lat, lng, seg.p1.lat, seg.p1.lng);
+        const d2 = computeHaversineMeters(lat, lng, seg.p2.lat, seg.p2.lng);
+        const minDist = Math.min(d1, d2);
+        if (minDist < minDistanceToTrail) {
+          minDistanceToTrail = minDist;
+          bestDistMeters = d1 < d2 ? seg.startDistance : seg.endDistance;
+        }
+      }
+
+      this.droneLandmarkCheckpoints.push({
+        id: lm.id,
+        name,
+        distanceMeters: bestDistMeters,
+      });
+    });
+
+    this.droneLandmarkCheckpoints.sort((a, b) => a.distanceMeters - b.distanceMeters);
+  }
+
+  private getDroneStateAtDistance(distanceMeters: number): {
+    point: GeoPoint;
+    bearingRad: number;
+    bearingDeg: number;
+    slopePercent: number;
+    pitchDeg: number;
+  } {
+    if (this.droneSegments.length === 0) {
+      return {
+        point: { lat: 27.9881, lng: 86.9250, altitude: 5000 },
+        bearingRad: 0,
+        bearingDeg: 0,
+        slopePercent: 0,
+        pitchDeg: -20,
+      };
+    }
+
+    const clampedDist = Math.max(0, Math.min(distanceMeters, this.droneTotalDistanceMeters));
+
+    let seg = this.droneSegments[0];
+    let low = 0;
+    let high = this.droneSegments.length - 1;
+
+    while (low <= high) {
+      const mid = (low + high) >> 1;
+      const s = this.droneSegments[mid];
+      if (clampedDist < s.startDistance) {
+        high = mid - 1;
+      } else if (clampedDist > s.endDistance) {
+        low = mid + 1;
+      } else {
+        seg = s;
+        break;
+      }
+    }
+
+    if (clampedDist >= this.droneTotalDistanceMeters) {
+      seg = this.droneSegments[this.droneSegments.length - 1];
+    }
+
+    const u = seg.length > 0 ? Math.max(0, Math.min(1, (clampedDist - seg.startDistance) / seg.length)) : 0;
+    const curLat = seg.p1.lat + u * (seg.p2.lat - seg.p1.lat);
+    const curLng = seg.p1.lng + u * (seg.p2.lng - seg.p1.lng);
+    const alt1 = seg.p1.altitude ?? 3500;
+    const alt2 = seg.p2.altitude ?? 3500;
+    const curAlt = alt1 + u * (alt2 - alt1);
+    const currentPoint: GeoPoint = { lat: curLat, lng: curLng, altitude: curAlt };
+
+    // Lookahead sampling for tangent bearing & slope gradient (50 meters forward)
+    const lookaheadDist = Math.min(clampedDist + 50, this.droneTotalDistanceMeters);
+    let aheadPoint: GeoPoint;
+
+    if (lookaheadDist > clampedDist) {
+      let aheadSeg = seg;
+      if (lookaheadDist > seg.endDistance) {
+        let aLow = 0;
+        let aHigh = this.droneSegments.length - 1;
+        while (aLow <= aHigh) {
+          const aMid = (aLow + aHigh) >> 1;
+          const aS = this.droneSegments[aMid];
+          if (lookaheadDist < aS.startDistance) {
+            aHigh = aMid - 1;
+          } else if (lookaheadDist > aS.endDistance) {
+            aLow = aMid + 1;
+          } else {
+            aheadSeg = aS;
+            break;
+          }
+        }
+      }
+      const aU = aheadSeg.length > 0 ? Math.max(0, Math.min(1, (lookaheadDist - aheadSeg.startDistance) / aheadSeg.length)) : 1;
+      const aLat = aheadSeg.p1.lat + aU * (aheadSeg.p2.lat - aheadSeg.p1.lat);
+      const aLng = aheadSeg.p1.lng + aU * (aheadSeg.p2.lng - aheadSeg.p1.lng);
+      const aAlt1 = aheadSeg.p1.altitude ?? 3500;
+      const aAlt2 = aheadSeg.p2.altitude ?? 3500;
+      aheadPoint = { lat: aLat, lng: aLng, altitude: aAlt1 + aU * (aAlt2 - aAlt1) };
+    } else {
+      aheadPoint = seg.p2;
+    }
+
+    const dLng = ((aheadPoint.lng - currentPoint.lng) * Math.PI) / 180;
+    const lat1 = (currentPoint.lat * Math.PI) / 180;
+    const lat2 = (aheadPoint.lat * Math.PI) / 180;
+    const y = Math.sin(dLng) * Math.cos(lat2);
+    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+    let bearingRad = Math.atan2(y, x);
+    let bearingDeg = ((bearingRad * 180) / Math.PI + 360) % 360;
+
+    const deltaH = (aheadPoint.altitude ?? curAlt) - curAlt;
+    const deltaD = computeHaversineMeters(currentPoint.lat, currentPoint.lng, aheadPoint.lat, aheadPoint.lng);
+    const slopePercent = deltaD > 0.5 ? (deltaH / deltaD) * 100 : 0;
+    const slopeAngleRad = Math.atan2(deltaH, Math.max(deltaD, 1));
+    const basePitch = -20;
+    const dynamicPitchAdjustment = ((slopeAngleRad * 180) / Math.PI) * 0.45;
+    const pitchDeg = Math.max(-45, Math.min(10, basePitch + dynamicPitchAdjustment));
+
+    return {
+      point: currentPoint,
+      bearingRad,
+      bearingDeg,
+      slopePercent,
+      pitchDeg,
+    };
+  }
+
+  private applyDroneState(distanceMeters: number): DroneFlightTelemetry {
+    const state = this.getDroneStateAtDistance(distanceMeters);
+    const { point, bearingRad, bearingDeg, slopePercent, pitchDeg } = state;
+
+    if (this.viewer && this.Cesium) {
+      const beaconPos = this.Cesium.Cartesian3.fromDegrees(
+        point.lng,
+        point.lat,
+        (point.altitude || 3500) + 20
+      );
+
+      let beacon = this.droneBeaconEntity || this.viewer.entities.getById('cesium-drone-beacon');
+      if (beacon) {
+        beacon.position = beaconPos;
+        this.droneBeaconEntity = beacon;
+      } else {
+        this.droneBeaconEntity = this.viewer.entities.add({
+          id: 'cesium-drone-beacon',
+          name: 'Himalayan Drone Simulator',
+          position: beaconPos,
+          point: {
+            pixelSize: 18,
+            color: this.Cesium.Color.fromCssColorString('#fbbf24'),
+            outlineColor: this.Cesium.Color.BLACK,
+            outlineWidth: 3,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          },
+          label: {
+            text: 'DRONE 3D',
+            font: 'bold 11px sans-serif',
+            fillColor: this.Cesium.Color.fromCssColorString('#fbbf24'),
+            outlineColor: this.Cesium.Color.BLACK,
+            outlineWidth: 3,
+            style: this.Cesium.LabelStyle.FILL_AND_OUTLINE,
+            pixelOffset: new this.Cesium.Cartesian2(0, -22),
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          },
+        });
+      }
+
+      // Camera positioned ~80m above route with forward tangent orientation
+      const cameraAlt = (point.altitude || 3500) + 80;
+      const cameraPos = this.Cesium.Cartesian3.fromDegrees(point.lng, point.lat, cameraAlt);
+
+      this.viewer.camera.setView({
+        destination: cameraPos,
+        orientation: {
+          heading: bearingRad,
+          pitch: this.Cesium.Math.toRadians(pitchDeg),
+          roll: 0.0,
+        },
+      });
+
+      this.viewer.scene.requestRender();
+    }
+
+    const speedKmh = 50 * this.droneSpeedMultiplier;
+    const speedMps = (speedKmh * 1000) / 3600;
+    const remainingDistanceKm = Math.max(
+      0,
+      Math.round(((this.droneTotalDistanceMeters - distanceMeters) / 1000) * 10) / 10
+    );
+
+    let nextLandmark: { name: string; distanceKm: number; etaSeconds: number } | undefined;
+    const upcoming = this.droneLandmarkCheckpoints.find((lm) => lm.distanceMeters > distanceMeters + 15);
+    if (upcoming) {
+      const distM = upcoming.distanceMeters - distanceMeters;
+      nextLandmark = {
+        name: upcoming.name,
+        distanceKm: Math.round((distM / 1000) * 10) / 10,
+        etaSeconds: Math.max(1, Math.round(distM / speedMps)),
+      };
+    }
+
+    const telemetry: DroneFlightTelemetry = {
+      isPlaying: this.isDroneFlying,
+      speedMultiplier: this.droneSpeedMultiplier,
+      currentDistanceMeters: Math.round(distanceMeters),
+      totalDistanceMeters: Math.round(this.droneTotalDistanceMeters),
+      progressRatio: this.droneTotalDistanceMeters > 0 ? distanceMeters / this.droneTotalDistanceMeters : 0,
+      currentPosition: point,
+      currentAltitudeMeters: Math.round(point.altitude || 0),
+      remainingDistanceKm,
+      currentSpeedKmh: speedKmh,
+      headingDegrees: Math.round(bearingDeg),
+      pitchDegrees: Math.round(pitchDeg),
+      slopePercent: Math.round(slopePercent * 10) / 10,
+      nextLandmark,
+    };
+
+    return telemetry;
+  }
+
+  private handleDroneClockTick = (): void => {
+    if (!this.isDroneFlying) return;
+
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const rawDt = this.lastDroneTickTime > 0 ? (now - this.lastDroneTickTime) / 1000 : 0.016;
+    // Clamp between 16ms (minimum 60fps frame — keeps synchronous test ticks working) and 100ms
+    const dt = Math.max(0.016, Math.min(rawDt, 0.1));
+    this.lastDroneTickTime = now;
+
+    const speedMps = ((50 * this.droneSpeedMultiplier) * 1000) / 3600;
+    this.droneCurrentDistanceMeters += speedMps * dt;
+
+    if (this.droneCurrentDistanceMeters >= this.droneTotalDistanceMeters) {
+      this.droneCurrentDistanceMeters = this.droneTotalDistanceMeters;
+      this.isDroneFlying = false;
+      if (this.viewer?.scene) {
+        this.viewer.scene.requestRenderMode = true;
+      }
+    }
+
+    const telemetry = this.applyDroneState(this.droneCurrentDistanceMeters);
+    this.emitDroneTelemetry(telemetry);
+  };
+
+  startDroneFlight(options?: { speedMultiplier?: 1 | 2 | 5; initialDistanceMeters?: number }): void {
+    if (!this.viewer || !this.Cesium) return;
+
+    if (this.droneSegments.length === 0 && this.lastPolylineObj) {
+      this.setupDroneFlightPath(this.lastPolylineObj);
+    }
+    if (this.droneSegments.length === 0) return;
+
+    this.stopTour();
+
+    if (options?.speedMultiplier) {
+      this.droneSpeedMultiplier = options.speedMultiplier;
+    }
+    if (options?.initialDistanceMeters !== undefined) {
+      this.droneCurrentDistanceMeters = Math.max(0, Math.min(options.initialDistanceMeters, this.droneTotalDistanceMeters));
+    } else if (this.droneCurrentDistanceMeters >= this.droneTotalDistanceMeters) {
+      this.droneCurrentDistanceMeters = 0;
+    }
+
+    this.isDroneFlying = true;
+    this.lastDroneTickTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
+
+    // Disable requestRenderMode during flight so frames update continuously at 60 FPS
+    this.viewer.scene.requestRenderMode = false;
+
+    if (!this.droneTickListener) {
+      this.droneTickListener = this.handleDroneClockTick;
+      this.viewer.clock.onTick.addEventListener(this.droneTickListener);
+    }
+
+    const initialTelemetry = this.applyDroneState(this.droneCurrentDistanceMeters);
+    this.emitDroneTelemetry(initialTelemetry);
+  }
+
+  pauseDroneFlight(): void {
+    this.isDroneFlying = false;
+    if (this.viewer?.scene) {
+      this.viewer.scene.requestRenderMode = true;
+      this.viewer.scene.requestRender();
+    }
+    const telemetry = this.applyDroneState(this.droneCurrentDistanceMeters);
+    this.emitDroneTelemetry({ ...telemetry, isPlaying: false });
+  }
+
+  resumeDroneFlight(): void {
+    if (!this.viewer || !this.Cesium || this.droneSegments.length === 0) return;
+
+    if (this.droneCurrentDistanceMeters >= this.droneTotalDistanceMeters) {
+      this.droneCurrentDistanceMeters = 0;
+    }
+
+    this.isDroneFlying = true;
+    this.lastDroneTickTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
+
+    this.viewer.scene.requestRenderMode = false;
+
+    if (!this.droneTickListener) {
+      this.droneTickListener = this.handleDroneClockTick;
+      this.viewer.clock.onTick.addEventListener(this.droneTickListener);
+    }
+
+    const telemetry = this.applyDroneState(this.droneCurrentDistanceMeters);
+    this.emitDroneTelemetry({ ...telemetry, isPlaying: true });
+  }
+
+  setDroneFlightSpeed(multiplier: 1 | 2 | 5): void {
+    this.droneSpeedMultiplier = multiplier;
+    const telemetry = this.applyDroneState(this.droneCurrentDistanceMeters);
+    this.emitDroneTelemetry(telemetry);
+  }
+
+  seekDroneFlight(distanceMetersOrRatio: number): void {
+    if (this.droneSegments.length === 0 && this.lastPolylineObj) {
+      this.setupDroneFlightPath(this.lastPolylineObj);
+    }
+    if (this.droneSegments.length === 0) return;
+
+    let targetMeters = distanceMetersOrRatio;
+    if (distanceMetersOrRatio >= 0 && distanceMetersOrRatio <= 1 && this.droneTotalDistanceMeters > 10) {
+      targetMeters = distanceMetersOrRatio * this.droneTotalDistanceMeters;
+    }
+
+    this.droneCurrentDistanceMeters = Math.max(0, Math.min(targetMeters, this.droneTotalDistanceMeters));
+    const telemetry = this.applyDroneState(this.droneCurrentDistanceMeters);
+    this.emitDroneTelemetry(telemetry);
+  }
+
+  stopDroneFlight(): void {
+    this.isDroneFlying = false;
+
+    if (this.viewer && this.droneTickListener) {
+      this.viewer.clock.onTick.removeEventListener(this.droneTickListener);
+      this.droneTickListener = null;
+    }
+
+    if (this.viewer) {
+      const existingBeacon = this.droneBeaconEntity || this.viewer.entities.getById('cesium-drone-beacon');
+      if (existingBeacon) {
+        this.viewer.entities.remove(existingBeacon);
+      }
+      this.droneBeaconEntity = null;
+    }
+
+    if (this.viewer?.scene) {
+      this.viewer.scene.requestRenderMode = true;
+      this.viewer.scene.requestRender();
+    }
+
+    if (this.droneSegments.length > 0) {
+      const telemetry = this.applyDroneState(this.droneCurrentDistanceMeters);
+      this.emitDroneTelemetry({ ...telemetry, isPlaying: false });
+    }
+  }
+
+  onDroneTelemetry(listener: (telemetry: DroneFlightTelemetry) => void): () => void {
+    this.droneTelemetryListeners.add(listener);
+    if (this.droneSegments.length > 0) {
+      const snap = this.applyDroneState(this.droneCurrentDistanceMeters);
+      listener(snap);
+    }
+    return () => {
+      this.droneTelemetryListeners.delete(listener);
+    };
+  }
+
+  private emitDroneTelemetry(telemetry: DroneFlightTelemetry): void {
+    this.droneTelemetryListeners.forEach((listener) => {
+      try {
+        listener(telemetry);
+      } catch (err) {
+        console.error('Error in drone telemetry listener:', err);
+      }
+    });
+  }
+
   destroy(): void {
     this.stopTour();
+    this.stopDroneFlight();
+    this.droneTelemetryListeners.clear();
     if (this.viewer && !this.viewer.isDestroyed()) {
       this.viewer.destroy();
       this.viewer = null;
@@ -507,3 +984,4 @@ export class CesiumController implements IMapController {
     this._isInitialized = false;
   }
 }
+

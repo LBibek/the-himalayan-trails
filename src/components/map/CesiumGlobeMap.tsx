@@ -19,11 +19,14 @@ import {
   ChevronUp,
   Maximize2,
   Navigation,
+  Plane,
 } from 'lucide-react';
 import gsap from 'gsap';
 import { HIMALAYAN_SUMMITS } from '@/data/summitTours';
 import SummitTourConsole from '@/components/map/SummitTourConsole';
+import DroneFlightConsole from '@/components/map/DroneFlightConsole';
 import FloatingMapPanel from '@/components/ui/FloatingMapPanel';
+import type { DroneFlightTelemetry } from '@/lib/map/types';
 
 interface CesiumGlobeMapProps {
   initialCenter?: GeoPoint;
@@ -35,8 +38,9 @@ interface CesiumGlobeMapProps {
   activeTrail?: Trail | null;
   height?: string;
   onClose3D?: () => void;
-  mode?: 'freeroam' | 'summit-tours';
+  mode?: 'freeroam' | 'summit-tours' | 'drone-flight';
   initialSummitSlug?: string;
+  onFlightTelemetry?: (telemetry: DroneFlightTelemetry) => void;
 }
 
 export default function CesiumGlobeMap({
@@ -51,6 +55,7 @@ export default function CesiumGlobeMap({
   onClose3D,
   mode = 'freeroam',
   initialSummitSlug = 'everest',
+  onFlightTelemetry,
 }: CesiumGlobeMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const hudRef = useRef<HTMLDivElement>(null);
@@ -59,12 +64,17 @@ export default function CesiumGlobeMap({
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [hudExpanded, setHudExpanded] = useState(true);
+  const [currentMode, setCurrentMode] = useState<'freeroam' | 'summit-tours' | 'drone-flight'>(mode);
   const [activeSummit, setActiveSummit] = useState<string>('Mt. Everest');
   const [ranges, setRanges] = useState<HimalayanRange[]>([]);
   const [selectedRange, setSelectedRange] = useState<string>('All');
   const [perspective, setPerspective] = useState<'topo' | 'ridge' | 'summit'>('ridge');
   const [selectedLandmarkId, setSelectedLandmarkId] = useState<string | null>(null);
   const [fetchedLandmarks, setFetchedLandmarks] = useState<Landmark[]>([]);
+
+  useEffect(() => {
+    setCurrentMode(mode);
+  }, [mode]);
 
   // 1. Fetch official Himalayan ranges & landmarks from persistent DB API
   useEffect(() => {
@@ -340,6 +350,30 @@ export default function CesiumGlobeMap({
               <span className="font-semibold">Cesium 3D Terrain Engine</span>
             </GlassBadge>
 
+            {(activeTrail || polyline) && (
+              <button
+                onClick={() => {
+                  if (currentMode === 'drone-flight') {
+                    controllerRef.current?.stopDroneFlight();
+                    setCurrentMode('freeroam');
+                  } else {
+                    setCurrentMode('drone-flight');
+                    controllerRef.current?.startDroneFlight({ speedMultiplier: 1, initialDistanceMeters: 0 });
+                  }
+                }}
+                data-slot="trigger"
+                data-pressed={currentMode === 'drone-flight'}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1.5 border shadow-lg ${
+                  currentMode === 'drone-flight'
+                    ? 'bg-amber-500 text-black border-amber-400 shadow-amber-500/30'
+                    : 'bg-[#B68D40] text-black border-[#B68D40] shadow-[#B68D40]/25 hover:bg-[#d4a853]'
+                } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent`}
+              >
+                <Plane className="w-3.5 h-3.5" />
+                <span>{currentMode === 'drone-flight' ? 'Exit Drone Flight' : 'Start Drone Fly-Through'}</span>
+              </button>
+            )}
+
             {onClose3D && (
               <button
                 onClick={onClose3D}
@@ -387,14 +421,28 @@ export default function CesiumGlobeMap({
         </div>
       )}
 
-      {/* BOTTOM FLOATING GLASSMORPHIC HUD / SUMMIT TOUR CONSOLE */}
+      {/* BOTTOM FLOATING GLASSMORPHIC HUD / SUMMIT TOUR CONSOLE / DRONE FLIGHT CONSOLE */}
       {!isLoading && !loadError && (
         <div
           ref={hudRef}
           data-slot="body"
           className="absolute bottom-4 left-4 right-4 z-10 pointer-events-none max-h-[85%] overflow-y-auto"
         >
-          {mode === 'summit-tours' ? (
+          {currentMode === 'drone-flight' ? (
+            <div className="max-w-4xl mx-auto pointer-events-auto">
+              <DroneFlightConsole
+                controller={controllerRef.current}
+                trail={activeTrail}
+                polyline={polyline}
+                landmarks={allLandmarks}
+                onClose={() => {
+                  controllerRef.current?.stopDroneFlight();
+                  setCurrentMode('freeroam');
+                }}
+                onTelemetryChange={onFlightTelemetry}
+              />
+            </div>
+          ) : currentMode === 'summit-tours' ? (
             <div className="max-w-4xl mx-auto pointer-events-auto">
               <SummitTourConsole
                 controller={controllerRef.current}
@@ -420,6 +468,29 @@ export default function CesiumGlobeMap({
               defaultWidth="max-w-3xl w-full mx-auto"
             >
               <div className="space-y-3">
+                {/* 0. Active Trail Drone Fly-Through Call to Action */}
+                {activeTrail && (
+                  <div className="p-2.5 rounded-xl bg-accent/15 border border-accent/40 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <Plane className="w-4 h-4 text-accent animate-pulse" />
+                      <div>
+                        <p className="text-xs font-bold text-white">Virtual Trail Simulation Available</p>
+                        <p className="text-[10px] text-gray-300">Fly a 3D camera along {activeTrail.name} with live HUD telemetry</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setCurrentMode('drone-flight');
+                        controllerRef.current?.startDroneFlight({ speedMultiplier: 1, initialDistanceMeters: 0 });
+                      }}
+                      data-slot="trigger"
+                      className="px-3 py-1.5 rounded-xl bg-accent text-accent-foreground font-bold text-xs hover:bg-[#d4a853] transition shadow-lg shadow-amber-500/20 flex items-center gap-1.5 shrink-0"
+                    >
+                      <Plane className="w-3.5 h-3.5" />
+                      <span>Start Drone Fly-Through</span>
+                    </button>
+                  </div>
+                )}
                 {/* 1. Himalayan Ranges Navigator */}
                 {ranges.length > 0 && (
                   <div className="space-y-1">

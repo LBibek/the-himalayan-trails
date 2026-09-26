@@ -46,6 +46,7 @@ export interface ElevationProfileChartProps {
   onSelectPoint?: (point: ElevationPoint) => void;
   onSelectLandmark?: (landmark: Landmark) => void;
   activePointIndex?: number | null;
+  activeDistanceKm?: number | null;
 }
 
 interface ChartDataPoint {
@@ -76,6 +77,7 @@ export default function ElevationProfileChart({
   onSelectPoint,
   onSelectLandmark,
   activePointIndex,
+  activeDistanceKm,
 }: ElevationProfileChartProps) {
   const [isExpanded, setIsExpanded] = useState<boolean>(true);
   const [mounted, setMounted] = useState<boolean>(false);
@@ -204,6 +206,35 @@ export default function ElevationProfileChart({
     return [...dataElevs, ...lmElevs];
   }, [chartData, landmarkMarkers]);
 
+  // Synchronized flight scrubber position and elevation
+  const activeScrubberData = useMemo(() => {
+    if (activeDistanceKm === undefined || activeDistanceKm === null || !chartData.length) {
+      return null;
+    }
+    const dist = Math.max(0, Math.min(activeDistanceKm, trail.distanceKm));
+    let p1 = chartData[0];
+    let p2 = chartData[chartData.length - 1];
+    for (let i = 0; i < chartData.length - 1; i++) {
+      if (dist >= chartData[i].distanceKm && dist <= chartData[i + 1].distanceKm) {
+        p1 = chartData[i];
+        p2 = chartData[i + 1];
+        break;
+      }
+    }
+    const span = p2.distanceKm - p1.distanceKm;
+    const ratio = span > 0 ? (dist - p1.distanceKm) / span : 0;
+    const elev = Math.round(p1.elevation + ratio * (p2.elevation - p1.elevation));
+    const lat = p1.lat && p2.lat ? p1.lat + ratio * (p2.lat - p1.lat) : p1.lat;
+    const lng = p1.lng && p2.lng ? p1.lng + ratio * (p2.lng - p1.lng) : p1.lng;
+
+    return {
+      distanceKm: Math.round(dist * 10) / 10,
+      elevation: elev,
+      lat,
+      lng,
+    };
+  }, [activeDistanceKm, chartData, trail.distanceKm]);
+
   const minElevation = allElevations.length > 0 ? Math.min(...allElevations) : 1500;
   const maxElevation = allElevations.length > 0 ? Math.max(...allElevations, trail.maxElevation || 0) : trail.maxElevation || 5000;
 
@@ -293,6 +324,13 @@ export default function ElevationProfileChart({
                     </span>
                   )}
                 </div>
+              ) : activeScrubberData ? (
+                <div className="flex items-center gap-2">
+                  <span className="font-extrabold text-amber-300">🚁 3D Drone Flight Path</span>
+                  <span className="text-[10px] text-muted-foreground font-mono">
+                    ({activeScrubberData.distanceKm} km traversed)
+                  </span>
+                </div>
               ) : (
                 <span className="text-muted-foreground text-[11px] font-mono">
                   Hover along graph to scrub 2D Leaflet pin & 3D Cesium camera
@@ -300,7 +338,7 @@ export default function ElevationProfileChart({
               )}
             </div>
 
-            {hoveredDataPoint && (
+            {hoveredDataPoint ? (
               <div className="flex items-center gap-4 font-mono text-[11px]">
                 <span>
                   Distance: <strong className="text-accent">{hoveredDataPoint.distanceKm} km</strong>
@@ -309,7 +347,16 @@ export default function ElevationProfileChart({
                   Altitude: <strong className="text-amber-400">{hoveredDataPoint.elevation.toLocaleString()}m</strong>
                 </span>
               </div>
-            )}
+            ) : activeScrubberData ? (
+              <div className="flex items-center gap-4 font-mono text-[11px]">
+                <span>
+                  Flight Progress: <strong className="text-accent">{activeScrubberData.distanceKm} km</strong>
+                </span>
+                <span>
+                  Flight Alt: <strong className="text-amber-400">{activeScrubberData.elevation.toLocaleString()}m</strong>
+                </span>
+              </div>
+            ) : null}
           </div>
 
           {/* Recharts Elevation Canvas */}
@@ -371,6 +418,26 @@ export default function ElevationProfileChart({
                       onClick={() => handleLandmarkBadgeClick(lm)}
                     />
                   ))}
+
+                  {/* Synchronized 3D Drone Flight Scrubber Marker & Reference Line */}
+                  {activeScrubberData && (
+                    <>
+                      <ReferenceLine
+                        x={activeScrubberData.distanceKm}
+                        stroke="#fbbf24"
+                        strokeWidth={2}
+                        strokeDasharray="4 2"
+                      />
+                      <ReferenceDot
+                        x={activeScrubberData.distanceKm}
+                        y={activeScrubberData.elevation}
+                        r={7}
+                        fill="#fbbf24"
+                        stroke="#ffffff"
+                        strokeWidth={2.5}
+                      />
+                    </>
+                  )}
 
                   <Area
                     type="monotone"
