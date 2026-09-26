@@ -13,8 +13,8 @@ on:
       - develop
 
 env:
-  VERCEL_ORG_ID: team_1PFU6XgLintLrw2fW0V9OlKH
-  VERCEL_PROJECT_ID: prj_QBHCvV0AiFZe2LwXQt7riDuhV59c
+  VERCEL_PROJECT_ID: prj_berT7te83D5ruPWCWWJHEW2vhpPG
+
 
 jobs:
   test-and-verify:
