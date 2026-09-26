@@ -482,3 +482,17 @@ function AllTrailsExploreContent() {
     </div>
   );
 }
+
+export default function AllTrailsExplorePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-black flex items-center justify-center text-[#B68D40] text-sm">
+          Loading Himalayan Trails Geospatial Explorer...
+        </div>
+      }
+    >
+      <AllTrailsExploreContent />
+    </Suspense>
+  );
+}

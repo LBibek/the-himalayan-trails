@@ -284,6 +284,31 @@ export default function TrailDetailPage() {
               </div>
             </div>
 
+            {/* 3D Himalayan Globe Action Banner */}
+            <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-[#B68D40]/20 via-[#B68D40]/10 to-transparent border border-[#B68D40]/40 backdrop-blur-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-[#B68D40]/25 border border-[#B68D40]/50 flex items-center justify-center shrink-0">
+                  <Mountain className="w-6 h-6 text-[#E2C085]" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                    <span>Explore in Cesium 3D Globe</span>
+                    <Sparkles className="w-3.5 h-3.5 text-[#B68D40]" />
+                  </h3>
+                  <p className="text-xs text-gray-300">
+                    Fly along the 3D {trail.region} mountain topography and inspect high-altitude waypoints.
+                  </p>
+                </div>
+              </div>
+              <Link
+                href={`/map?trail=${trail.id}&engine=3d`}
+                className="px-4 py-2.5 rounded-xl bg-[#B68D40] hover:bg-[#c99e4b] text-black font-bold text-xs flex items-center justify-center gap-2 transition shadow-lg shadow-[#B68D40]/20 shrink-0"
+              >
+                <Compass className="w-4 h-4" />
+                <span>Launch 3D Flight</span>
+              </Link>
+            </div>
+
             {/* Highlights List */}
             <div className="p-6 rounded-3xl bg-slate-900/40 border border-slate-800 space-y-4">
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
