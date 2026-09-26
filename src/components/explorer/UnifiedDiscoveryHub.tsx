@@ -592,7 +592,7 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
 
         {/* C. RIGHT INTERACTIVE MAP CANVAS (IN SPLIT & MAP-ONLY MODES) */}
         {(layoutMode === 'split' || layoutMode === 'mapOnly') && (
-          <div className="flex-1 h-full relative flex flex-col justify-between">
+          <div className="flex-1 h-full relative overflow-hidden flex flex-col justify-between">
             
             {/* MAP ENGINE CANVAS (2D LEAFLET OR 3D CESIUM GLOBE) */}
             <div className="flex-1 relative w-full h-full">
@@ -633,124 +633,127 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                   onClose3D={() => setMapEngine('2d')}
                 />
               )}
-            </div>
 
-            {/* QUICK TRAIL ELEVATION SWITCHER PILLS BAR */}
-            {showTrailSwitcher && (
-              <div className="absolute bottom-16 left-4 z-[999]">
-                <FloatingMapPanel
-                  id="trail-switcher-hud"
-                  title="Trail Profile Switcher"
-                  icon={<TrendingUp className="h-3.5 w-3.5 text-[#B68D40]" />}
-                  allowDrag={true}
-                  allowResize={true}
-                  allowMinimize={true}
-                  allowMaximize={false}
-                  allowClose={true}
-                  onClose={() => setShowTrailSwitcher(false)}
-                  defaultWidth="w-auto"
-                >
-                  <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                    <span className="text-[10px] text-gray-400 uppercase font-semibold px-1">
-                      Select Trail:
-                    </span>
-                    {trails.map((t: Trail) => (
-                      <button
-                        key={t.id}
-                        onClick={() => handleTrailSelect(t)}
-                        className={`px-3 py-1 rounded-xl text-[11px] font-semibold transition ${
-                          activeTrail?.id === t.id
-                            ? 'bg-[#B68D40] text-black font-bold shadow'
-                            : 'text-gray-300 hover:bg-neutral-800'
-                        }`}
-                      >
-                        {t.region}
-                      </button>
-                    ))}
+              {/* 1. FLOATING INTERACTIVE ALTITUDE PROFILE INSIDE MAP */}
+              {activeTrail && showElevationProfile && (
+                <div className="absolute bottom-4 left-4 right-4 z-[1000] pointer-events-none flex justify-center">
+                  <div className="pointer-events-auto w-full max-w-5xl">
+                    <ElevationProfileChart
+                      trail={activeTrail}
+                      onClose={() => setShowElevationProfile(false)}
+                      onSelectPoint={(pt) => {
+                        if (pt.lat && pt.lng) {
+                          setFocusedCoords([pt.lat, pt.lng]);
+                        }
+                      }}
+                      onSelectLandmark={(lm) => {
+                        setFocusedCoords([lm.coordinates.lat, lm.coordinates.lng]);
+                      }}
+                      onHoverPoint={(pt) => {
+                        if (!pt || !activeTrail) {
+                          setFocusedCoords(undefined);
+                          return;
+                        }
+                        if (pt.lat && pt.lng) {
+                          setFocusedCoords([pt.lat, pt.lng]);
+                          return;
+                        }
+                        const track = ROUTE_TRACKS[activeTrail.id];
+                        if (track && track.coords.length > 0 && activeTrail.distanceKm > 0) {
+                          const ratio = Math.max(0, Math.min(1, pt.distanceKm / activeTrail.distanceKm));
+                          const targetIdx = Math.min(
+                            track.coords.length - 1,
+                            Math.floor(ratio * (track.coords.length - 1))
+                          );
+                          setFocusedCoords(track.coords[targetIdx]);
+                          return;
+                        }
+                        const ratio = activeTrail.distanceKm > 0 ? pt.distanceKm / activeTrail.distanceKm : 0;
+                        const regionCoords: Record<string, [number, number]> = {
+                          'Everest': [27.9881, 86.9250],
+                          'Annapurna': [28.5960, 83.8200],
+                          'Langtang': [28.2100, 85.5600],
+                          'Manaslu': [28.5500, 84.5600],
+                          'Mustang': [29.1800, 83.9500],
+                          'Rolwaling': [27.8700, 86.4500]
+                        };
+                        const base = regionCoords[activeTrail.region] || [28.3949, 84.1240];
+                        const interpolated: [number, number] = [
+                          base[0] + (ratio - 0.5) * 0.08,
+                          base[1] + (ratio - 0.5) * 0.08
+                        ];
+                        setFocusedCoords(interpolated);
+                      }}
+                    />
                   </div>
-                </FloatingMapPanel>
-              </div>
-            )}
+                </div>
+              )}
 
-            {/* RESTORE TRAIL SWITCHER BUTTON IF CLOSED */}
-            {!showTrailSwitcher && (
-              <button
-                onClick={() => setShowTrailSwitcher(true)}
-                className="absolute bottom-16 left-4 z-[999] px-3 py-1.5 rounded-xl bg-slate-900/90 border border-[#B68D40]/50 text-[#B68D40] hover:text-white hover:bg-slate-800 font-bold text-xs flex items-center gap-1.5 shadow-xl transition backdrop-blur-md"
-              >
-                <TrendingUp className="h-3.5 w-3.5" />
-                <span>Show Trail Switcher</span>
-              </button>
-            )}
+              {/* 2. RE-OPEN ALTITUDE GRAPH BUTTON INSIDE MAP IF CLOSED */}
+              {!showElevationProfile && activeTrail && (
+                <button
+                  onClick={() => setShowElevationProfile(true)}
+                  className="absolute bottom-4 right-4 z-[1000] px-4 py-2 rounded-full bg-[#B68D40] text-black font-bold text-xs flex items-center gap-2 shadow-2xl hover:bg-[#c99e4b] transition pointer-events-auto backdrop-blur-md border border-white/20"
+                >
+                  <TrendingUp className="h-4 w-4" />
+                  <span>Show Altitude Profile</span>
+                </button>
+              )}
+
+              {/* 3. QUICK TRAIL ELEVATION SWITCHER PILLS BAR */}
+              {showTrailSwitcher && (
+                <div className="absolute top-4 right-4 z-[999]">
+                  <FloatingMapPanel
+                    id="trail-switcher-hud"
+                    title="Trail Selector"
+                    icon={<TrendingUp className="h-3.5 w-3.5 text-[#B68D40]" />}
+                    allowDrag={true}
+                    allowResize={true}
+                    allowMinimize={true}
+                    allowMaximize={false}
+                    allowClose={true}
+                    onClose={() => setShowTrailSwitcher(false)}
+                    defaultWidth="w-auto"
+                  >
+                    <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                      <span className="text-[10px] text-gray-400 uppercase font-semibold px-1">
+                        Select Trail:
+                      </span>
+                      {trails.map((t: Trail) => (
+                        <button
+                          key={t.id}
+                          onClick={() => handleTrailSelect(t)}
+                          className={`px-3 py-1 rounded-xl text-[11px] font-semibold transition ${
+                            activeTrail?.id === t.id
+                              ? 'bg-[#B68D40] text-black font-bold shadow'
+                              : 'text-gray-300 hover:bg-neutral-800'
+                          }`}
+                        >
+                          {t.region}
+                        </button>
+                      ))}
+                    </div>
+                  </FloatingMapPanel>
+                </div>
+              )}
+
+              {/* RESTORE TRAIL SWITCHER BUTTON IF CLOSED */}
+              {!showTrailSwitcher && (
+                <button
+                  onClick={() => setShowTrailSwitcher(true)}
+                  className="absolute top-4 right-4 z-[999] px-3 py-1.5 rounded-xl bg-slate-900/90 border border-[#B68D40]/50 text-[#B68D40] hover:text-white hover:bg-slate-800 font-bold text-xs flex items-center gap-1.5 shadow-xl transition backdrop-blur-md"
+                >
+                  <TrendingUp className="h-3.5 w-3.5" />
+                  <span>Show Trail Selector</span>
+                </button>
+              )}
+
+            </div>
 
           </div>
         )}
 
       </div>
-
-      {/* 3. BOTTOM ALTITUDE ELEVATION PROFILE LINE GRAPH DRAWER */}
-      {activeTrail && showElevationProfile && (layoutMode === 'split' || layoutMode === 'mapOnly') && (
-        <div className="z-30 relative border-t border-neutral-800">
-          <ElevationProfileChart
-            trail={activeTrail}
-            onClose={() => setShowElevationProfile(false)}
-            onSelectPoint={(pt) => {
-              if (pt.lat && pt.lng) {
-                setFocusedCoords([pt.lat, pt.lng]);
-              }
-            }}
-            onSelectLandmark={(lm) => {
-              setFocusedCoords([lm.coordinates.lat, lm.coordinates.lng]);
-            }}
-            onHoverPoint={(pt) => {
-              if (!pt || !activeTrail) {
-                setFocusedCoords(undefined);
-                return;
-              }
-              if (pt.lat && pt.lng) {
-                setFocusedCoords([pt.lat, pt.lng]);
-                return;
-              }
-              const track = ROUTE_TRACKS[activeTrail.id];
-              if (track && track.coords.length > 0 && activeTrail.distanceKm > 0) {
-                const ratio = Math.max(0, Math.min(1, pt.distanceKm / activeTrail.distanceKm));
-                const targetIdx = Math.min(
-                  track.coords.length - 1,
-                  Math.floor(ratio * (track.coords.length - 1))
-                );
-                setFocusedCoords(track.coords[targetIdx]);
-                return;
-              }
-              const ratio = activeTrail.distanceKm > 0 ? pt.distanceKm / activeTrail.distanceKm : 0;
-              const regionCoords: Record<string, [number, number]> = {
-                'Everest': [27.9881, 86.9250],
-                'Annapurna': [28.5960, 83.8200],
-                'Langtang': [28.2100, 85.5600],
-                'Manaslu': [28.5500, 84.5600],
-                'Mustang': [29.1800, 83.9500],
-                'Rolwaling': [27.8700, 86.4500]
-              };
-              const base = regionCoords[activeTrail.region] || [28.3949, 84.1240];
-              const interpolated: [number, number] = [
-                base[0] + (ratio - 0.5) * 0.08,
-                base[1] + (ratio - 0.5) * 0.08
-              ];
-              setFocusedCoords(interpolated);
-            }}
-          />
-        </div>
-      )}
-
-      {/* RE-OPEN ALTITUDE GRAPH BUTTON IF CLOSED */}
-      {!showElevationProfile && activeTrail && (layoutMode === 'split' || layoutMode === 'mapOnly') && (
-        <button
-          onClick={() => setShowElevationProfile(true)}
-          className="fixed bottom-4 right-4 z-40 px-4 py-2 rounded-full bg-[#B68D40] text-black font-bold text-xs flex items-center gap-2 shadow-2xl hover:bg-[#c99e4b] transition"
-        >
-          <TrendingUp className="h-4 w-4" />
-          <span>Show Altitude Line Graph</span>
-        </button>
-      )}
 
       {/* 4. QUICK TRAIL DETAIL SLIDE-OVER MODAL */}
       {detailModalTrail && (
