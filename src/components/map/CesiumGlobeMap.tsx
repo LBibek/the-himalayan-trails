@@ -21,6 +21,7 @@ import {
   Navigation,
 } from 'lucide-react';
 import gsap from 'gsap';
+import { HIMALAYAN_SUMMITS } from '@/data/summitTours';
 import SummitTourConsole from '@/components/map/SummitTourConsole';
 import FloatingMapPanel from '@/components/ui/FloatingMapPanel';
 
@@ -38,19 +39,11 @@ interface CesiumGlobeMapProps {
   initialSummitSlug?: string;
 }
 
-const HIMALAYAN_SUMMITS: { name: string; elevation: number; coords: GeoPoint }[] = [
-  { name: 'Mt. Everest', elevation: 8848, coords: { lat: 27.9881, lng: 86.9250, altitude: 9500 } },
-  { name: 'Annapurna I', elevation: 8091, coords: { lat: 28.5960, lng: 83.8200, altitude: 8800 } },
-  { name: 'Manaslu', elevation: 8163, coords: { lat: 28.5500, lng: 84.5600, altitude: 9000 } },
-  { name: 'Ama Dablam', elevation: 6812, coords: { lat: 27.9000, lng: 86.8600, altitude: 7500 } },
-  { name: 'Kanchenjunga', elevation: 8586, coords: { lat: 27.7025, lng: 88.1475, altitude: 9300 } },
-];
-
 export default function CesiumGlobeMap({
   initialCenter = { lat: 27.9881, lng: 86.9250, altitude: 9000 },
   polyline,
   markers = [],
-  landmarks = [],
+  landmarks: propLandmarks,
   onSelectLandmark,
   scrubberPoint,
   activeTrail,
@@ -71,8 +64,9 @@ export default function CesiumGlobeMap({
   const [selectedRange, setSelectedRange] = useState<string>('All');
   const [perspective, setPerspective] = useState<'topo' | 'ridge' | 'summit'>('ridge');
   const [selectedLandmarkId, setSelectedLandmarkId] = useState<string | null>(null);
+  const [fetchedLandmarks, setFetchedLandmarks] = useState<Landmark[]>([]);
 
-  // 1. Fetch official Himalayan ranges from persistent DB API
+  // 1. Fetch official Himalayan ranges & landmarks from persistent DB API
   useEffect(() => {
     fetch('/api/ranges')
       .then((res) => (res.ok ? res.json() : []))
@@ -82,7 +76,20 @@ export default function CesiumGlobeMap({
         }
       })
       .catch((err) => console.warn('Failed to load ranges from API:', err));
-  }, []);
+
+    if (!propLandmarks || propLandmarks.length === 0) {
+      fetch('/api/landmarks')
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data: Landmark[]) => {
+          if (Array.isArray(data)) {
+            setFetchedLandmarks(data);
+          }
+        })
+        .catch((err) => console.warn('Failed to load landmarks in 3D Cesium:', err));
+    }
+  }, [propLandmarks]);
+
+  const allLandmarks = propLandmarks && propLandmarks.length > 0 ? propLandmarks : fetchedLandmarks;
 
   // 2. Initialize Cesium Engine
   useEffect(() => {
@@ -104,8 +111,8 @@ export default function CesiumGlobeMap({
 
         // Combine custom markers and landmark markers
         const allMarkers: MapMarker[] = [...markers];
-        if (landmarks && landmarks.length > 0) {
-          landmarks.forEach((lm) => {
+        if (allLandmarks && allLandmarks.length > 0) {
+          allLandmarks.forEach((lm) => {
             allMarkers.push({
               id: lm.id,
               position: { lat: lm.coordinates.lat, lng: lm.coordinates.lng, altitude: lm.elevation },
@@ -123,6 +130,9 @@ export default function CesiumGlobeMap({
         if (ranges.length > 0) {
           controller.setRangeBoundaries(ranges);
         }
+
+        // Render all route tracks in 3D
+        controller.setAllRouteTracks(ROUTE_TRACKS, activeTrail?.id);
 
         // Kinetic GSAP entrance for HUD
         if (hudRef.current) {
@@ -153,7 +163,7 @@ export default function CesiumGlobeMap({
     }
   }, [ranges, selectedRange]);
 
-  // Sync trail polyline helper
+  // Sync trail polyline & route tracks helper
   const syncActiveTrailPolyline = (ctrl: CesiumController, trail: Trail) => {
     let points: GeoPoint[] = [];
 
@@ -179,7 +189,7 @@ export default function CesiumGlobeMap({
         id: `trail-3d-${trail.id}`,
         points,
         color: '#B68D40',
-        weight: 5,
+        weight: 6,
       });
     }
   };
@@ -187,6 +197,7 @@ export default function CesiumGlobeMap({
   // Sync active trail updates
   useEffect(() => {
     if (!controllerRef.current?.isInitialized) return;
+    controllerRef.current.setAllRouteTracks(ROUTE_TRACKS, activeTrail?.id);
     if (polyline) {
       controllerRef.current.setTrailPolyline(polyline);
     } else if (activeTrail) {
@@ -199,8 +210,8 @@ export default function CesiumGlobeMap({
     if (controllerRef.current?.isInitialized) {
       controllerRef.current.clearMarkers();
       const allMarkers: MapMarker[] = [...markers];
-      if (landmarks && landmarks.length > 0) {
-        landmarks.forEach((lm) => {
+      if (allLandmarks && allLandmarks.length > 0) {
+        allLandmarks.forEach((lm) => {
           allMarkers.push({
             id: lm.id,
             position: { lat: lm.coordinates.lat, lng: lm.coordinates.lng, altitude: lm.elevation },
@@ -214,7 +225,7 @@ export default function CesiumGlobeMap({
         controllerRef.current.addMarkers(allMarkers);
       }
     }
-  }, [markers, landmarks]);
+  }, [markers, allLandmarks]);
 
   // Sync scrubber point
   useEffect(() => {
@@ -448,13 +459,13 @@ export default function CesiumGlobeMap({
                 )}
 
                 {/* 2. Landmarks Chips Row in 3D Mode */}
-                {landmarks && landmarks.length > 0 && (
+                {allLandmarks && allLandmarks.length > 0 && (
                   <div className="space-y-1">
                     <span className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">
                       Regional Landmarks:
                     </span>
                     <div className="flex flex-wrap items-center gap-1.5 max-h-24 overflow-y-auto">
-                      {landmarks.map((lm) => {
+                      {allLandmarks.map((lm: Landmark) => {
                         const isSelected = selectedLandmarkId === lm.id;
                         return (
                           <button

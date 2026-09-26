@@ -458,6 +458,11 @@ function AllTrailsExploreContent() {
                   selectedRegion={selectedRegion}
                   focusedCoords={focusedCoords}
                   activeTrailId={activeTrail?.id}
+                  onSelectRegion={(reg) => setSelectedRegion(reg)}
+                  onSelectTrail={(trailId) => {
+                    const match = trails.find((t) => t.id === trailId);
+                    if (match) handleTrailSelect(match);
+                  }}
                   onSelectLandmark={(lm) => {
                     setFocusedCoords([lm.coordinates.lat, lm.coordinates.lng]);
                   }}

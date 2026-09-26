@@ -6,6 +6,7 @@ export class CesiumController implements IMapController {
   private viewer: any = null;
   private Cesium: any = null;
   private polylinesEntity: any = null;
+  private routeEntities: any[] = [];
   private markersEntities: any[] = [];
   private rangeEntities: any[] = [];
   private scrubberEntity: any = null;
@@ -242,6 +243,43 @@ export class CesiumController implements IMapController {
       this.polylinesEntity = null;
       this.viewer.scene.requestRender();
     }
+  }
+
+  setAllRouteTracks(
+    tracks: Record<string, { coords: [number, number][]; color: string; name: string }>,
+    activeTrackId?: string
+  ): void {
+    if (!this.viewer || !this.Cesium) return;
+    this.clearAllRouteTracks();
+
+    Object.entries(tracks).forEach(([key, route]) => {
+      const isHighlighted = activeTrackId === key;
+      const positions = route.coords.map((c) =>
+        this.Cesium.Cartesian3.fromDegrees(c[1], c[0], 3500)
+      );
+
+      const entity = this.viewer.entities.add({
+        id: `route-3d-${key}`,
+        name: route.name,
+        polyline: {
+          positions,
+          width: isHighlighted ? 6 : 3.5,
+          material: this.Cesium.Color.fromCssColorString(isHighlighted ? '#f59e0b' : route.color),
+          clampToGround: true,
+        },
+      });
+
+      this.routeEntities.push(entity);
+    });
+
+    this.viewer.scene.requestRender();
+  }
+
+  clearAllRouteTracks(): void {
+    if (!this.viewer) return;
+    this.routeEntities.forEach((entity) => this.viewer.entities.remove(entity));
+    this.routeEntities = [];
+    this.viewer.scene.requestRender();
   }
 
   setRangeBoundaries(ranges: HimalayanRange[], activeRangeName?: string): void {

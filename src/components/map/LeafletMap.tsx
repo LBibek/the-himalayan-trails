@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, Polygon, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Compass, ExternalLink, Layers, SlidersHorizontal } from 'lucide-react';
-import { Landmark, Trail } from '@/types';
+import { Compass, ExternalLink, Layers, SlidersHorizontal, Mountain, MapPin, Eye } from 'lucide-react';
+import { Landmark, Trail, HimalayanRange } from '@/types';
 import { ROUTE_TRACKS } from '@/data/routeTracks';
+import { HIMALAYAN_SUMMITS, ApexSummit } from '@/data/summitTours';
 import FloatingMapPanel from '@/components/ui/FloatingMapPanel';
 import Link from 'next/link';
 
@@ -18,8 +19,6 @@ function MapController({ center, zoom }: { center: [number, number]; zoom: numbe
   }, [center, zoom, map]);
   return null;
 }
-
-
 
 // Create custom divIcon for Leaflet markers
 function createCustomIcon(category: string, isSelected: boolean) {
@@ -47,6 +46,25 @@ function createCustomIcon(category: string, isSelected: boolean) {
   });
 }
 
+// Create custom divIcon for Apex Summit pins
+function createSummitIcon(isSelected: boolean) {
+  const html = `
+    <div class="relative group cursor-pointer flex flex-col items-center">
+      <div class="w-9 h-9 rounded-2xl bg-amber-500 text-black border-2 border-white shadow-2xl flex items-center justify-center font-black text-sm transform transition-all ${isSelected ? 'scale-125 ring-4 ring-[#B68D40]' : 'hover:scale-115'}">
+        ⛰️
+      </div>
+    </div>
+  `;
+
+  return L.divIcon({
+    html,
+    className: 'custom-summit-marker',
+    iconSize: [36, 36],
+    iconAnchor: [18, 36],
+    popupAnchor: [0, -36],
+  });
+}
+
 export interface LeafletMapProps {
   selectedRegion?: string;
   focusedCoords?: [number, number];
@@ -54,6 +72,7 @@ export interface LeafletMapProps {
   landmarks?: Landmark[];
   onSelectLandmark?: (landmark: Landmark) => void;
   onSelectTrail?: (trailId: string) => void;
+  onSelectRegion?: (region: string) => void;
   height?: string;
   hideHeaderControls?: boolean;
 }
@@ -65,6 +84,7 @@ export default function LeafletMap({
   landmarks: propLandmarks,
   onSelectLandmark,
   onSelectTrail,
+  onSelectRegion,
   height = 'h-[75vh]',
   hideHeaderControls = false
 }: LeafletMapProps) {
@@ -72,11 +92,23 @@ export default function LeafletMap({
   const [mapCenter, setMapCenter] = useState<[number, number]>([28.1500, 85.5000]);
   const [mapZoom, setMapZoom] = useState<number>(8);
   const [fetchedLandmarks, setFetchedLandmarks] = useState<Landmark[]>([]);
+  const [ranges, setRanges] = useState<HimalayanRange[]>([]);
   const [activeLandmark, setActiveLandmark] = useState<Landmark | null>(null);
+  const [activeSummit, setActiveSummit] = useState<string | null>(null);
   const [showRoutes, setShowRoutes] = useState(true);
+  const [showRanges, setShowRanges] = useState(true);
+  const [showSummits, setShowSummits] = useState(true);
   const [showControls, setShowControls] = useState(true);
 
+  // Fetch official ranges & landmarks from persistent DB APIs
   useEffect(() => {
+    fetch('/api/ranges')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: HimalayanRange[]) => {
+        if (Array.isArray(data)) setRanges(data);
+      })
+      .catch((err) => console.warn('Failed to load ranges in 2D:', err));
+
     if (!propLandmarks) {
       fetch('/api/landmarks')
         .then((res) => (res.ok ? res.json() : []))
@@ -107,18 +139,26 @@ export default function LeafletMap({
 
   const regionFocusCoords: Record<string, { center: [number, number]; zoom: number }> = {
     'All': { center: [28.2500, 85.4000], zoom: 7.5 },
-    'Everest': { center: [27.9200, 86.7800], zoom: 10 },
-    'Annapurna': { center: [28.6000, 83.9500], zoom: 9.5 },
+    'Everest': { center: [27.9881, 86.9250], zoom: 10.5 },
+    'Annapurna': { center: [28.6000, 83.9500], zoom: 10 },
     'Langtang': { center: [28.2000, 85.4500], zoom: 11 },
-    'Manaslu': { center: [28.4500, 84.6500], zoom: 10 },
-    'Mustang': { center: [29.0000, 83.8500], zoom: 9.5 },
+    'Manaslu': { center: [28.4500, 84.6500], zoom: 10.5 },
+    'Mustang': { center: [29.0000, 83.8500], zoom: 10 },
     'Rolwaling': { center: [27.8800, 86.4200], zoom: 10.5 },
+    'Kanchenjunga': { center: [27.7025, 88.1475], zoom: 10.5 },
   };
 
   const handleRegionClick = (regionKey: string) => {
     const target = regionFocusCoords[regionKey] || regionFocusCoords['All'];
     setMapCenter(target.center);
     setMapZoom(target.zoom);
+    if (onSelectRegion) onSelectRegion(regionKey);
+  };
+
+  const handleSummitClick = (summit: ApexSummit) => {
+    setActiveSummit(summit.name);
+    setMapCenter([summit.coords.lat, summit.coords.lng]);
+    setMapZoom(12);
   };
 
   const tileUrls = {
@@ -152,6 +192,7 @@ export default function LeafletMap({
               </span>
             }
             allowDrag={true}
+            allowResize={true}
             allowMinimize={true}
             allowMaximize={true}
             allowClose={true}
@@ -159,29 +200,59 @@ export default function LeafletMap({
             defaultWidth="max-w-2xl w-full"
           >
             <div className="space-y-3">
-              {/* Region Selector Pills */}
+              {/* 1. Himalayan Ranges Navigator */}
               <div className="space-y-1">
                 <span className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">
-                  Select Himalayan Region:
+                  Select Himalayan Region / Range:
                 </span>
                 <div className="flex flex-wrap items-center gap-1.5">
-                  {Object.keys(regionFocusCoords).map((reg) => (
-                    <button
-                      key={reg}
-                      onClick={() => handleRegionClick(reg)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all border ${
-                        selectedRegion.toLowerCase() === reg.toLowerCase() || (selectedRegion === 'All' && reg === 'All')
-                          ? 'bg-[#B68D40] text-black border-[#B68D40] font-bold shadow'
-                          : 'bg-neutral-900/80 hover:bg-neutral-800 text-gray-300 border-border/40 hover:border-[#B68D40]/40'
-                      }`}
-                    >
-                      {reg}
-                    </button>
-                  ))}
+                  {Object.keys(regionFocusCoords).map((reg) => {
+                    const isSelected = selectedRegion.toLowerCase() === reg.toLowerCase() || (selectedRegion === 'All' && reg === 'All');
+                    return (
+                      <button
+                        key={reg}
+                        onClick={() => handleRegionClick(reg)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all border flex items-center gap-1 ${
+                          isSelected
+                            ? 'bg-[#B68D40] text-black border-[#B68D40] font-bold shadow'
+                            : 'bg-neutral-900/80 hover:bg-neutral-800 text-gray-300 border-border/40 hover:border-[#B68D40]/40'
+                        }`}
+                      >
+                        <Layers className="w-3 h-3 text-[#B68D40]" />
+                        <span>{reg}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Layer Types & Route Toggles */}
+              {/* 2. Apex Summits Quick Fly-To */}
+              <div className="space-y-1">
+                <span className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">
+                  Apex Summits (8,000m+ Giants):
+                </span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {HIMALAYAN_SUMMITS.map((summit) => {
+                    const isActive = activeSummit === summit.name;
+                    return (
+                      <button
+                        key={summit.name}
+                        onClick={() => handleSummitClick(summit)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all flex items-center gap-1.5 border ${
+                          isActive
+                            ? 'bg-[#B68D40] text-black border-[#B68D40] font-bold shadow scale-105'
+                            : 'bg-neutral-900/80 hover:bg-neutral-800 text-gray-300 border-border/40 hover:border-[#B68D40]/40'
+                        }`}
+                      >
+                        <span>⛰️ {summit.name}</span>
+                        <span className="text-[10px] font-mono opacity-80">{summit.elevation}m</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 3. Layer Types & Feature Toggles */}
               <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-border/30">
                 <div className="flex items-center gap-1.5">
                   <span className="text-[10px] text-gray-400 uppercase font-semibold">Layer:</span>
@@ -202,7 +273,7 @@ export default function LeafletMap({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 text-xs">
+                <div className="flex flex-wrap items-center gap-3 text-xs">
                   <label className="flex items-center gap-1.5 cursor-pointer text-gray-300 hover:text-white text-[11px]">
                     <input
                       type="checkbox"
@@ -210,7 +281,25 @@ export default function LeafletMap({
                       onChange={(e) => setShowRoutes(e.target.checked)}
                       className="accent-[#B68D40] rounded"
                     />
-                    <span>Show Route Tracks</span>
+                    <span>Route Tracks</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer text-gray-300 hover:text-white text-[11px]">
+                    <input
+                      type="checkbox"
+                      checked={showRanges}
+                      onChange={(e) => setShowRanges(e.target.checked)}
+                      className="accent-[#B68D40] rounded"
+                    />
+                    <span>Massif Bounds</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer text-gray-300 hover:text-white text-[11px]">
+                    <input
+                      type="checkbox"
+                      checked={showSummits}
+                      onChange={(e) => setShowSummits(e.target.checked)}
+                      className="accent-[#B68D40] rounded"
+                    />
+                    <span>Summits</span>
                   </label>
                 </div>
               </div>
@@ -246,6 +335,37 @@ export default function LeafletMap({
           maxZoom={18}
         />
 
+        {/* Himalayan Range Massif Boundary Polygons */}
+        {showRanges && ranges.map((range) => {
+          const isSelected = selectedRegion.toLowerCase().includes(range.name.toLowerCase()) || range.name.toLowerCase().includes(selectedRegion.toLowerCase());
+          const polygonPositions: [number, number][] = range.bounds.map((b) => [b[1], b[0]]);
+          return (
+            <Polygon
+              key={range.id || range.name}
+              positions={polygonPositions}
+              pathOptions={{
+                color: isSelected ? '#B68D40' : 'rgba(182, 141, 64, 0.6)',
+                weight: isSelected ? 3 : 1.5,
+                fillColor: '#B68D40',
+                fillOpacity: isSelected ? 0.15 : 0.05,
+                dashArray: isSelected ? undefined : '4, 4'
+              }}
+              eventHandlers={{
+                click: () => {
+                  handleRegionClick(range.name);
+                }
+              }}
+            >
+              <Popup>
+                <div className="p-1 space-y-1 text-xs">
+                  <h4 className="font-bold text-sm text-neutral-900">{range.name} Range</h4>
+                  <p className="text-neutral-600 text-[11px]">{range.description}</p>
+                </div>
+              </Popup>
+            </Polygon>
+          );
+        })}
+
         {/* Route Polylines with Active Highlight */}
         {showRoutes && Object.entries(ROUTE_TRACKS).map(([key, route]) => {
           const isHighlighted = activeTrailId === key;
@@ -265,6 +385,36 @@ export default function LeafletMap({
                 dashArray: isHighlighted ? undefined : '8, 8'
               }}
             />
+          );
+        })}
+
+        {/* Apex Summit Markers */}
+        {showSummits && HIMALAYAN_SUMMITS.map((summit) => {
+          const isSelected = activeSummit === summit.name;
+          return (
+            <Marker
+              key={summit.name}
+              position={[summit.coords.lat, summit.coords.lng]}
+              icon={createSummitIcon(isSelected)}
+              eventHandlers={{
+                click: () => handleSummitClick(summit)
+              }}
+            >
+              <Popup className="custom-leaflet-popup">
+                <div className="p-1 space-y-1 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-black text-sm text-neutral-900">{summit.name}</span>
+                    <span className="text-[11px] font-bold px-1.5 py-0.5 rounded bg-amber-500 text-black">
+                      {summit.elevation}m
+                    </span>
+                  </div>
+                  <p className="text-neutral-500 font-mono text-[10px]">
+                    GPS: {summit.coords.lat.toFixed(4)}°N, {summit.coords.lng.toFixed(4)}°E
+                  </p>
+                  <p className="text-neutral-600 text-[11px]">{summit.region} Massif</p>
+                </div>
+              </Popup>
+            </Marker>
           );
         })}
 
@@ -336,7 +486,7 @@ export default function LeafletMap({
       </MapContainer>
 
       {/* MAP BOTTOM CONTROL TOOLBAR */}
-      <div className="absolute bottom-4 left-4 z-[1000] flex items-center gap-2 pointer-events-auto">
+      <div className="absolute bottom-4 left-4 z-[1000] flex flex-wrap items-center gap-2 pointer-events-auto">
         <button
           onClick={() => setShowRoutes(!showRoutes)}
           className={`px-3 py-1.5 rounded-xl text-xs font-bold border backdrop-blur-md shadow-xl transition-all ${
@@ -345,7 +495,27 @@ export default function LeafletMap({
               : 'bg-black/80 text-gray-300 border-neutral-800'
           }`}
         >
-          {showRoutes ? '✓ GPS Route Tracks On' : 'GPS Route Tracks Off'}
+          {showRoutes ? '✓ GPS Tracks' : 'GPS Tracks'}
+        </button>
+        <button
+          onClick={() => setShowRanges(!showRanges)}
+          className={`px-3 py-1.5 rounded-xl text-xs font-bold border backdrop-blur-md shadow-xl transition-all ${
+            showRanges 
+              ? 'bg-[#B68D40] text-black border-[#E2C085]' 
+              : 'bg-black/80 text-gray-300 border-neutral-800'
+          }`}
+        >
+          {showRanges ? '✓ Massif Bounds' : 'Massif Bounds'}
+        </button>
+        <button
+          onClick={() => setShowSummits(!showSummits)}
+          className={`px-3 py-1.5 rounded-xl text-xs font-bold border backdrop-blur-md shadow-xl transition-all ${
+            showSummits 
+              ? 'bg-[#B68D40] text-black border-[#E2C085]' 
+              : 'bg-black/80 text-gray-300 border-neutral-800'
+          }`}
+        >
+          {showSummits ? '✓ Apex Summits' : 'Apex Summits'}
         </button>
       </div>
 

@@ -18,6 +18,7 @@ export interface FloatingMapPanelProps {
   children: React.ReactNode;
   badge?: React.ReactNode;
   initialPosition?: { x: number; y: number };
+  initialSize?: { width?: number; height?: number };
   initialMinimized?: boolean;
   initialMaximized?: boolean;
   onClose?: () => void;
@@ -25,9 +26,12 @@ export interface FloatingMapPanelProps {
   bodyClassName?: string;
   headerClassName?: string;
   allowDrag?: boolean;
+  allowResize?: boolean;
   allowMinimize?: boolean;
   allowMaximize?: boolean;
   allowClose?: boolean;
+  minWidth?: number;
+  minHeight?: number;
   defaultWidth?: string; // e.g. "max-w-3xl w-full"
 }
 
@@ -38,6 +42,7 @@ export default function FloatingMapPanel({
   children,
   badge,
   initialPosition = { x: 0, y: 0 },
+  initialSize,
   initialMinimized = false,
   initialMaximized = false,
   onClose,
@@ -45,18 +50,25 @@ export default function FloatingMapPanel({
   bodyClassName = '',
   headerClassName = '',
   allowDrag = true,
+  allowResize = true,
   allowMinimize = true,
   allowMaximize = true,
   allowClose = true,
+  minWidth = 280,
+  minHeight = 120,
   defaultWidth = 'max-w-3xl w-full',
 }: FloatingMapPanelProps) {
   const [position, setPosition] = useState(initialPosition);
+  const [size, setSize] = useState<{ width?: number; height?: number }>(initialSize || {});
   const [isDragging, setIsDragging] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
   const [isMinimized, setIsMinimized] = useState(initialMinimized);
   const [isMaximized, setIsMaximized] = useState(initialMaximized);
 
   const dragStartPos = useRef({ x: 0, y: 0 });
   const panelStartPos = useRef({ x: 0, y: 0 });
+  const resizeStartPos = useRef({ x: 0, y: 0 });
+  const resizeStartSize = useRef({ width: 0, height: 0 });
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Handle Drag Start
@@ -105,6 +117,48 @@ export default function FloatingMapPanel({
     }
   };
 
+  // Handle Resize Pointer Down
+  const handleResizePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!allowResize || isMaximized || isMinimized) return;
+
+    const currentRect = panelRef.current?.getBoundingClientRect();
+    if (!currentRect) return;
+
+    setIsResizing(true);
+    resizeStartPos.current = { x: e.clientX, y: e.clientY };
+    resizeStartSize.current = {
+      width: currentRect.width,
+      height: currentRect.height,
+    };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  // Handle Resize Pointer Move
+  const handleResizePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isResizing) return;
+    const deltaX = e.clientX - resizeStartPos.current.x;
+    const deltaY = e.clientY - resizeStartPos.current.y;
+
+    const newWidth = Math.max(minWidth, Math.min(1800, resizeStartSize.current.width + deltaX));
+    const newHeight = Math.max(minHeight, Math.min(1200, resizeStartSize.current.height + deltaY));
+
+    setSize({ width: newWidth, height: newHeight });
+  };
+
+  // Handle Resize Pointer Up
+  const handleResizePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isResizing) {
+      setIsResizing(false);
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch {
+        // Safe fallback
+      }
+    }
+  };
+
   const toggleMinimize = () => {
     if (isMaximized) setIsMaximized(false);
     setIsMinimized((prev) => !prev);
@@ -123,16 +177,23 @@ export default function FloatingMapPanel({
       data-minimized={isMinimized}
       data-maximized={isMaximized}
       data-dragging={isDragging}
+      data-resizing={isResizing}
       style={
         isMaximized
           ? { transform: 'none' }
-          : { transform: `translate3d(${position.x}px, ${position.y}px, 0)` }
+          : {
+              transform: `translate3d(${position.x}px, ${position.y}px, 0)`,
+              width: size.width ? `${size.width}px` : undefined,
+              height: size.height && !isMinimized ? `${size.height}px` : undefined,
+            }
       }
-      className={`transition-shadow pointer-events-auto rounded-3xl border border-[#B68D40]/30 shadow-2xl backdrop-blur-2xl bg-slate-950/90 text-slate-100 select-none overflow-hidden ${
+      className={`transition-shadow pointer-events-auto rounded-3xl border border-[#B68D40]/30 shadow-2xl backdrop-blur-2xl bg-slate-950/90 text-slate-100 select-none overflow-hidden relative ${
         isMaximized
           ? 'fixed inset-4 z-[9999] flex flex-col m-auto w-[calc(100%-2rem)] h-[calc(100%-2rem)]'
           : `${defaultWidth} ${className}`
-      } ${isDragging ? 'shadow-amber-500/20 ring-2 ring-[#B68D40]/50 cursor-grabbing' : ''}`}
+      } ${isDragging ? 'shadow-amber-500/20 ring-2 ring-[#B68D40]/50 cursor-grabbing' : ''} ${
+        isResizing ? 'ring-2 ring-amber-400 shadow-2xl' : ''
+      }`}
     >
       {/* WINDOW HEADER / DRAG BAR */}
       <div
@@ -209,10 +270,31 @@ export default function FloatingMapPanel({
         <div
           data-slot="body"
           className={`p-4 sm:p-5 select-text overflow-y-auto ${
-            isMaximized ? 'flex-1 h-full max-h-none' : 'max-h-[70vh]'
+            isMaximized || size.height ? 'flex-1 h-full max-h-none' : 'max-h-[70vh]'
           } ${bodyClassName}`}
         >
           {children}
+        </div>
+      )}
+
+      {/* CORNER RESIZE HANDLE */}
+      {allowResize && !isMinimized && !isMaximized && (
+        <div
+          data-slot="resize-handle"
+          onPointerDown={handleResizePointerDown}
+          onPointerMove={handleResizePointerMove}
+          onPointerUp={handleResizePointerUp}
+          className="absolute bottom-1 right-1 w-5 h-5 cursor-se-resize flex items-end justify-end text-slate-500 hover:text-amber-400 p-1 z-30 transition select-none touch-none group"
+          title="Drag to resize window"
+        >
+          <svg viewBox="0 0 6 6" className="w-2.5 h-2.5 fill-current opacity-60 group-hover:opacity-100 group-hover:fill-amber-400">
+            <circle cx="5" cy="5" r="0.75" />
+            <circle cx="3" cy="5" r="0.75" />
+            <circle cx="5" cy="3" r="0.75" />
+            <circle cx="1" cy="5" r="0.75" />
+            <circle cx="3" cy="3" r="0.75" />
+            <circle cx="5" cy="1" r="0.75" />
+          </svg>
         </div>
       )}
     </div>

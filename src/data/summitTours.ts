@@ -465,3 +465,24 @@ export const SUMMIT_TOURS: SummitTour[] = [
     ],
   },
 ];
+
+export interface ApexSummit {
+  name: string;
+  elevation: number;
+  region: string;
+  coords: GeoPoint;
+}
+
+export const HIMALAYAN_SUMMITS: ApexSummit[] = [
+  { name: 'Mt. Everest', elevation: 8848, region: 'Everest', coords: { lat: 27.9881, lng: 86.9250, altitude: 9500 } },
+  { name: 'Kangchenjunga', elevation: 8586, region: 'Kanchenjunga', coords: { lat: 27.7025, lng: 88.1475, altitude: 9300 } },
+  { name: 'Lhotse', elevation: 8516, region: 'Everest', coords: { lat: 27.9617, lng: 86.9331, altitude: 9200 } },
+  { name: 'Makalu', elevation: 8485, region: 'Makalu', coords: { lat: 27.8897, lng: 87.0889, altitude: 9150 } },
+  { name: 'Cho Oyu', elevation: 8188, region: 'Everest', coords: { lat: 28.0942, lng: 86.6608, altitude: 8900 } },
+  { name: 'Dhaulagiri I', elevation: 8167, region: 'Annapurna', coords: { lat: 28.6985, lng: 83.4873, altitude: 8900 } },
+  { name: 'Manaslu', elevation: 8163, region: 'Manaslu', coords: { lat: 28.5497, lng: 84.5597, altitude: 9000 } },
+  { name: 'Annapurna I', elevation: 8091, region: 'Annapurna', coords: { lat: 28.5956, lng: 83.8203, altitude: 8800 } },
+  { name: 'Ama Dablam', elevation: 6812, region: 'Everest', coords: { lat: 27.9000, lng: 86.8600, altitude: 7500 } },
+  { name: 'Machapuchare', elevation: 6993, region: 'Annapurna', coords: { lat: 28.4950, lng: 83.9483, altitude: 7600 } },
+];
+

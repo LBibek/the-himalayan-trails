@@ -30,6 +30,7 @@ export interface HimalayanRange {
   center: [number, number]; // [lat, lng]
   bounds: [number, number, number][]; // [lng, lat, elevation]
   pois: { name: string; coord: [number, number] }[];
+  description?: string;
 }
 
 export interface Landmark {
