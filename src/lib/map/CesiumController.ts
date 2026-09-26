@@ -38,26 +38,57 @@ export class CesiumController implements IMapController {
 
     // Configure Cesium Ion Access Token if provided in env
     const ionToken = process.env.NEXT_PUBLIC_CESIUM_ION_TOKEN;
-    if (ionToken && this.Cesium.Ion) {
+    const hasIonToken = Boolean(
+      ionToken &&
+      ionToken.trim().length > 20 &&
+      !ionToken.includes('placeholder') &&
+      !ionToken.includes('your-token')
+    );
+
+    let terrainProvider: any;
+    let baseLayer: any;
+
+    if (hasIonToken && this.Cesium.Ion) {
       this.Cesium.Ion.defaultAccessToken = ionToken;
+      try {
+        terrainProvider = await this.Cesium.createWorldTerrainAsync({
+          requestWaterMask: false,
+          requestVertexNormals: true,
+        });
+      } catch (terrainError) {
+        console.warn('Cesium World Terrain fallback to EllipsoidTerrainProvider:', terrainError);
+        terrainProvider = new this.Cesium.EllipsoidTerrainProvider();
+      }
+      try {
+        baseLayer = await this.Cesium.ImageryLayer.fromProviderAsync(
+          this.Cesium.createWorldImageryAsync()
+        );
+      } catch (imgError) {
+        baseLayer = new this.Cesium.ImageryLayer(
+          new this.Cesium.UrlTemplateImageryProvider({
+            url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            maximumLevel: 19,
+            credit: 'Esri World Imagery',
+          })
+        );
+      }
+    } else {
+      // 100% Token-Free Open High-Resolution Satellite Imagery & Topography
+      terrainProvider = new this.Cesium.EllipsoidTerrainProvider();
+      baseLayer = new this.Cesium.ImageryLayer(
+        new this.Cesium.UrlTemplateImageryProvider({
+          url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+          maximumLevel: 19,
+          credit: 'Esri World Imagery',
+        })
+      );
     }
 
     const defaultCenter = options?.center || { lat: 27.9881, lng: 86.9250, altitude: 9000 };
 
-    // 3. Terrain Provider with safe fallback to EllipsoidTerrainProvider
-    let terrainProvider: any;
-    try {
-      terrainProvider = await this.Cesium.createWorldTerrainAsync({
-        requestWaterMask: false,
-        requestVertexNormals: true,
-      });
-    } catch (terrainError) {
-      console.warn('Cesium World Terrain offline or unauthenticated, falling back to standard EllipsoidTerrainProvider:', terrainError);
-      terrainProvider = new this.Cesium.EllipsoidTerrainProvider();
-    }
-
-    // 4. Initialize Cesium Viewer with high-performance 3D settings
+    // 4. Initialize Cesium Viewer with explicit token-free baseLayer & terrain
     this.viewer = new this.Cesium.Viewer(container, {
+      baseLayer,
       terrainProvider,
       animation: false,
       baseLayerPicker: false,
@@ -329,7 +360,108 @@ export class CesiumController implements IMapController {
     this.viewer.scene.requestRender();
   }
 
+  flyToTourWaypoint(
+    waypoint: {
+      coords: GeoPoint;
+      cameraHeading?: number;
+      cameraPitch?: number;
+      cameraRangeMeters?: number;
+      durationSeconds?: number;
+    },
+    options?: { duration?: number; onComplete?: () => void }
+  ): void {
+    if (!this.viewer || !this.Cesium) return;
+    this.stopTour();
+
+    const targetCartesian = this.Cesium.Cartesian3.fromDegrees(
+      waypoint.coords.lng,
+      waypoint.coords.lat,
+      waypoint.coords.altitude || 6000
+    );
+
+    const heading = this.Cesium.Math.toRadians(waypoint.cameraHeading ?? 0);
+    const pitch = this.Cesium.Math.toRadians(waypoint.cameraPitch ?? -30);
+    const range = waypoint.cameraRangeMeters ?? 3000;
+
+    this.viewer.camera.flyToBoundingSphere(
+      new this.Cesium.BoundingSphere(targetCartesian, 100),
+      {
+        offset: new this.Cesium.HeadingPitchRange(heading, pitch, range),
+        duration: options?.duration ?? waypoint.durationSeconds ?? 4,
+        complete: () => {
+          options?.onComplete?.();
+          this.viewer.scene.requestRender();
+        },
+      }
+    );
+  }
+
+  setTimeOfDayLighting(preset: 'sunrise' | 'midday' | 'sunset' | 'night'): void {
+    if (!this.viewer || !this.Cesium) return;
+
+    const date = new Date(2026, 4, 15); // May 15, 2026 (peak spring climbing season)
+    switch (preset) {
+      case 'sunrise':
+        date.setUTCHours(0, 15, 0); // ~6:00 AM Nepal Time (UTC+5:45)
+        break;
+      case 'midday':
+        date.setUTCHours(6, 15, 0); // ~12:00 PM Nepal Time
+        break;
+      case 'sunset':
+        date.setUTCHours(12, 45, 0); // ~6:30 PM Nepal Time
+        break;
+      case 'night':
+        date.setUTCHours(16, 30, 0); // ~10:15 PM Nepal Time
+        break;
+    }
+
+    if (this.Cesium.JulianDate) {
+      this.viewer.clock.currentTime = this.Cesium.JulianDate.fromDate(date);
+    }
+    this.viewer.scene.globe.enableLighting = true;
+    this.viewer.scene.requestRender();
+  }
+
+  startOrbitalRotation(center: GeoPoint, radius: number = 3500, speedRps: number = 0.05): void {
+    if (!this.viewer || !this.Cesium) return;
+    this.stopTour();
+
+    const target = this.Cesium.Cartesian3.fromDegrees(
+      center.lng,
+      center.lat,
+      center.altitude || 8000
+    );
+
+    let heading = this.viewer.camera.heading;
+
+    const orbitListener = () => {
+      heading += speedRps * 0.015;
+      this.viewer.camera.lookAt(
+        target,
+        new this.Cesium.HeadingPitchRange(
+          heading,
+          this.Cesium.Math.toRadians(-35),
+          radius
+        )
+      );
+    };
+
+    this.viewer.clock.onTick.addEventListener(orbitListener);
+    (this as any)._orbitListener = orbitListener;
+  }
+
+  stopTour(): void {
+    if (!this.viewer) return;
+    if ((this as any)._orbitListener) {
+      this.viewer.clock.onTick.removeEventListener((this as any)._orbitListener);
+      (this as any)._orbitListener = null;
+      this.viewer.camera.lookAtTransform(this.Cesium.Matrix4.IDENTITY);
+    }
+    this.viewer.camera.cancelFlight();
+  }
+
   destroy(): void {
+    this.stopTour();
     if (this.viewer && !this.viewer.isDestroyed()) {
       this.viewer.destroy();
       this.viewer = null;

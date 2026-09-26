@@ -23,9 +23,10 @@ import {
   Loader2,
   Globe
 } from 'lucide-react';
-import { Trail } from '@/types';
+import { Trail, Landmark } from '@/types';
 import { ROUTE_TRACKS } from '@/data/routeTracks';
 import ElevationProfileChart from '@/components/map/ElevationProfileChart';
+import FloatingMapPanel from '@/components/ui/FloatingMapPanel';
 
 // Dynamically import Leaflet Map without SSR
 const LeafletMap = dynamic(() => import('@/components/map/LeafletMap'), {
@@ -51,6 +52,12 @@ function AllTrailsExploreContent() {
   const searchParams = useSearchParams();
   const urlTrail = searchParams.get('trail');
   const urlEngine = searchParams.get('engine');
+  const urlMode = searchParams.get('mode');
+  const urlTour = searchParams.get('tour');
+  const urlLat = searchParams.get('lat');
+  const urlLng = searchParams.get('lng');
+  const urlLandmark = searchParams.get('landmark');
+  const urlRange = searchParams.get('range');
 
   const [trails, setTrails] = useState<Trail[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,7 +66,7 @@ function AllTrailsExploreContent() {
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('All');
   const [maxAltitude, setMaxAltitude] = useState<number>(6000);
   const [layoutMode, setLayoutMode] = useState<'split' | 'mapOnly' | 'cardsOnly'>('split');
-  const [mapEngine, setMapEngine] = useState<'2d' | '3d'>('2d');
+  const [mapEngine, setMapEngine] = useState<'2d' | '3d-freeroam' | '3d-summit-tours'>('2d');
   
   // Active Selected / Hovered Trail for Elevation Profile & Map Focus
   const [selectedTrail, setSelectedTrail] = useState<Trail | null>(null);
@@ -67,12 +74,54 @@ function AllTrailsExploreContent() {
   const [focusedCoords, setFocusedCoords] = useState<[number, number] | undefined>(undefined);
   const [savedTrails, setSavedTrails] = useState<string[]>([]);
   const [showElevationProfile, setShowElevationProfile] = useState<boolean>(true);
+  const [showTrailSwitcher, setShowTrailSwitcher] = useState<boolean>(true);
 
   React.useEffect(() => {
-    if (urlEngine === '3d') {
-      setMapEngine('3d');
+    if (urlMode === 'summit-tours' || urlTour) {
+      setMapEngine('3d-summit-tours');
+    } else if (urlEngine === '3d') {
+      setMapEngine('3d-freeroam');
+    } else if (urlEngine === '2d') {
+      setMapEngine('2d');
     }
-  }, [urlEngine]);
+  }, [urlEngine, urlMode, urlTour]);
+
+  React.useEffect(() => {
+    if (urlRange) {
+      setSelectedRegion(urlRange);
+    }
+  }, [urlRange]);
+
+  React.useEffect(() => {
+    if (urlLat && urlLng) {
+      const parsedLat = parseFloat(urlLat);
+      const parsedLng = parseFloat(urlLng);
+      if (!isNaN(parsedLat) && !isNaN(parsedLng)) {
+        setFocusedCoords([parsedLat, parsedLng]);
+      }
+    }
+  }, [urlLat, urlLng]);
+
+  React.useEffect(() => {
+    if (urlLandmark) {
+      fetch('/api/landmarks')
+        .then((res) => (res.ok ? res.json() : []))
+        .then((landmarks: Landmark[]) => {
+          const match = landmarks.find(
+            (lm) =>
+              lm.id.toLowerCase() === urlLandmark.toLowerCase() ||
+              lm.name.toLowerCase().includes(urlLandmark.toLowerCase())
+          );
+          if (match) {
+            setFocusedCoords([match.coordinates.lat, match.coordinates.lng]);
+            if (match.region) {
+              setSelectedRegion(match.region);
+            }
+          }
+        })
+        .catch(console.error);
+    }
+  }, [urlLandmark]);
 
   React.useEffect(() => {
     fetch('/api/trails')
@@ -91,6 +140,7 @@ function AllTrailsExploreContent() {
       })
       .catch(() => setLoading(false));
   }, [urlTrail]);
+
 
   // Filter Trails
   const filteredTrails = trails.filter((trail) => {
@@ -238,7 +288,7 @@ function AllTrailsExploreContent() {
           </button>
         </div>
 
-        {/* Map Engine Toggle: 2D Leaflet vs 3D Cesium */}
+        {/* Map Engine Toggle: 2D Leaflet vs 3D Free Roam vs 3D Summit Tours */}
         <div className="flex items-center p-1 rounded-full bg-neutral-900 border border-[#B68D40]/30 text-xs font-semibold shadow-lg">
           <button
             onClick={() => setMapEngine('2d')}
@@ -251,13 +301,23 @@ function AllTrailsExploreContent() {
           </button>
 
           <button
-            onClick={() => setMapEngine('3d')}
+            onClick={() => setMapEngine('3d-freeroam')}
             className={`px-3 py-1.5 rounded-full transition flex items-center gap-1.5 ${
-              mapEngine === '3d' ? 'bg-[#B68D40] text-black font-bold shadow' : 'text-gray-400 hover:text-white'
+              mapEngine === '3d-freeroam' ? 'bg-[#B68D40] text-black font-bold shadow' : 'text-gray-400 hover:text-white'
             }`}
           >
             <Globe className="h-3.5 w-3.5" />
-            <span>3D Cesium</span>
+            <span>3D Free Roam</span>
+          </button>
+
+          <button
+            onClick={() => setMapEngine('3d-summit-tours')}
+            className={`px-3 py-1.5 rounded-full transition flex items-center gap-1.5 ${
+              mapEngine === '3d-summit-tours' ? 'bg-gradient-to-r from-amber-500 to-[#B68D40] text-black font-bold shadow-lg shadow-[#B68D40]/30' : 'text-amber-400/80 hover:text-amber-300'
+            }`}
+          >
+            <Mountain className="h-3.5 w-3.5" />
+            <span>3D Summit Tours</span>
           </button>
         </div>
 
@@ -398,12 +458,25 @@ function AllTrailsExploreContent() {
                   selectedRegion={selectedRegion}
                   focusedCoords={focusedCoords}
                   activeTrailId={activeTrail?.id}
+                  onSelectLandmark={(lm) => {
+                    setFocusedCoords([lm.coordinates.lat, lm.coordinates.lng]);
+                  }}
                   height="h-full"
                 />
               ) : (
                 <CesiumGlobeMap
                   height="h-full"
                   activeTrail={activeTrail}
+                  mode={mapEngine === '3d-summit-tours' ? 'summit-tours' : 'freeroam'}
+                  initialSummitSlug={urlTour || (selectedRegion.toLowerCase().includes('everest') ? 'everest' : selectedRegion.toLowerCase().includes('annapurna') ? 'annapurna' : selectedRegion.toLowerCase().includes('manaslu') ? 'manaslu' : 'everest')}
+                  onSelectLandmark={(lm) => {
+                    setFocusedCoords([lm.coordinates.lat, lm.coordinates.lng]);
+                  }}
+                  scrubberPoint={
+                    focusedCoords
+                      ? { lat: focusedCoords[0], lng: focusedCoords[1], altitude: 6000 }
+                      : null
+                  }
                   initialCenter={
                     focusedCoords
                       ? { lat: focusedCoords[0], lng: focusedCoords[1], altitude: 9000 }
@@ -415,22 +488,51 @@ function AllTrailsExploreContent() {
             </div>
 
             {/* QUICK TRAIL ELEVATION SWITCHER PILLS BAR */}
-            <div className="absolute bottom-16 left-4 z-[999] flex items-center gap-1.5 p-1.5 bg-black/85 border border-neutral-800 backdrop-blur-md rounded-2xl text-xs">
-              <span className="text-[10px] text-gray-400 uppercase font-semibold px-2">Select Elevation Profile:</span>
-              {trails.map((t: Trail) => (
-                <button
-                  key={t.id}
-                  onClick={() => handleTrailSelect(t)}
-                  className={`px-3 py-1 rounded-xl text-[11px] font-semibold transition ${
-                    activeTrail?.id === t.id
-                      ? 'bg-[#B68D40] text-black font-bold shadow'
-                      : 'text-gray-300 hover:bg-neutral-800'
-                  }`}
+            {showTrailSwitcher && (
+              <div className="absolute bottom-16 left-4 z-[999]">
+                <FloatingMapPanel
+                  id="trail-switcher-hud"
+                  title="Trail Profile Switcher"
+                  icon={<TrendingUp className="h-3.5 w-3.5 text-[#B68D40]" />}
+                  allowDrag={true}
+                  allowMinimize={true}
+                  allowMaximize={false}
+                  allowClose={true}
+                  onClose={() => setShowTrailSwitcher(false)}
+                  defaultWidth="w-auto"
                 >
-                  {t.region}
-                </button>
-              ))}
-            </div>
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                    <span className="text-[10px] text-gray-400 uppercase font-semibold px-1">
+                      Select Trail:
+                    </span>
+                    {trails.map((t: Trail) => (
+                      <button
+                        key={t.id}
+                        onClick={() => handleTrailSelect(t)}
+                        className={`px-3 py-1 rounded-xl text-[11px] font-semibold transition ${
+                          activeTrail?.id === t.id
+                            ? 'bg-[#B68D40] text-black font-bold shadow'
+                            : 'text-gray-300 hover:bg-neutral-800'
+                        }`}
+                      >
+                        {t.region}
+                      </button>
+                    ))}
+                  </div>
+                </FloatingMapPanel>
+              </div>
+            )}
+
+            {/* RESTORE TRAIL SWITCHER BUTTON IF CLOSED */}
+            {!showTrailSwitcher && (
+              <button
+                onClick={() => setShowTrailSwitcher(true)}
+                className="absolute bottom-16 left-4 z-[999] px-3 py-1.5 rounded-xl bg-slate-900/90 border border-[#B68D40]/50 text-[#B68D40] hover:text-white hover:bg-slate-800 font-bold text-xs flex items-center gap-1.5 shadow-xl transition backdrop-blur-md"
+              >
+                <TrendingUp className="h-3.5 w-3.5" />
+                <span>Show Trail Switcher</span>
+              </button>
+            )}
 
           </div>
         )}
@@ -443,9 +545,31 @@ function AllTrailsExploreContent() {
           <ElevationProfileChart
             trail={activeTrail}
             onClose={() => setShowElevationProfile(false)}
+            onSelectPoint={(pt) => {
+              if (pt.lat && pt.lng) {
+                setFocusedCoords([pt.lat, pt.lng]);
+              }
+            }}
+            onSelectLandmark={(lm) => {
+              setFocusedCoords([lm.coordinates.lat, lm.coordinates.lng]);
+            }}
             onHoverPoint={(pt) => {
               if (!pt || !activeTrail) {
                 setFocusedCoords(undefined);
+                return;
+              }
+              if (pt.lat && pt.lng) {
+                setFocusedCoords([pt.lat, pt.lng]);
+                return;
+              }
+              const track = ROUTE_TRACKS[activeTrail.id];
+              if (track && track.coords.length > 0 && activeTrail.distanceKm > 0) {
+                const ratio = Math.max(0, Math.min(1, pt.distanceKm / activeTrail.distanceKm));
+                const targetIdx = Math.min(
+                  track.coords.length - 1,
+                  Math.floor(ratio * (track.coords.length - 1))
+                );
+                setFocusedCoords(track.coords[targetIdx]);
                 return;
               }
               const ratio = activeTrail.distanceKm > 0 ? pt.distanceKm / activeTrail.distanceKm : 0;

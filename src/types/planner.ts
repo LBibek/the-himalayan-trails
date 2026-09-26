@@ -1,6 +1,7 @@
 export type ActivityType = 'trekking' | 'acclimatization' | 'pass' | 'flight' | 'camp' | 'monastery';
 
 export interface PlannerWaypoint {
+  id?: string;
   day: number;
   title: string;
   distanceKm: number;

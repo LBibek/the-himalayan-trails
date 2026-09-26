@@ -9,7 +9,9 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
+  ReferenceDot,
 } from 'recharts';
+import { TrendingUp, Mountain, Sparkles, MapPin } from 'lucide-react';
 
 export interface ElevationPoint {
   distanceKm: number;
@@ -42,12 +44,15 @@ function CustomElevationTooltip({ active, payload }: CustomTooltipProps) {
     return (
       <div
         data-slot="tooltip"
-        className="backdrop-blur-xl bg-surface/90 border border-accent/40 shadow-2xl rounded-xl p-3 text-surface-foreground text-xs"
+        className="backdrop-blur-2xl bg-neutral-950/95 border border-[#B68D40]/50 shadow-2xl rounded-2xl p-3 text-white text-xs space-y-1.5"
       >
-        <p className="font-semibold text-accent">{item.landmarkName || `Distance: ${item.distanceKm} km`}</p>
-        <p className="text-sm font-bold text-foreground mt-0.5">{item.altitudeMeters.toLocaleString()} m</p>
-        <p className="text-[10px] text-muted-foreground mt-0.5">
-          {item.lat.toFixed(4)}°N, {item.lng.toFixed(4)}°E
+        <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-1">
+          <p className="font-bold text-[#B68D40]">{item.landmarkName || `Distance: ${item.distanceKm} km`}</p>
+          <span className="text-[10px] font-mono text-gray-300">KM {item.distanceKm}</span>
+        </div>
+        <p className="text-sm font-mono font-extrabold text-amber-300">{item.altitudeMeters.toLocaleString()} m</p>
+        <p className="text-[10px] text-gray-400 font-mono">
+          GPS: {item.lat.toFixed(4)}°N, {item.lng.toFixed(4)}°E
         </p>
       </div>
     );
@@ -94,15 +99,19 @@ export default function ElevationProfileChart({
   return (
     <div
       data-slot="base"
-      className={`relative p-4 rounded-2xl backdrop-blur-xl bg-surface/70 border border-border/40 shadow-xl overflow-hidden ${className}`}
+      className={`relative p-4 rounded-3xl backdrop-blur-2xl bg-surface/75 border border-border/40 shadow-2xl overflow-hidden text-surface-foreground ${className}`}
     >
-      <div data-slot="header" className="flex items-center justify-between mb-3">
-        <h4 className="text-xs font-semibold uppercase tracking-wider text-accent">
-          Elevation Profile
-        </h4>
+      <div data-slot="header" className="flex items-center justify-between mb-3 border-b border-border/30 pb-2">
+        <div className="flex items-center gap-2">
+          <TrendingUp className="w-4 h-4 text-[#B68D40]" />
+          <h4 className="text-xs font-bold uppercase tracking-wider text-accent">
+            Elevation Profile
+          </h4>
+        </div>
         <div className="flex items-center gap-3 text-[11px] text-muted-foreground font-mono">
-          <span>Min: {minAlt.toLocaleString()}m</span>
-          <span>Max: {maxAlt.toLocaleString()}m</span>
+          <span>Min: <strong className="text-emerald-400">{minAlt.toLocaleString()}m</strong></span>
+          <span>•</span>
+          <span>Max: <strong className="text-amber-400">{maxAlt.toLocaleString()}m</strong></span>
         </div>
       </div>
 
@@ -110,7 +119,7 @@ export default function ElevationProfileChart({
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart
             data={data}
-            margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+            margin={{ top: 10, right: 15, left: -15, bottom: 0 }}
             onMouseMove={(state: any) => {
               if (state && state.activeTooltipIndex !== undefined && state.activeTooltipIndex !== null) {
                 const point = data[state.activeTooltipIndex];
@@ -131,14 +140,14 @@ export default function ElevationProfileChart({
                 <stop offset="95%" stopColor="#B68D40" stopOpacity={0.0} />
               </linearGradient>
             </defs>
-            <CartesianGrid stroke="rgba(255, 255, 255, 0.06)" strokeDasharray="3 3" vertical={false} />
+            <CartesianGrid stroke="rgba(255, 255, 255, 0.07)" strokeDasharray="3 3" vertical={false} />
             <XAxis
               dataKey="distanceKm"
               unit=" km"
               stroke="#71717a"
               fontSize={10}
               tickLine={false}
-              axisLine={{ stroke: 'rgba(255, 255, 255, 0.1)' }}
+              axisLine={{ stroke: 'rgba(255, 255, 255, 0.12)' }}
             />
             <YAxis
               dataKey="altitudeMeters"
@@ -157,6 +166,7 @@ export default function ElevationProfileChart({
               strokeWidth={2.5}
               fillOpacity={1}
               fill="url(#himalayanElevationGold)"
+              activeDot={{ r: 6, fill: '#f59e0b', stroke: '#ffffff', strokeWidth: 2 }}
             />
           </AreaChart>
         </ResponsiveContainer>

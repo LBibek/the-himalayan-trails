@@ -4,9 +4,10 @@ import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Compass, ExternalLink } from 'lucide-react';
+import { Compass, ExternalLink, Layers, SlidersHorizontal } from 'lucide-react';
 import { Landmark, Trail } from '@/types';
 import { ROUTE_TRACKS } from '@/data/routeTracks';
+import FloatingMapPanel from '@/components/ui/FloatingMapPanel';
 import Link from 'next/link';
 
 // Custom Map Controller to programmatically fly to location
@@ -73,6 +74,7 @@ export default function LeafletMap({
   const [fetchedLandmarks, setFetchedLandmarks] = useState<Landmark[]>([]);
   const [activeLandmark, setActiveLandmark] = useState<Landmark | null>(null);
   const [showRoutes, setShowRoutes] = useState(true);
+  const [showControls, setShowControls] = useState(true);
 
   useEffect(() => {
     if (!propLandmarks) {
@@ -137,65 +139,95 @@ export default function LeafletMap({
   return (
     <div className={`relative w-full ${height} rounded-2xl overflow-hidden border border-neutral-800 bg-neutral-950 shadow-2xl flex flex-col`}>
       
-      {/* MAP CONTROLS HEADER HUD */}
-      {!hideHeaderControls && (
-        <div className="absolute top-4 left-4 right-4 z-[1000] flex flex-wrap items-center justify-between gap-3 pointer-events-none">
-          
-          <div className="pointer-events-auto flex items-center gap-2.5 px-4 py-2 rounded-xl bg-black/85 border border-[#B68D40]/40 backdrop-blur-md shadow-2xl">
-            <div className="w-8 h-8 rounded-lg bg-[#B68D40] text-black font-extrabold flex items-center justify-center">
-              <Compass className="h-4 w-4" />
-            </div>
-            <div>
-              <div className="text-xs font-bold text-white flex items-center gap-2">
-                <span>AllTrails-Style Himalayan Explorer</span>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-green-500/20 text-green-400 font-mono">Live Sync</span>
+      {/* MAP CONTROLS FLOATING PANEL (DRAG, MINIMIZE, MAXIMIZE, CLOSE) */}
+      {!hideHeaderControls && showControls && (
+        <div className="absolute top-4 left-4 z-[1000]">
+          <FloatingMapPanel
+            id="2d-leaflet-hud"
+            title="2D Geospatial Navigator"
+            icon={<Compass className="h-4 w-4 text-[#B68D40]" />}
+            badge={
+              <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono">
+                {mapCenter[0].toFixed(2)}°N, {mapCenter[1].toFixed(2)}°E
+              </span>
+            }
+            allowDrag={true}
+            allowMinimize={true}
+            allowMaximize={true}
+            allowClose={true}
+            onClose={() => setShowControls(false)}
+            defaultWidth="max-w-2xl w-full"
+          >
+            <div className="space-y-3">
+              {/* Region Selector Pills */}
+              <div className="space-y-1">
+                <span className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">
+                  Select Himalayan Region:
+                </span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {Object.keys(regionFocusCoords).map((reg) => (
+                    <button
+                      key={reg}
+                      onClick={() => handleRegionClick(reg)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all border ${
+                        selectedRegion.toLowerCase() === reg.toLowerCase() || (selectedRegion === 'All' && reg === 'All')
+                          ? 'bg-[#B68D40] text-black border-[#B68D40] font-bold shadow'
+                          : 'bg-neutral-900/80 hover:bg-neutral-800 text-gray-300 border-border/40 hover:border-[#B68D40]/40'
+                      }`}
+                    >
+                      {reg}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="text-[10px] text-gray-400 font-mono">
-                {mapCenter[0].toFixed(4)}° N, {mapCenter[1].toFixed(4)}° E
+
+              {/* Layer Types & Route Toggles */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-border/30">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-gray-400 uppercase font-semibold">Layer:</span>
+                  <div className="flex items-center gap-1 p-0.5 rounded-lg bg-neutral-900/90 border border-neutral-800">
+                    {(['topo', 'satellite', 'street'] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        onClick={() => setTileLayerType(mode)}
+                        className={`px-2.5 py-0.5 rounded text-[10px] font-semibold uppercase transition-all ${
+                          tileLayerType === mode
+                            ? 'bg-[#B68D40] text-black font-bold shadow'
+                            : 'text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        {mode}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 text-xs">
+                  <label className="flex items-center gap-1.5 cursor-pointer text-gray-300 hover:text-white text-[11px]">
+                    <input
+                      type="checkbox"
+                      checked={showRoutes}
+                      onChange={(e) => setShowRoutes(e.target.checked)}
+                      className="accent-[#B68D40] rounded"
+                    />
+                    <span>Show Route Tracks</span>
+                  </label>
+                </div>
               </div>
             </div>
-          </div>
-
-          <div className="pointer-events-auto flex items-center gap-1 p-1 rounded-xl bg-black/85 border border-neutral-800 backdrop-blur-md shadow-xl text-xs">
-            {Object.keys(regionFocusCoords).map((reg) => (
-              <button
-                key={reg}
-                onClick={() => handleRegionClick(reg)}
-                className="px-3 py-1.5 rounded-lg font-semibold transition-all hover:bg-neutral-800 text-gray-300 hover:text-white"
-              >
-                {reg}
-              </button>
-            ))}
-          </div>
-
-          <div className="pointer-events-auto flex items-center gap-1 p-1 rounded-xl bg-black/85 border border-neutral-800 backdrop-blur-md shadow-xl text-xs">
-            <button
-              onClick={() => setTileLayerType('topo')}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
-                tileLayerType === 'topo' ? 'bg-[#B68D40] text-black' : 'text-gray-300 hover:bg-neutral-800'
-              }`}
-            >
-              Topo
-            </button>
-            <button
-              onClick={() => setTileLayerType('satellite')}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
-                tileLayerType === 'satellite' ? 'bg-[#B68D40] text-black' : 'text-gray-300 hover:bg-neutral-800'
-              }`}
-            >
-              Satellite
-            </button>
-            <button
-              onClick={() => setTileLayerType('street')}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
-                tileLayerType === 'street' ? 'bg-[#B68D40] text-black' : 'text-gray-300 hover:bg-neutral-800'
-              }`}
-            >
-              Street
-            </button>
-          </div>
-
+          </FloatingMapPanel>
         </div>
+      )}
+
+      {/* RESTORE 2D CONTROLS BUTTON IF CLOSED */}
+      {!hideHeaderControls && !showControls && (
+        <button
+          onClick={() => setShowControls(true)}
+          className="absolute top-4 left-4 z-[1000] px-3.5 py-1.5 rounded-xl bg-black/90 border border-[#B68D40]/60 text-[#B68D40] hover:text-white hover:bg-neutral-900 font-bold text-xs flex items-center gap-2 shadow-2xl transition backdrop-blur-md"
+        >
+          <Compass className="h-4 w-4" />
+          <span>Show 2D Map Controls</span>
+        </button>
       )}
 
       {/* LEAFLET MAP CANVAS */}
@@ -235,6 +267,26 @@ export default function LeafletMap({
             />
           );
         })}
+
+        {/* Scrubber Hover Pin Marker */}
+        {focusedCoords && (
+          <Marker
+            position={focusedCoords}
+            icon={L.divIcon({
+              html: `
+                <div class="relative flex items-center justify-center">
+                  <div class="w-7 h-7 rounded-full bg-[#B68D40] border-2 border-white shadow-2xl flex items-center justify-center text-xs font-bold text-black animate-bounce">
+                    📍
+                  </div>
+                  <div class="absolute -inset-1 rounded-full bg-[#B68D40]/60 animate-ping pointer-events-none"></div>
+                </div>
+              `,
+              className: 'custom-scrubber-marker',
+              iconSize: [28, 28],
+              iconAnchor: [14, 28]
+            })}
+          />
+        )}
 
         {/* Landmark Markers */}
         {filteredLandmarks.map((landmark) => {

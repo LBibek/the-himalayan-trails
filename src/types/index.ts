@@ -139,6 +139,23 @@ export interface ContactMessage {
   email: string;
   subject: string;
   message: string;
+  status?: 'UNREAD' | 'READ' | 'RESPONDED';
+  createdAt: string;
+}
+
+export interface Inquiry {
+  id: string;
+  trailId: string;
+  trailName: string;
+  fullName: string;
+  email: string;
+  phone?: string;
+  country?: string;
+  groupSize: number;
+  preferredStartDate?: string;
+  fitnessLevel?: string;
+  notes?: string;
+  status: 'PENDING' | 'CONFIRMED' | 'CONTACTED' | 'CANCELLED';
   createdAt: string;
 }
 
@@ -156,3 +173,4 @@ export interface SharedTrail {
   status: 'PENDING' | 'APPROVED';
   createdAt: string;
 }
+

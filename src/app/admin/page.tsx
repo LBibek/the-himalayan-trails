@@ -18,9 +18,15 @@ import {
   Layers,
   Sparkles,
   Download,
-  Loader2
+  Loader2,
+  Mail,
+  HelpCircle,
+  Clock,
+  UserCheck,
+  Calendar,
+  Users
 } from 'lucide-react';
-import { Trail, Landmark } from '@/types';
+import { Trail, Landmark, Inquiry, ContactMessage } from '@/types';
 import { EditableLandmark } from '@/components/admin/ExpeditionMapEditor';
 
 // Dynamically import map editor with SSR disabled
@@ -34,15 +40,22 @@ const ExpeditionMapEditor = dynamic(() => import('@/components/admin/ExpeditionM
 });
 
 export default function AdminPage() {
-  const [activeTab, setActiveTab] = useState<'create' | 'list' | 'bookings'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'list' | 'bookings' | 'inquiries' | 'contact'>('create');
   const [expeditions, setExpeditions] = useState<Trail[]>([]);
   const [loadingExpeditions, setLoadingExpeditions] = useState(true);
   const [bookings, setBookings] = useState<any[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(true);
+  const [inquiries, setInquiries] = useState<Inquiry[]>([]);
+  const [loadingInquiries, setLoadingInquiries] = useState(true);
+  const [contactMessages, setContactMessages] = useState<ContactMessage[]>([]);
+  const [loadingContactMessages, setLoadingContactMessages] = useState(true);
 
   const [landmarksCount, setLandmarksCount] = useState(0);
 
-  // Fetch expeditions, landmarks, and bookings from SQLite DB
+  // Edit Mode state
+  const [editingTrailSlug, setEditingTrailSlug] = useState<string | null>(null);
+
+  // Fetch expeditions, landmarks, bookings, inquiries, and contact messages from real SQLite DB APIs
   useEffect(() => {
     fetch('/api/trails')
       .then((res) => (res.ok ? res.json() : []))
@@ -66,6 +79,22 @@ export default function AdminPage() {
         setLoadingBookings(false);
       })
       .catch(() => setLoadingBookings(false));
+
+    fetch('/api/inquiries')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: Inquiry[]) => {
+        setInquiries(data);
+        setLoadingInquiries(false);
+      })
+      .catch(() => setLoadingInquiries(false));
+
+    fetch('/api/contact')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: ContactMessage[]) => {
+        setContactMessages(data);
+        setLoadingContactMessages(false);
+      })
+      .catch(() => setLoadingContactMessages(false));
   }, []);
 
   // Form State
@@ -87,12 +116,28 @@ export default function AdminPage() {
   // Notification State
   const [successMessage, setSuccessMessage] = useState('');
 
-  // Persist expeditions state
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('himalayan_admin_expeditions', JSON.stringify(expeditions));
-    }
-  }, [expeditions]);
+  const handleEditExpedition = (trail: Trail) => {
+    setEditingTrailSlug(trail.slug);
+    setTitle(trail.name);
+    setRegion(trail.region);
+    setDifficulty(trail.difficulty);
+    setDurationDays(trail.durationDays);
+    setMaxElevation(trail.maxElevation);
+    setStartPoint(trail.startPoint);
+    setEndPoint(trail.endPoint);
+    setImageUrl(trail.image);
+    setHighlightsInput(trail.highlights.join(', '));
+    setDescription(trail.description);
+    setActiveTab('create');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingTrailSlug(null);
+    setTitle('');
+    setDescription('');
+    setWaypoints([]);
+    setLandmarks([]);
+  };
 
   const handleSaveExpedition = (e: React.FormEvent) => {
     e.preventDefault();
@@ -128,52 +173,88 @@ export default function AdminPage() {
       calculatedDistance = Number(m.toFixed(1));
     }
 
-    fetch('/api/trails', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: title.trim(),
-        region,
-        difficulty,
-        distanceKm: calculatedDistance,
-        durationDays: Number(durationDays),
-        maxElevation: Number(maxElevation),
-        elevationGain: Number(maxElevation) - 1000,
-        image: imageUrl || '/steps/trails.jpg',
-        description: description.trim() || 'Custom high-altitude expedition trail created via Admin Panel.',
-        highlights: highlightsArray.length ? highlightsArray : ['High Pass Traverse', 'Panoramic Snow Views'],
-        bestMonths: ['Mar-May', 'Sep-Nov'],
-        startPoint,
-        endPoint
-      })
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error('Failed to create trail in database');
-        return res.json();
-      })
-      .then((savedTrail: Trail) => {
-        setExpeditions((prev) => [savedTrail, ...prev]);
-        setSuccessMessage(`Expedition "${title}" persisted to database with ${waypoints.length} route waypoints!`);
-        
-        // Reset Form
-        setTitle('');
-        setDescription('');
-        setWaypoints([]);
-        setLandmarks([]);
+    const payload = {
+      name: title.trim(),
+      region,
+      difficulty,
+      distanceKm: calculatedDistance,
+      durationDays: Number(durationDays),
+      maxElevation: Number(maxElevation),
+      elevationGain: Math.max(Number(maxElevation) - 1000, 500),
+      image: imageUrl || '/steps/trails.jpg',
+      description: description.trim() || 'Custom high-altitude expedition trail created via Admin Panel.',
+      highlights: highlightsArray.length ? highlightsArray : ['High Pass Traverse', 'Panoramic Snow Views'],
+      bestMonths: ['Mar-May', 'Sep-Nov'],
+      startPoint,
+      endPoint
+    };
 
-        setTimeout(() => {
-          setSuccessMessage('');
-          setActiveTab('list');
-        }, 2000);
+    if (editingTrailSlug) {
+      // Real API PUT request to update trail
+      fetch(`/api/trails/${editingTrailSlug}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
       })
-      .catch((err) => {
-        alert(err.message || 'Error saving expedition to database');
-      });
+        .then((res) => {
+          if (!res.ok) throw new Error('Failed to update trail in database');
+          return res.json();
+        })
+        .then((updatedTrail: Trail) => {
+          setExpeditions((prev) =>
+            prev.map((t) => (t.slug === editingTrailSlug ? updatedTrail : t))
+          );
+          setSuccessMessage(`Expedition "${title}" successfully updated!`);
+          handleCancelEdit();
+          setTimeout(() => {
+            setSuccessMessage('');
+            setActiveTab('list');
+          }, 2000);
+        })
+        .catch((err) => {
+          alert(err.message || 'Error updating expedition in database');
+        });
+    } else {
+      // Real API POST request to persist trail
+      fetch('/api/trails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error('Failed to create trail in database');
+          return res.json();
+        })
+        .then((savedTrail: Trail) => {
+          setExpeditions((prev) => [savedTrail, ...prev]);
+          setSuccessMessage(`Expedition "${title}" persisted to database with ${waypoints.length} route waypoints!`);
+          
+          handleCancelEdit();
+          setTimeout(() => {
+            setSuccessMessage('');
+            setActiveTab('list');
+          }, 2000);
+        })
+        .catch((err) => {
+          alert(err.message || 'Error saving expedition to database');
+        });
+    }
   };
 
-  const handleDeleteExpedition = (id: string) => {
-    if (confirm('Are you sure you want to delete this expedition?')) {
-      setExpeditions((prev) => prev.filter((item) => item.id !== id));
+  const handleDeleteExpedition = async (slugOrId: string) => {
+    if (!confirm('Are you sure you want to delete this expedition? All related records will be removed from database.')) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/trails/${slugOrId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete trail');
+      
+      setExpeditions((prev) => prev.filter((item) => item.id !== slugOrId && item.slug !== slugOrId));
+      setSuccessMessage('Expedition successfully deleted from database');
+      setTimeout(() => setSuccessMessage(''), 4000);
+    } catch (err: any) {
+      alert(err.message || 'Error deleting trail from database');
     }
   };
 
@@ -220,6 +301,72 @@ export default function AdminPage() {
     }
   };
 
+  const handleUpdateInquiryStatus = async (id: string, newStatus: string) => {
+    try {
+      const res = await fetch('/api/inquiries', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status: newStatus })
+      });
+      if (res.ok) {
+        setInquiries((prev) =>
+          prev.map((inq) => (inq.id === id ? { ...inq, status: newStatus as any } : inq))
+        );
+        setSuccessMessage(`Inquiry ${id} status set to ${newStatus}`);
+        setTimeout(() => setSuccessMessage(''), 4000);
+      }
+    } catch (err) {
+      console.error('Failed to update inquiry status:', err);
+    }
+  };
+
+  const handleDeleteInquiry = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this inquiry?')) return;
+    try {
+      const res = await fetch(`/api/inquiries?id=${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setInquiries((prev) => prev.filter((inq) => inq.id !== id));
+        setSuccessMessage(`Inquiry ${id} deleted`);
+        setTimeout(() => setSuccessMessage(''), 4000);
+      }
+    } catch (err) {
+      console.error('Failed to delete inquiry:', err);
+    }
+  };
+
+  const handleUpdateContactStatus = async (id: string, newStatus: string) => {
+    try {
+      const res = await fetch('/api/contact', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status: newStatus })
+      });
+      if (res.ok) {
+        setContactMessages((prev) =>
+          prev.map((msg) => (msg.id === id ? { ...msg, status: newStatus as any } : msg))
+        );
+        setSuccessMessage(`Contact message ${id} status updated to ${newStatus}`);
+        setTimeout(() => setSuccessMessage(''), 4000);
+      }
+    } catch (err) {
+      console.error('Failed to update contact message status:', err);
+    }
+  };
+
+  const handleDeleteContact = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this contact message?')) return;
+    try {
+      const res = await fetch(`/api/contact?id=${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setContactMessages((prev) => prev.filter((msg) => msg.id !== id));
+        setSuccessMessage(`Contact message ${id} deleted`);
+        setTimeout(() => setSuccessMessage(''), 4000);
+      }
+    } catch (err) {
+      console.error('Failed to delete contact message:', err);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-black text-white p-4 sm:p-6 lg:p-10 space-y-8">
       
@@ -234,7 +381,7 @@ export default function AdminPage() {
             Expedition & Trail Studio
           </h1>
           <p className="text-xs sm:text-sm text-gray-400 mt-1">
-            Manually draw high-altitude trail polyline tracks on Leaflet map, configure custom landmarks, and manage bookings.
+            Persistently manage Himalayan expeditions, route waypoints, customer inquiries, and contact submissions.
           </p>
         </div>
 
@@ -249,7 +396,7 @@ export default function AdminPage() {
             }`}
           >
             <Plus className="h-4 w-4" />
-            <span>Create Expedition</span>
+            <span>{editingTrailSlug ? 'Edit Expedition' : 'Create Expedition'}</span>
           </button>
           
           <button
@@ -273,7 +420,31 @@ export default function AdminPage() {
             }`}
           >
             <ShieldCheck className="h-4 w-4" />
-            <span>Customer Bookings ({bookings.length})</span>
+            <span>Bookings ({bookings.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('inquiries')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
+              activeTab === 'inquiries'
+                ? 'bg-[#B68D40] text-black shadow-lg'
+                : 'text-gray-300 hover:text-white hover:bg-neutral-800'
+            }`}
+          >
+            <Users className="h-4 w-4" />
+            <span>Inquiries ({inquiries.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('contact')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
+              activeTab === 'contact'
+                ? 'bg-[#B68D40] text-black shadow-lg'
+                : 'text-gray-300 hover:text-white hover:bg-neutral-800'
+            }`}
+          >
+            <Mail className="h-4 w-4" />
+            <span>Contact Inbox ({contactMessages.length})</span>
           </button>
         </div>
       </div>
@@ -286,22 +457,20 @@ export default function AdminPage() {
         </div>
 
         <div className="p-5 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-1">
-          <div className="text-xs text-gray-400 font-semibold uppercase tracking-wider">Landmarks Registered</div>
-          <div className="text-2xl font-extrabold text-amber-400">{landmarksCount + landmarks.length}</div>
+          <div className="text-xs text-gray-400 font-semibold uppercase tracking-wider">Customer Inquiries</div>
+          <div className="text-2xl font-extrabold text-amber-400">{inquiries.length}</div>
         </div>
 
         <div className="p-5 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-1">
-          <div className="text-xs text-gray-400 font-semibold uppercase tracking-wider">Total Distance Mapped</div>
-          <div className="text-2xl font-extrabold text-green-400">
-            {expeditions.reduce((acc, cur) => acc + cur.distanceKm, 0)} km
-          </div>
+          <div className="text-xs text-gray-400 font-semibold uppercase tracking-wider">Contact Messages</div>
+          <div className="text-2xl font-extrabold text-cyan-400">{contactMessages.length}</div>
         </div>
 
         <div className="p-5 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-1">
-          <div className="text-xs text-gray-400 font-semibold uppercase tracking-wider">Map Engine Status</div>
+          <div className="text-xs text-gray-400 font-semibold uppercase tracking-wider">Database Persistence</div>
           <div className="text-sm font-bold text-emerald-400 flex items-center gap-1.5 pt-1">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
-            <span>Leaflet Active</span>
+            <span>SQLite Active</span>
           </div>
         </div>
       </div>
@@ -314,15 +483,28 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* TAB 1: CREATE EXPEDITION & INTERACTIVE MAP STUDIO */}
+      {/* TAB 1: CREATE / EDIT EXPEDITION & INTERACTIVE MAP STUDIO */}
       {activeTab === 'create' && (
         <form onSubmit={handleSaveExpedition} className="space-y-8">
           
           {/* Section 1: Basic Information */}
           <div className="p-6 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-6">
-            <div className="flex items-center gap-2 border-b border-neutral-800 pb-3">
-              <Mountain className="h-5 w-5 text-[#B68D40]" />
-              <h2 className="text-lg font-bold text-white">1. Expedition Metadata & Details</h2>
+            <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Mountain className="h-5 w-5 text-[#B68D40]" />
+                <h2 className="text-lg font-bold text-white">
+                  {editingTrailSlug ? `Editing Expedition: ${title}` : '1. Expedition Metadata & Details'}
+                </h2>
+              </div>
+              {editingTrailSlug && (
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  className="text-xs text-neutral-400 hover:text-white px-3 py-1 bg-neutral-800 rounded-lg"
+                >
+                  Cancel Edit Mode
+                </button>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -473,7 +655,10 @@ export default function AdminPage() {
           <div className="flex justify-end gap-4 pt-4 border-t border-neutral-800">
             <button
               type="button"
-              onClick={() => setActiveTab('list')}
+              onClick={() => {
+                handleCancelEdit();
+                setActiveTab('list');
+              }}
               className="px-6 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-gray-200 text-xs font-semibold"
             >
               Cancel
@@ -484,7 +669,7 @@ export default function AdminPage() {
               className="px-8 py-3.5 rounded-xl bg-[#B68D40] hover:bg-[#c99e4b] text-black font-extrabold text-sm transition shadow-2xl shadow-[#B68D40]/30 flex items-center gap-2"
             >
               <Save className="h-5 w-5" />
-              <span>Publish Expedition to Platform</span>
+              <span>{editingTrailSlug ? 'Update Expedition' : 'Publish Expedition to Platform'}</span>
             </button>
           </div>
 
@@ -501,7 +686,10 @@ export default function AdminPage() {
             </h2>
 
             <button
-              onClick={() => setActiveTab('create')}
+              onClick={() => {
+                handleCancelEdit();
+                setActiveTab('create');
+              }}
               className="px-4 py-2 rounded-xl bg-[#B68D40] text-black font-bold text-xs flex items-center gap-1.5"
             >
               <Plus className="h-4 w-4" />
@@ -509,58 +697,75 @@ export default function AdminPage() {
             </button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-gray-300">
-              <thead className="bg-black text-[#B68D40] uppercase tracking-wider border-b border-neutral-800">
-                <tr>
-                  <th className="p-3">Expedition Name</th>
-                  <th className="p-3">Region</th>
-                  <th className="p-3">Max Altitude</th>
-                  <th className="p-3">Distance / Duration</th>
-                  <th className="p-3">Difficulty</th>
-                  <th className="p-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-800">
-                {expeditions.map((exp) => (
-                  <tr key={exp.id} className="hover:bg-neutral-800/50 transition">
-                    <td className="p-3 font-bold text-white flex items-center gap-3">
-                      <img src={exp.image} alt={exp.name} className="w-10 h-10 object-cover rounded-lg" />
-                      <span>{exp.name}</span>
-                    </td>
-                    <td className="p-3 text-gray-300 font-semibold">{exp.region}</td>
-                    <td className="p-3 text-amber-400 font-extrabold">{exp.maxElevation}m</td>
-                    <td className="p-3 text-gray-300">{exp.distanceKm} km • {exp.durationDays} Days</td>
-                    <td className="p-3">
-                      <span className="px-2 py-0.5 rounded bg-neutral-800 text-gray-300 border border-neutral-700">
-                        {exp.difficulty}
-                      </span>
-                    </td>
-                    <td className="p-3 text-right space-x-2">
-                      <button
-                        onClick={() => handleExportJSON(exp)}
-                        className="p-1.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
-                        title="Export JSON / GPX data"
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteExpedition(exp.id)}
-                        className="p-1.5 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30"
-                        title="Delete Expedition"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </td>
+          {loadingExpeditions ? (
+            <div className="py-12 text-center text-gray-400 flex items-center justify-center gap-2">
+              <Loader2 className="w-5 h-5 animate-spin text-[#B68D40]" />
+              <span>Loading expeditions...</span>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-gray-300">
+                <thead className="bg-black text-[#B68D40] uppercase tracking-wider border-b border-neutral-800">
+                  <tr>
+                    <th className="p-3">Expedition Name</th>
+                    <th className="p-3">Region</th>
+                    <th className="p-3">Max Altitude</th>
+                    <th className="p-3">Distance / Duration</th>
+                    <th className="p-3">Difficulty</th>
+                    <th className="p-3 text-right">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-neutral-800">
+                  {expeditions.map((exp) => (
+                    <tr key={exp.id} className="hover:bg-neutral-800/50 transition">
+                      <td className="p-3 font-bold text-white flex items-center gap-3">
+                        <img src={exp.image} alt={exp.name} className="w-10 h-10 object-cover rounded-lg" />
+                        <div>
+                          <span>{exp.name}</span>
+                          <span className="block text-[10px] text-gray-500 font-mono font-normal">slug: {exp.slug}</span>
+                        </div>
+                      </td>
+                      <td className="p-3 text-gray-300 font-semibold">{exp.region}</td>
+                      <td className="p-3 text-amber-400 font-extrabold">{exp.maxElevation}m</td>
+                      <td className="p-3 text-gray-300">{exp.distanceKm} km • {exp.durationDays} Days</td>
+                      <td className="p-3">
+                        <span className="px-2 py-0.5 rounded bg-neutral-800 text-gray-300 border border-neutral-700">
+                          {exp.difficulty}
+                        </span>
+                      </td>
+                      <td className="p-3 text-right space-x-2">
+                        <button
+                          onClick={() => handleEditExpedition(exp)}
+                          className="p-1.5 rounded bg-amber-500/20 text-amber-300 hover:bg-amber-500/30"
+                          title="Edit Expedition"
+                        >
+                          <Edit className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleExportJSON(exp)}
+                          className="p-1.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
+                          title="Export JSON / GPX data"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteExpedition(exp.slug || exp.id)}
+                          className="p-1.5 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30"
+                          title="Delete Expedition"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
-      {/* TAB 3: CUSTOMER BOOKINGS & EXPEDITION DISPATCH */}
+      {/* TAB 3: CUSTOMER BOOKINGS */}
       {activeTab === 'bookings' && (
         <div className="p-6 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-6">
           <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 border-b border-neutral-800 pb-4">
@@ -624,6 +829,171 @@ export default function AdminPage() {
                           onClick={() => handleDeleteBooking(booking.id)}
                           className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20"
                           title="Delete Booking"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 4: CUSTOMER INQUIRIES */}
+      {activeTab === 'inquiries' && (
+        <div className="p-6 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 border-b border-neutral-800 pb-4">
+            <div>
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Users className="h-5 w-5 text-[#B68D40]" />
+                Customer Trek Inquiries ({inquiries.length})
+              </h2>
+              <p className="text-xs text-gray-400 mt-1">
+                Manage expedition customization inquiries, group sizes, and lead follow-ups.
+              </p>
+            </div>
+          </div>
+
+          {loadingInquiries ? (
+            <div className="py-12 text-center text-gray-400 flex items-center justify-center gap-2">
+              <Loader2 className="w-5 h-5 animate-spin text-[#B68D40]" />
+              <span>Loading inquiries...</span>
+            </div>
+          ) : inquiries.length === 0 ? (
+            <div className="py-12 text-center text-gray-500">No trek inquiries recorded yet.</div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-neutral-800">
+              <table className="w-full text-left text-xs text-gray-300">
+                <thead className="bg-neutral-950 uppercase tracking-wider text-gray-400 border-b border-neutral-800">
+                  <tr>
+                    <th className="p-3">Customer</th>
+                    <th className="p-3">Trail Target</th>
+                    <th className="p-3">Group / Date</th>
+                    <th className="p-3">Fitness</th>
+                    <th className="p-3">Notes</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-800">
+                  {inquiries.map((inq) => (
+                    <tr key={inq.id} className="hover:bg-neutral-800/50 transition">
+                      <td className="p-3">
+                        <div className="font-bold text-white">{inq.fullName}</div>
+                        <div className="text-[11px] text-gray-400">{inq.email} {inq.phone ? `• ${inq.phone}` : ''}</div>
+                        {inq.country && <div className="text-[10px] text-neutral-500">Country: {inq.country}</div>}
+                      </td>
+                      <td className="p-3 font-semibold text-[#B68D40]">{inq.trailName}</td>
+                      <td className="p-3">
+                        <div>{inq.groupSize} Trekkers</div>
+                        <div className="text-[11px] text-gray-400">{inq.preferredStartDate || 'Flexible date'}</div>
+                      </td>
+                      <td className="p-3">
+                        <span className="px-2 py-0.5 rounded bg-neutral-800 text-amber-300 border border-neutral-700">
+                          {inq.fitnessLevel || 'Standard'}
+                        </span>
+                      </td>
+                      <td className="p-3 max-w-xs text-gray-400 line-clamp-2">
+                        {inq.notes || '—'}
+                      </td>
+                      <td className="p-3">
+                        <select
+                          value={inq.status}
+                          onChange={(e) => handleUpdateInquiryStatus(inq.id, e.target.value)}
+                          className="bg-neutral-950 border border-neutral-700 rounded-lg px-2 py-1 text-xs font-semibold text-white focus:outline-none focus:border-[#B68D40]"
+                        >
+                          <option value="PENDING">PENDING</option>
+                          <option value="CONTACTED">CONTACTED</option>
+                          <option value="CONFIRMED">CONFIRMED</option>
+                          <option value="CANCELLED">CANCELLED</option>
+                        </select>
+                      </td>
+                      <td className="p-3 text-right">
+                        <button
+                          onClick={() => handleDeleteInquiry(inq.id)}
+                          className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20"
+                          title="Delete Inquiry"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 5: CONTACT INBOX */}
+      {activeTab === 'contact' && (
+        <div className="p-6 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 border-b border-neutral-800 pb-4">
+            <div>
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Mail className="h-5 w-5 text-[#B68D40]" />
+                Contact Inbox & Messages ({contactMessages.length})
+              </h2>
+              <p className="text-xs text-gray-400 mt-1">
+                General visitor queries, permit clarifications, and partnership messages.
+              </p>
+            </div>
+          </div>
+
+          {loadingContactMessages ? (
+            <div className="py-12 text-center text-gray-400 flex items-center justify-center gap-2">
+              <Loader2 className="w-5 h-5 animate-spin text-[#B68D40]" />
+              <span>Loading messages...</span>
+            </div>
+          ) : contactMessages.length === 0 ? (
+            <div className="py-12 text-center text-gray-500">No contact messages received.</div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-neutral-800">
+              <table className="w-full text-left text-xs text-gray-300">
+                <thead className="bg-neutral-950 uppercase tracking-wider text-gray-400 border-b border-neutral-800">
+                  <tr>
+                    <th className="p-3">Sender</th>
+                    <th className="p-3">Subject</th>
+                    <th className="p-3">Message</th>
+                    <th className="p-3">Received At</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-800">
+                  {contactMessages.map((msg) => (
+                    <tr key={msg.id} className="hover:bg-neutral-800/50 transition">
+                      <td className="p-3">
+                        <div className="font-bold text-white">{msg.name}</div>
+                        <div className="text-[11px] text-gray-400">{msg.email}</div>
+                      </td>
+                      <td className="p-3 font-semibold text-[#B68D40]">{msg.subject}</td>
+                      <td className="p-3 max-w-sm text-gray-300 leading-relaxed">
+                        {msg.message}
+                      </td>
+                      <td className="p-3 text-gray-400 font-mono text-[11px]">
+                        {new Date(msg.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="p-3">
+                        <select
+                          value={msg.status || 'UNREAD'}
+                          onChange={(e) => handleUpdateContactStatus(msg.id, e.target.value)}
+                          className="bg-neutral-950 border border-neutral-700 rounded-lg px-2 py-1 text-xs font-semibold text-white focus:outline-none focus:border-[#B68D40]"
+                        >
+                          <option value="UNREAD">UNREAD</option>
+                          <option value="READ">READ</option>
+                          <option value="RESPONDED">RESPONDED</option>
+                        </select>
+                      </td>
+                      <td className="p-3 text-right">
+                        <button
+                          onClick={() => handleDeleteContact(msg.id)}
+                          className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20"
+                          title="Delete Message"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>

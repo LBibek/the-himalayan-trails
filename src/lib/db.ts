@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import fs from 'node:fs';
-import { Trail, Landmark, Itinerary, Story, WeatherReport, Booking, ContactMessage, SharedTrail, User, HimalayanRange } from '@/types';
+import { Trail, Landmark, Itinerary, ItineraryDay, Story, WeatherReport, Booking, ContactMessage, Inquiry, SharedTrail, User, HimalayanRange } from '@/types';
 import { hashPassword } from './auth';
 
 // Ensure data directory exists with Vercel serverless support
@@ -184,9 +184,17 @@ function initializeSchema(db: DatabaseSync) {
       email TEXT NOT NULL,
       subject TEXT NOT NULL,
       message TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'UNREAD',
       created_at TEXT NOT NULL
     );
   `);
+
+  // Migration for status column if missing in existing contact_messages table
+  try {
+    db.exec("ALTER TABLE contact_messages ADD COLUMN status TEXT DEFAULT 'UNREAD';");
+  } catch {
+    // Column already exists
+  }
 
   // Inquiries table
   db.exec(`
@@ -978,6 +986,71 @@ export function createTrail(trail: Omit<Trail, 'rating' | 'reviewsCount'>): Trai
   };
 }
 
+export function updateTrail(idOrSlug: string, data: Partial<Trail>): Trail | null {
+  const db = getDatabase();
+  const existing = getTrailBySlug(idOrSlug);
+  if (!existing) return null;
+
+  const updated: Trail = {
+    ...existing,
+    ...data,
+    id: existing.id,
+    slug: data.slug || existing.slug
+  };
+
+  db.prepare(`
+    UPDATE trails SET
+      slug = ?,
+      name = ?,
+      region = ?,
+      difficulty = ?,
+      distance_km = ?,
+      duration_days = ?,
+      max_elevation = ?,
+      elevation_gain = ?,
+      image = ?,
+      description = ?,
+      highlights = ?,
+      best_months = ?,
+      start_point = ?,
+      end_point = ?,
+      elevation_profile = ?,
+      route_coordinates = ?
+    WHERE id = ?
+  `).run(
+    updated.slug,
+    updated.name,
+    updated.region,
+    updated.difficulty,
+    updated.distanceKm,
+    updated.durationDays,
+    updated.maxElevation,
+    updated.elevationGain,
+    updated.image,
+    updated.description,
+    JSON.stringify(updated.highlights || []),
+    JSON.stringify(updated.bestMonths || []),
+    updated.startPoint,
+    updated.endPoint,
+    JSON.stringify(updated.elevationProfile || []),
+    updated.routeCoordinates ? JSON.stringify(updated.routeCoordinates) : null,
+    existing.id
+  );
+
+  return getTrailBySlug(existing.id);
+}
+
+export function deleteTrail(idOrSlug: string): boolean {
+  const db = getDatabase();
+  const trail = db.prepare('SELECT id FROM trails WHERE id = ? OR slug = ?').get(idOrSlug, idOrSlug) as { id: string } | undefined;
+  if (!trail) return false;
+
+  db.prepare('DELETE FROM bookings WHERE trail_id = ?').run(trail.id);
+  const result = db.prepare('DELETE FROM trails WHERE id = ?').run(trail.id);
+  return result.changes > 0;
+}
+
+
 export function getAllRanges(): HimalayanRange[] {
   const db = getDatabase();
   const rows = db.prepare('SELECT * FROM ranges ORDER BY name ASC').all() as Record<string, unknown>[];
@@ -1054,6 +1127,65 @@ export function getAllItineraries(): Itinerary[] {
     days: JSON.parse((r.days_json as string) || '[]')
   }));
 }
+
+export function createItinerary(data: {
+  id?: string;
+  title: string;
+  trailName: string;
+  author: string;
+  authorAvatar?: string;
+  totalDays: number;
+  maxAltitude: number;
+  difficulty: string;
+  estimatedCostUSD: number;
+  likes?: number;
+  clones?: number;
+  days: ItineraryDay[];
+}): Itinerary {
+  const db = getDatabase();
+  const id = data.id || `itin_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const now = new Date().toISOString();
+  const authorAvatar = data.authorAvatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80';
+  const likes = data.likes ?? 0;
+  const clones = data.clones ?? 0;
+
+  db.prepare(`
+    INSERT INTO itineraries (
+      id, title, trail_name, author, author_avatar, total_days, max_altitude,
+      difficulty, estimated_cost_usd, likes, clones, days_json, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    data.title,
+    data.trailName,
+    data.author,
+    authorAvatar,
+    data.totalDays,
+    data.maxAltitude,
+    data.difficulty,
+    data.estimatedCostUSD,
+    likes,
+    clones,
+    JSON.stringify(data.days || []),
+    now
+  );
+
+  return {
+    id,
+    title: data.title,
+    trailName: data.trailName,
+    author: data.author,
+    authorAvatar,
+    totalDays: data.totalDays,
+    maxAltitude: data.maxAltitude,
+    difficulty: data.difficulty,
+    estimatedCostUSD: data.estimatedCostUSD,
+    likes,
+    clones,
+    days: data.days || []
+  };
+}
+
 
 export function getAllStories(): Story[] {
   const db = getDatabase();
@@ -1253,6 +1385,32 @@ export function createContactMessage(data: {
   };
 }
 
+export function getContactMessages(): ContactMessage[] {
+  const db = getDatabase();
+  const rows = db.prepare('SELECT * FROM contact_messages ORDER BY created_at DESC').all() as Record<string, unknown>[];
+  return rows.map((r) => ({
+    id: r.id as string,
+    name: r.name as string,
+    email: r.email as string,
+    subject: r.subject as string,
+    message: r.message as string,
+    status: (r.status as 'UNREAD' | 'READ' | 'RESPONDED') || 'UNREAD',
+    createdAt: r.created_at as string
+  }));
+}
+
+export function updateContactMessageStatus(id: string, status: string): boolean {
+  const db = getDatabase();
+  const result = db.prepare('UPDATE contact_messages SET status = ? WHERE id = ?').run(status, id);
+  return result.changes > 0;
+}
+
+export function deleteContactMessage(id: string): boolean {
+  const db = getDatabase();
+  const result = db.prepare('DELETE FROM contact_messages WHERE id = ?').run(id);
+  return result.changes > 0;
+}
+
 export function createSharedTrail(data: {
   title: string;
   region: string;
@@ -1402,7 +1560,35 @@ export function createInquiry(data: {
   return { id, createdAt: now };
 }
 
-export function getInquiries() {
+export function getInquiries(): Inquiry[] {
   const db = getDatabase();
-  return db.prepare('SELECT * FROM inquiries ORDER BY created_at DESC').all();
+  const rows = db.prepare('SELECT * FROM inquiries ORDER BY created_at DESC').all() as Record<string, unknown>[];
+  return rows.map((r) => ({
+    id: r.id as string,
+    trailId: r.trail_id as string,
+    trailName: r.trail_name as string,
+    fullName: r.full_name as string,
+    email: r.email as string,
+    phone: (r.phone as string) || undefined,
+    country: (r.country as string) || undefined,
+    groupSize: Number(r.group_size),
+    preferredStartDate: (r.preferred_start_date as string) || undefined,
+    fitnessLevel: (r.fitness_level as string) || undefined,
+    notes: (r.notes as string) || undefined,
+    status: (r.status as 'PENDING' | 'CONFIRMED' | 'CONTACTED' | 'CANCELLED') || 'PENDING',
+    createdAt: r.created_at as string
+  }));
 }
+
+export function updateInquiryStatus(id: string, status: string): boolean {
+  const db = getDatabase();
+  const result = db.prepare('UPDATE inquiries SET status = ? WHERE id = ?').run(status, id);
+  return result.changes > 0;
+}
+
+export function deleteInquiry(id: string): boolean {
+  const db = getDatabase();
+  const result = db.prepare('DELETE FROM inquiries WHERE id = ?').run(id);
+  return result.changes > 0;
+}
+

@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { CesiumController } from '@/lib/map/CesiumController';
 import type { GeoPoint, MapMarker, MapPolyline } from '@/lib/map/types';
-import type { Trail, HimalayanRange } from '@/types';
+import type { Trail, Landmark, HimalayanRange } from '@/types';
 import { ROUTE_TRACKS } from '@/data/routeTracks';
 import GlassCard from '@/components/ui/GlassCard';
 import GlassBadge from '@/components/ui/GlassBadge';
@@ -17,18 +17,25 @@ import {
   MapPin,
   ChevronDown,
   ChevronUp,
-  Maximize2
+  Maximize2,
+  Navigation,
 } from 'lucide-react';
 import gsap from 'gsap';
+import SummitTourConsole from '@/components/map/SummitTourConsole';
+import FloatingMapPanel from '@/components/ui/FloatingMapPanel';
 
 interface CesiumGlobeMapProps {
   initialCenter?: GeoPoint;
   polyline?: MapPolyline;
   markers?: MapMarker[];
+  landmarks?: Landmark[];
+  onSelectLandmark?: (landmark: Landmark) => void;
   scrubberPoint?: GeoPoint | null;
   activeTrail?: Trail | null;
   height?: string;
   onClose3D?: () => void;
+  mode?: 'freeroam' | 'summit-tours';
+  initialSummitSlug?: string;
 }
 
 const HIMALAYAN_SUMMITS: { name: string; elevation: number; coords: GeoPoint }[] = [
@@ -43,10 +50,14 @@ export default function CesiumGlobeMap({
   initialCenter = { lat: 27.9881, lng: 86.9250, altitude: 9000 },
   polyline,
   markers = [],
+  landmarks = [],
+  onSelectLandmark,
   scrubberPoint,
   activeTrail,
   height = 'h-[600px]',
   onClose3D,
+  mode = 'freeroam',
+  initialSummitSlug = 'everest',
 }: CesiumGlobeMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const hudRef = useRef<HTMLDivElement>(null);
@@ -59,6 +70,7 @@ export default function CesiumGlobeMap({
   const [ranges, setRanges] = useState<HimalayanRange[]>([]);
   const [selectedRange, setSelectedRange] = useState<string>('All');
   const [perspective, setPerspective] = useState<'topo' | 'ridge' | 'summit'>('ridge');
+  const [selectedLandmarkId, setSelectedLandmarkId] = useState<string | null>(null);
 
   // 1. Fetch official Himalayan ranges from persistent DB API
   useEffect(() => {
@@ -90,8 +102,22 @@ export default function CesiumGlobeMap({
           syncActiveTrailPolyline(controller, activeTrail);
         }
 
-        if (markers.length > 0) {
-          controller.addMarkers(markers);
+        // Combine custom markers and landmark markers
+        const allMarkers: MapMarker[] = [...markers];
+        if (landmarks && landmarks.length > 0) {
+          landmarks.forEach((lm) => {
+            allMarkers.push({
+              id: lm.id,
+              position: { lat: lm.coordinates.lat, lng: lm.coordinates.lng, altitude: lm.elevation },
+              title: lm.name,
+              category: lm.category,
+              elevation: lm.elevation,
+            });
+          });
+        }
+
+        if (allMarkers.length > 0) {
+          controller.addMarkers(allMarkers);
         }
 
         if (ranges.length > 0) {
@@ -168,15 +194,27 @@ export default function CesiumGlobeMap({
     }
   }, [polyline, activeTrail]);
 
-  // Sync markers
+  // Sync markers & landmarks
   useEffect(() => {
     if (controllerRef.current?.isInitialized) {
       controllerRef.current.clearMarkers();
-      if (markers.length > 0) {
-        controllerRef.current.addMarkers(markers);
+      const allMarkers: MapMarker[] = [...markers];
+      if (landmarks && landmarks.length > 0) {
+        landmarks.forEach((lm) => {
+          allMarkers.push({
+            id: lm.id,
+            position: { lat: lm.coordinates.lat, lng: lm.coordinates.lng, altitude: lm.elevation },
+            title: lm.name,
+            category: lm.category,
+            elevation: lm.elevation,
+          });
+        });
+      }
+      if (allMarkers.length > 0) {
+        controllerRef.current.addMarkers(allMarkers);
       }
     }
-  }, [markers]);
+  }, [markers, landmarks]);
 
   // Sync scrubber point
   useEffect(() => {
@@ -188,6 +226,16 @@ export default function CesiumGlobeMap({
   const handleFlyToSummit = (summit: typeof HIMALAYAN_SUMMITS[0]) => {
     setActiveSummit(summit.name);
     controllerRef.current?.flyTo(summit.coords, summit.coords.altitude || 9000, 2.5);
+  };
+
+  const handleSelectLandmark = (landmark: Landmark) => {
+    setSelectedLandmarkId(landmark.id);
+    onSelectLandmark?.(landmark);
+    controllerRef.current?.flyTo(
+      { lat: landmark.coordinates.lat, lng: landmark.coordinates.lng, altitude: (landmark.elevation || 3500) + 1500 },
+      (landmark.elevation || 3500) + 2000,
+      2.0
+    );
   };
 
   const handleSelectRange = (rangeName: string) => {
@@ -225,13 +273,19 @@ export default function CesiumGlobeMap({
   };
 
   return (
-    <div className={`relative w-full ${height} overflow-hidden rounded-2xl border border-border/40 bg-neutral-950`}>
+    <div
+      data-slot="base"
+      className={`relative w-full ${height} overflow-hidden rounded-3xl border border-border/40 bg-neutral-950`}
+    >
       {/* 3D WebGL Canvas Container */}
-      <div ref={containerRef} className="w-full h-full" />
+      <div ref={containerRef} data-slot="canvas" className="w-full h-full" />
 
       {/* Loading Overlay */}
       {isLoading && (
-        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/85 backdrop-blur-md text-white space-y-4">
+        <div
+          data-slot="indicator"
+          className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/85 backdrop-blur-md text-white space-y-4"
+        >
           <div className="relative w-14 h-14">
             <div className="w-14 h-14 border-4 border-[#B68D40]/30 rounded-full animate-spin border-t-[#B68D40]" />
             <Mountain className="w-6 h-6 text-[#B68D40] absolute inset-0 m-auto" />
@@ -254,7 +308,8 @@ export default function CesiumGlobeMap({
           {onClose3D && (
             <button
               onClick={onClose3D}
-              className="px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs font-semibold text-white transition"
+              data-slot="trigger"
+              className="px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs font-semibold text-white transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B68D40]"
             >
               Switch Back to 2D Topo Map
             </button>
@@ -264,7 +319,10 @@ export default function CesiumGlobeMap({
 
       {/* TOP FLOATING CONTROLS: Engine Badge, Range Selector, Perspective Switcher */}
       {!isLoading && !loadError && (
-        <div className="absolute top-4 left-4 right-4 z-10 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+        <div
+          data-slot="header"
+          className="absolute top-4 left-4 right-4 z-10 flex flex-wrap items-center justify-between gap-2 pointer-events-none"
+        >
           <div className="flex flex-wrap items-center gap-2 pointer-events-auto">
             <GlassBadge variant="gold" pulse>
               <Sparkles className="w-3.5 h-3.5 text-[#B68D40]" />
@@ -274,7 +332,8 @@ export default function CesiumGlobeMap({
             {onClose3D && (
               <button
                 onClick={onClose3D}
-                className="px-3 py-1.5 rounded-full text-xs font-semibold bg-black/70 hover:bg-black/95 text-gray-300 hover:text-white border border-border/40 backdrop-blur-xl transition"
+                data-slot="trigger"
+                className="px-3 py-1.5 rounded-full text-xs font-semibold bg-black/70 hover:bg-black/95 text-gray-300 hover:text-white border border-border/40 backdrop-blur-xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B68D40]"
               >
                 Switch to 2D Map
               </button>
@@ -285,6 +344,7 @@ export default function CesiumGlobeMap({
           <div className="flex items-center gap-1 bg-black/75 backdrop-blur-xl border border-border/40 rounded-xl p-1 pointer-events-auto">
             <button
               onClick={() => handlePerspectiveChange('topo')}
+              data-slot="trigger"
               className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
                 perspective === 'topo' ? 'bg-[#B68D40] text-black font-bold' : 'text-gray-400 hover:text-white'
               }`}
@@ -294,6 +354,7 @@ export default function CesiumGlobeMap({
             </button>
             <button
               onClick={() => handlePerspectiveChange('ridge')}
+              data-slot="trigger"
               className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
                 perspective === 'ridge' ? 'bg-[#B68D40] text-black font-bold' : 'text-gray-400 hover:text-white'
               }`}
@@ -303,6 +364,7 @@ export default function CesiumGlobeMap({
             </button>
             <button
               onClick={() => handlePerspectiveChange('summit')}
+              data-slot="trigger"
               className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
                 perspective === 'summit' ? 'bg-[#B68D40] text-black font-bold' : 'text-gray-400 hover:text-white'
               }`}
@@ -314,35 +376,39 @@ export default function CesiumGlobeMap({
         </div>
       )}
 
-      {/* BOTTOM FLOATING GLASSMORPHIC HUD */}
+      {/* BOTTOM FLOATING GLASSMORPHIC HUD / SUMMIT TOUR CONSOLE */}
       {!isLoading && !loadError && (
-        <div ref={hudRef} className="absolute bottom-4 left-4 right-4 z-10 pointer-events-none">
-          <GlassCard variant="glow" className="max-w-3xl mx-auto p-3 sm:p-4 pointer-events-auto shadow-2xl backdrop-blur-2xl bg-surface/75 border border-border/40 text-surface-foreground">
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-border/30 pb-2 mb-2.5">
-              <div className="flex items-center gap-2">
-                <Mountain className="w-4 h-4 text-[#B68D40]" />
-                <span className="text-xs font-bold text-white uppercase tracking-wider">
-                  Himalayan Mountain Ranges & Summit Fly-To
-                </span>
-                {activeTrail && (
-                  <span className="text-[11px] text-[#B68D40] font-mono hidden sm:inline">
-                    • Active: {activeTrail.name}
-                  </span>
-                )}
-              </div>
-
-              <button
-                onClick={() => setHudExpanded(!hudExpanded)}
-                className="p-1 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition"
-                aria-label="Toggle Summit Menu"
-              >
-                {hudExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
-              </button>
+        <div
+          ref={hudRef}
+          data-slot="body"
+          className="absolute bottom-4 left-4 right-4 z-10 pointer-events-none max-h-[85%] overflow-y-auto"
+        >
+          {mode === 'summit-tours' ? (
+            <div className="max-w-4xl mx-auto pointer-events-auto">
+              <SummitTourConsole
+                controller={controllerRef.current}
+                initialSummitSlug={initialSummitSlug}
+              />
             </div>
-
-            {hudExpanded && (
-              <div className="space-y-3 animate-in fade-in duration-200">
+          ) : (
+            <FloatingMapPanel
+              id="cesium-hud-window"
+              title="Himalayan Mountain Ranges & Summit Fly-To"
+              icon={<Mountain className="w-4 h-4 text-[#B68D40]" />}
+              badge={
+                activeTrail ? (
+                  <span className="text-[10px] text-[#B68D40] font-mono px-2 py-0.5 rounded bg-amber-500/15 border border-[#B68D40]/30 truncate max-w-[150px]">
+                    {activeTrail.name}
+                  </span>
+                ) : undefined
+              }
+              allowDrag={true}
+              allowMinimize={true}
+              allowMaximize={true}
+              allowClose={false}
+              defaultWidth="max-w-3xl w-full mx-auto"
+            >
+              <div className="space-y-3">
                 {/* 1. Himalayan Ranges Navigator */}
                 {ranges.length > 0 && (
                   <div className="space-y-1">
@@ -381,7 +447,36 @@ export default function CesiumGlobeMap({
                   </div>
                 )}
 
-                {/* 2. Summit Quick Fly-To */}
+                {/* 2. Landmarks Chips Row in 3D Mode */}
+                {landmarks && landmarks.length > 0 && (
+                  <div className="space-y-1">
+                    <span className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">
+                      Regional Landmarks:
+                    </span>
+                    <div className="flex flex-wrap items-center gap-1.5 max-h-24 overflow-y-auto">
+                      {landmarks.map((lm) => {
+                        const isSelected = selectedLandmarkId === lm.id;
+                        return (
+                          <button
+                            key={lm.id}
+                            onClick={() => handleSelectLandmark(lm)}
+                            className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold transition-all flex items-center gap-1.5 border ${
+                              isSelected
+                                ? 'bg-accent text-accent-foreground border-accent shadow-lg shadow-amber-500/20 scale-105'
+                                : 'bg-neutral-900/80 hover:bg-neutral-800 text-gray-300 border border-border/40 hover:border-accent/40'
+                            }`}
+                          >
+                            <MapPin className="w-3 h-3 text-[#B68D40]" />
+                            <span>{lm.name}</span>
+                            <span className="text-[10px] font-mono opacity-80">{lm.elevation}m</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. Summit Quick Fly-To */}
                 <div className="space-y-1">
                   <span className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">
                     Apex Summits:
@@ -422,8 +517,8 @@ export default function CesiumGlobeMap({
                   </button>
                 </div>
               </div>
-            )}
-          </GlassCard>
+            </FloatingMapPanel>
+          )}
         </div>
       )}
     </div>

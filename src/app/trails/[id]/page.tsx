@@ -224,6 +224,21 @@ export default function TrailDetailPage() {
               <Calendar className="h-3.5 w-3.5" />
               Best: {trail.bestMonths.join(', ')}
             </span>
+            <Link
+              href={`/map?mode=summit-tours&tour=${
+                trail.region.toLowerCase().includes('everest')
+                  ? 'everest'
+                  : trail.region.toLowerCase().includes('annapurna')
+                  ? 'annapurna'
+                  : trail.region.toLowerCase().includes('manaslu')
+                  ? 'manaslu'
+                  : 'everest'
+              }`}
+              className="px-3 py-1 rounded-full bg-gradient-to-r from-amber-500/30 to-[#B68D40]/30 hover:from-amber-500/40 hover:to-[#B68D40]/40 text-amber-300 border border-[#B68D40]/60 text-xs font-bold backdrop-blur-md flex items-center gap-1.5 shadow-lg shadow-[#B68D40]/20 transition"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-[#B68D40]" />
+              <span>3D Summit Tour</span>
+            </Link>
           </div>
 
           <h1 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight">

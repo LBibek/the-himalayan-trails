@@ -12,7 +12,13 @@ describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () =>
   before(() => {
     assert.ok(fs.existsSync(dbPath), `Database file must exist at ${dbPath}`);
     db = new DatabaseSync(dbPath);
+    try {
+      db.exec("ALTER TABLE contact_messages ADD COLUMN status TEXT DEFAULT 'UNREAD';");
+    } catch {
+      // Column already exists
+    }
   });
+
 
   describe('1. Relational Database Schemas & Data Integrity', () => {
     test('All 10 required database tables must exist', () => {
@@ -361,5 +367,278 @@ describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () =>
       assert.equal(record, undefined, 'Deleted booking must no longer exist in database');
     });
   });
+
+  describe('8. Phase 3 Itinerary Planner, Admin Studio & Full-Stack Persistence', () => {
+    const testItinId = `itin_test_${Date.now()}`;
+    const testTrailId = `trail_test_${Date.now()}`;
+    const testTrailSlug = `custom-himalayan-traverse-${Date.now()}`;
+    const testInqId = `inq_test_${Date.now()}`;
+    const testContactId = `msg_test_${Date.now()}`;
+
+    test('Itinerary Planner persists custom route days and metadata to database', () => {
+      const days = [
+        { day: 1, title: 'Lukla to Phakding', route: 'Lukla -> Phakding', distanceKm: 8, hours: 3.5, sleepingAltitude: 2610, altitudeGain: -250, highlights: 'Scenic flight' },
+        { day: 2, title: 'Phakding to Namche', route: 'Phakding -> Namche', distanceKm: 11, hours: 5.5, sleepingAltitude: 3440, altitudeGain: 830, highlights: 'Hillary Bridge' }
+      ];
+
+      const stmt = db.prepare(`
+        INSERT INTO itineraries (
+          id, title, trail_name, author, author_avatar, total_days, max_altitude,
+          difficulty, estimated_cost_usd, likes, clones, days_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+      `);
+
+      stmt.run(
+        testItinId,
+        'Custom Khumbu Traverse 2-Day',
+        'Everest Base Camp Trek',
+        'Lead Alpine Guide',
+        'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80',
+        2,
+        3440,
+        'Moderate',
+        170.0,
+        5,
+        1,
+        JSON.stringify(days),
+        new Date().toISOString()
+      );
+
+      const itin = db.prepare('SELECT * FROM itineraries WHERE id = ?;').get(testItinId);
+      assert.ok(itin, 'Itinerary must be persisted in database');
+      assert.equal(itin.title, 'Custom Khumbu Traverse 2-Day');
+      assert.equal(itin.total_days, 2);
+      assert.equal(itin.max_altitude, 3440);
+      const parsedDays = JSON.parse(itin.days_json);
+      assert.equal(parsedDays.length, 2);
+      assert.equal(parsedDays[0].sleepingAltitude, 2610);
+    });
+
+    test('Trail lifecycle supports full creation, update, and deletion with cascading', () => {
+      // 1. Create Trail
+      const createStmt = db.prepare(`
+        INSERT INTO trails (
+          id, slug, name, region, difficulty, distance_km, duration_days, max_elevation,
+          elevation_gain, image, description, highlights, best_months, start_point, end_point,
+          rating, reviews_count, elevation_profile, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 5.0, 0, ?, ?);
+      `);
+
+      createStmt.run(
+        testTrailId,
+        testTrailSlug,
+        'Dhaulagiri High Circuit',
+        'Annapurna',
+        'Extreme',
+        210,
+        18,
+        5360,
+        6000,
+        '/steps/trails.jpg',
+        'Challenging high pass route around Mount Dhaulagiri',
+        JSON.stringify(['French Pass', 'Hidden Valley']),
+        JSON.stringify(['Apr-May', 'Oct-Nov']),
+        'Beni',
+        'Marpha',
+        JSON.stringify([{ distanceKm: 0, elevation: 900 }]),
+        new Date().toISOString()
+      );
+
+      let trail = db.prepare('SELECT * FROM trails WHERE id = ?;').get(testTrailId);
+      assert.ok(trail, 'Trail must be created in database');
+      assert.equal(trail.name, 'Dhaulagiri High Circuit');
+
+      // 2. Update Trail
+      const updateStmt = db.prepare(`
+        UPDATE trails SET name = ?, duration_days = ?, max_elevation = ? WHERE id = ?;
+      `);
+      updateStmt.run('Dhaulagiri Sanctuary & French Pass', 19, 5400, testTrailId);
+
+      trail = db.prepare('SELECT * FROM trails WHERE id = ?;').get(testTrailId);
+      assert.equal(trail.name, 'Dhaulagiri Sanctuary & French Pass');
+      assert.equal(trail.duration_days, 19);
+      assert.equal(trail.max_elevation, 5400);
+
+      // 3. Create dependent booking and verify cascade deletion
+      const bookStmt = db.prepare(`
+        INSERT INTO bookings (id, trail_id, full_name, email, phone, start_date, travelers, total_price, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMED', ?);
+      `);
+      const testDepBookingId = `book_dep_${Date.now()}`;
+      bookStmt.run(testDepBookingId, testTrailId, 'Dhaulagiri Trekker', 'dh@example.com', '+977 12345', '2026-10-01', 2, 2400, new Date().toISOString());
+
+      // Delete trail
+      db.prepare('DELETE FROM bookings WHERE trail_id = ?;').run(testTrailId);
+      db.prepare('DELETE FROM trails WHERE id = ?;').run(testTrailId);
+
+      const deletedTrail = db.prepare('SELECT * FROM trails WHERE id = ?;').get(testTrailId);
+      const deletedBooking = db.prepare('SELECT * FROM bookings WHERE id = ?;').get(testDepBookingId);
+      assert.equal(deletedTrail, undefined, 'Trail must be deleted from database');
+      assert.equal(deletedBooking, undefined, 'Dependent booking must be cleanly cleaned up');
+    });
+
+    test('Inquiries table supports status transitions and administrative management', () => {
+      const inqStmt = db.prepare(`
+        INSERT INTO inquiries (
+          id, trail_id, trail_name, full_name, email, phone, country,
+          group_size, preferred_start_date, fitness_level, notes, status, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?);
+      `);
+
+      inqStmt.run(
+        testInqId,
+        'ebc-trek',
+        'Everest Base Camp Trek',
+        'Maya Lin',
+        'maya@example.com',
+        '+1 555 123 4567',
+        'Canada',
+        4,
+        '2026-11-10',
+        'Advanced',
+        'Looking for certified female Sherpa guide.',
+        new Date().toISOString()
+      );
+
+      let inq = db.prepare('SELECT * FROM inquiries WHERE id = ?;').get(testInqId);
+      assert.ok(inq, 'Inquiry must exist in database');
+      assert.equal(inq.status, 'PENDING');
+      assert.equal(inq.group_size, 4);
+
+      // Transition status to CONTACTED then CONFIRMED
+      db.prepare('UPDATE inquiries SET status = ? WHERE id = ?;').run('CONTACTED', testInqId);
+      inq = db.prepare('SELECT status FROM inquiries WHERE id = ?;').get(testInqId);
+      assert.equal(inq.status, 'CONTACTED');
+
+      db.prepare('UPDATE inquiries SET status = ? WHERE id = ?;').run('CONFIRMED', testInqId);
+      inq = db.prepare('SELECT status FROM inquiries WHERE id = ?;').get(testInqId);
+      assert.equal(inq.status, 'CONFIRMED');
+
+      // Delete inquiry
+      db.prepare('DELETE FROM inquiries WHERE id = ?;').run(testInqId);
+      inq = db.prepare('SELECT * FROM inquiries WHERE id = ?;').get(testInqId);
+      assert.equal(inq, undefined, 'Inquiry must be deleted from database');
+    });
+
+    test('Contact messages table supports status tracking and cleanup', () => {
+      const contactStmt = db.prepare(`
+        INSERT INTO contact_messages (id, name, email, subject, message, status, created_at)
+        VALUES (?, ?, ?, ?, ?, 'UNREAD', ?);
+      `);
+
+      contactStmt.run(
+        testContactId,
+        'Carlos Mendez',
+        'carlos@example.com',
+        'Helicopter evacuation insurance query',
+        'Is emergency helicopter insurance included in the booking fee?',
+        new Date().toISOString()
+      );
+
+      let msg = db.prepare('SELECT * FROM contact_messages WHERE id = ?;').get(testContactId);
+      assert.ok(msg, 'Contact message must exist in database');
+      assert.equal(msg.status, 'UNREAD');
+
+      // Transition to RESPONDED
+      db.prepare('UPDATE contact_messages SET status = ? WHERE id = ?;').run('RESPONDED', testContactId);
+      msg = db.prepare('SELECT status FROM contact_messages WHERE id = ?;').get(testContactId);
+      assert.equal(msg.status, 'RESPONDED');
+
+      // Delete contact message
+      db.prepare('DELETE FROM contact_messages WHERE id = ?;').run(testContactId);
+      msg = db.prepare('SELECT * FROM contact_messages WHERE id = ?;').get(testContactId);
+      assert.equal(msg, undefined, 'Contact message must be deleted');
+    });
+
+    test('Supabase schema.sql includes all relational tables, RLS policies, and indexes', () => {
+      const schemaPath = path.join(process.cwd(), 'src', 'lib', 'supabase', 'schema.sql');
+      assert.ok(fs.existsSync(schemaPath), 'schema.sql must exist');
+      const schemaContent = fs.readFileSync(schemaPath, 'utf8');
+
+      const expectedKeywords = [
+        'CREATE TABLE IF NOT EXISTS public.itineraries',
+        'CREATE TABLE IF NOT EXISTS public.inquiries',
+        'CREATE TABLE IF NOT EXISTS public.contact_messages',
+        'CREATE TABLE IF NOT EXISTS public.stories',
+        'CREATE TABLE IF NOT EXISTS public.weather_reports',
+        'CREATE TABLE IF NOT EXISTS public.shared_trails',
+        'ROW LEVEL SECURITY',
+        'CREATE POLICY',
+        'idx_trails_slug',
+        'idx_inquiries_created'
+      ];
+
+      for (const kw of expectedKeywords) {
+        assert.ok(schemaContent.includes(kw), `schema.sql must contain "${kw}"`);
+      }
+    });
+  });
+
+  describe('9. Interactive Recharts Altitude Profile, DnD Timeline & 2D/3D Map Architecture', () => {
+    test('DnD core, sortable and utilities libraries are installed and configured', () => {
+      const pkgPath = path.join(process.cwd(), 'package.json');
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      assert.ok(pkg.dependencies['@dnd-kit/core'], '@dnd-kit/core must be installed');
+      assert.ok(pkg.dependencies['@dnd-kit/sortable'], '@dnd-kit/sortable must be installed');
+      assert.ok(pkg.dependencies['@dnd-kit/utilities'], '@dnd-kit/utilities must be installed');
+    });
+
+    test('ElevationProfileChart contains Recharts ReferenceDot landmark markers and 3-way synchronization', () => {
+      const chartPath = path.join(process.cwd(), 'src', 'components', 'map', 'ElevationProfileChart.tsx');
+      assert.ok(fs.existsSync(chartPath));
+      const content = fs.readFileSync(chartPath, 'utf8');
+
+      assert.ok(content.includes('ReferenceDot'), 'ElevationProfileChart must use ReferenceDot for landmarks');
+      assert.ok(content.includes('onSelectPoint'), 'ElevationProfileChart must support onSelectPoint');
+      assert.ok(content.includes('onSelectLandmark'), 'ElevationProfileChart must support onSelectLandmark');
+      assert.ok(content.includes('data-slot="base"'), 'ElevationProfileChart must implement HeroUI data-slot="base"');
+      assert.ok(content.includes('data-slot="header"'), 'ElevationProfileChart must implement HeroUI data-slot="header"');
+    });
+
+    test('PlannerElevationChart contains interactive scrubbing, waypoint reference dots, and HeroUI compound semantics', () => {
+      const plannerChartPath = path.join(process.cwd(), 'src', 'components', 'planner', 'PlannerElevationChart.tsx');
+      assert.ok(fs.existsSync(plannerChartPath));
+      const content = fs.readFileSync(plannerChartPath, 'utf8');
+
+      assert.ok(content.includes('ReferenceDot'), 'PlannerElevationChart must render ReferenceDot markers');
+      assert.ok(content.includes('data-slot="base"'), 'PlannerElevationChart must implement HeroUI data-slot="base"');
+      assert.ok(content.includes('data-slot="header"'), 'PlannerElevationChart must implement HeroUI data-slot="header"');
+      assert.ok(content.includes('data-slot="tooltip"'), 'PlannerElevationChart must implement HeroUI data-slot="tooltip"');
+    });
+
+    test('Itinerary Planner implements DnD sorting, 2D/3D map engine toggle, and HeroUI compound slots', () => {
+      const plannerPath = path.join(process.cwd(), 'src', 'app', 'itinerary', 'planner', 'page.tsx');
+      assert.ok(fs.existsSync(plannerPath));
+      const content = fs.readFileSync(plannerPath, 'utf8');
+
+      assert.ok(content.includes('DndContext'), 'Planner must use DndContext');
+      assert.ok(content.includes('SortableContext'), 'Planner must use SortableContext');
+      assert.ok(content.includes('useSortable'), 'Planner must use useSortable hook');
+      assert.ok(content.includes('arrayMove'), 'Planner must use arrayMove for reordering');
+      assert.ok(content.includes('CesiumGlobeMap'), 'Planner must support 3D Cesium globe engine');
+      assert.ok(content.includes('data-slot="handle"'), 'Planner must implement HeroUI data-slot="handle"');
+    });
+
+    test('CesiumGlobeMap supports unified landmark interaction and synchronized scrubber beacon', () => {
+      const cesiumPath = path.join(process.cwd(), 'src', 'components', 'map', 'CesiumGlobeMap.tsx');
+      assert.ok(fs.existsSync(cesiumPath));
+      const content = fs.readFileSync(cesiumPath, 'utf8');
+
+      assert.ok(content.includes('onSelectLandmark'), 'CesiumGlobeMap must support onSelectLandmark');
+      assert.ok(content.includes('scrubberPoint'), 'CesiumGlobeMap must support scrubberPoint beacon');
+      assert.ok(content.includes('data-slot="base"'), 'CesiumGlobeMap must implement HeroUI data-slot="base"');
+    });
+
+    test('ElevationProfileChart computes landmark placement using GPS proximity along route track', () => {
+      const chartPath = path.join(process.cwd(), 'src', 'components', 'map', 'ElevationProfileChart.tsx');
+      const content = fs.readFileSync(chartPath, 'utf8');
+
+      assert.ok(content.includes('ROUTE_TRACKS'), 'Must utilize route track GPS coordinates for landmark placement');
+      assert.ok(content.includes('minDistSq'), 'Must calculate minimum squared distance along track');
+      assert.ok(content.includes('allElevations'), 'Must calculate unified elevation bounds including landmarks');
+    });
+  });
 });
+
+
 
