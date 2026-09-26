@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import fs from 'node:fs';
-import { Trail, Landmark, Itinerary, Story, WeatherReport, Booking, ContactMessage, SharedTrail, User } from '@/types';
+import { Trail, Landmark, Itinerary, Story, WeatherReport, Booking, ContactMessage, SharedTrail, User, HimalayanRange } from '@/types';
 import { hashPassword } from './auth';
 
 // Ensure data directory exists with Vercel serverless support
@@ -224,6 +224,26 @@ function initializeSchema(db: DatabaseSync) {
       created_at TEXT NOT NULL
     );
   `);
+
+  // Himalayan Ranges table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ranges (
+      id TEXT PRIMARY KEY,
+      name TEXT UNIQUE NOT NULL,
+      center_lat REAL NOT NULL,
+      center_lng REAL NOT NULL,
+      bounds_json TEXT NOT NULL,
+      pois_json TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+  `);
+
+  // Ensure route_coordinates column exists on trails table
+  try {
+    db.exec('ALTER TABLE trails ADD COLUMN route_coordinates TEXT;');
+  } catch {
+    // Column already exists
+  }
 
   seedInitialDataIfEmpty(db);
 }
@@ -888,7 +908,8 @@ export function getAllTrails(filter?: {
     endPoint: r.end_point as string,
     rating: Number(r.rating),
     reviewsCount: Number(r.reviews_count),
-    elevationProfile: r.elevation_profile ? JSON.parse(r.elevation_profile as string) : undefined
+    elevationProfile: r.elevation_profile ? JSON.parse(r.elevation_profile as string) : undefined,
+    routeCoordinates: r.route_coordinates ? JSON.parse(r.route_coordinates as string) : undefined
   }));
 }
 
@@ -915,7 +936,8 @@ export function getTrailBySlug(slug: string): Trail | null {
     endPoint: r.end_point as string,
     rating: Number(r.rating),
     reviewsCount: Number(r.reviews_count),
-    elevationProfile: r.elevation_profile ? JSON.parse(r.elevation_profile as string) : undefined
+    elevationProfile: r.elevation_profile ? JSON.parse(r.elevation_profile as string) : undefined,
+    routeCoordinates: r.route_coordinates ? JSON.parse(r.route_coordinates as string) : undefined
   };
 }
 
@@ -926,8 +948,8 @@ export function createTrail(trail: Omit<Trail, 'rating' | 'reviewsCount'>): Trai
     INSERT INTO trails (
       id, slug, name, region, difficulty, distance_km, duration_days, max_elevation,
       elevation_gain, image, description, highlights, best_months, start_point, end_point,
-      rating, reviews_count, elevation_profile, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 5.0, 0, ?, ?)
+      rating, reviews_count, elevation_profile, route_coordinates, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 5.0, 0, ?, ?, ?)
   `).run(
     trail.id,
     trail.slug,
@@ -945,6 +967,7 @@ export function createTrail(trail: Omit<Trail, 'rating' | 'reviewsCount'>): Trai
     trail.startPoint,
     trail.endPoint,
     JSON.stringify(trail.elevationProfile || []),
+    trail.routeCoordinates ? JSON.stringify(trail.routeCoordinates) : null,
     now
   );
 
@@ -952,6 +975,31 @@ export function createTrail(trail: Omit<Trail, 'rating' | 'reviewsCount'>): Trai
     ...trail,
     rating: 5.0,
     reviewsCount: 0
+  };
+}
+
+export function getAllRanges(): HimalayanRange[] {
+  const db = getDatabase();
+  const rows = db.prepare('SELECT * FROM ranges ORDER BY name ASC').all() as Record<string, unknown>[];
+  return rows.map((r) => ({
+    id: r.id as string,
+    name: r.name as string,
+    center: [Number(r.center_lat), Number(r.center_lng)],
+    bounds: JSON.parse((r.bounds_json as string) || '[]'),
+    pois: JSON.parse((r.pois_json as string) || '[]'),
+  }));
+}
+
+export function getRangeByName(name: string): HimalayanRange | null {
+  const db = getDatabase();
+  const r = db.prepare('SELECT * FROM ranges WHERE LOWER(name) = LOWER(?)').get(name) as Record<string, unknown> | undefined;
+  if (!r) return null;
+  return {
+    id: r.id as string,
+    name: r.name as string,
+    center: [Number(r.center_lat), Number(r.center_lng)],
+    bounds: JSON.parse((r.bounds_json as string) || '[]'),
+    pois: JSON.parse((r.pois_json as string) || '[]'),
   };
 }
 
