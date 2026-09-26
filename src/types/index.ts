@@ -21,6 +21,15 @@ export interface Trail {
     elevation: number;
     label?: string;
   }[];
+  routeCoordinates?: [number, number, number?][];
+}
+
+export interface HimalayanRange {
+  id?: string;
+  name: string;
+  center: [number, number]; // [lat, lng]
+  bounds: [number, number, number][]; // [lng, lat, elevation]
+  pois: { name: string; coord: [number, number] }[];
 }
 
 export interface Landmark {
