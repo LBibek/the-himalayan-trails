@@ -34,13 +34,15 @@ const ExpeditionMapEditor = dynamic(() => import('@/components/admin/ExpeditionM
 });
 
 export default function AdminPage() {
-  const [activeTab, setActiveTab] = useState<'create' | 'list'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'list' | 'bookings'>('create');
   const [expeditions, setExpeditions] = useState<Trail[]>([]);
   const [loadingExpeditions, setLoadingExpeditions] = useState(true);
+  const [bookings, setBookings] = useState<any[]>([]);
+  const [loadingBookings, setLoadingBookings] = useState(true);
 
   const [landmarksCount, setLandmarksCount] = useState(0);
 
-  // Fetch expeditions and landmarks from SQLite DB
+  // Fetch expeditions, landmarks, and bookings from SQLite DB
   useEffect(() => {
     fetch('/api/trails')
       .then((res) => (res.ok ? res.json() : []))
@@ -56,6 +58,14 @@ export default function AdminPage() {
         setLandmarksCount(data.length);
       })
       .catch(console.error);
+
+    fetch('/api/bookings')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: any[]) => {
+        setBookings(data);
+        setLoadingBookings(false);
+      })
+      .catch(() => setLoadingBookings(false));
   }, []);
 
   // Form State
@@ -177,6 +187,39 @@ export default function AdminPage() {
     downloadAnchor.remove();
   };
 
+  const handleUpdateBookingStatus = async (id: string, newStatus: string) => {
+    try {
+      const res = await fetch(`/api/admin/bookings/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      if (res.ok) {
+        setBookings((prev) =>
+          prev.map((b) => (b.id === id ? { ...b, status: newStatus } : b))
+        );
+        setSuccessMessage(`Booking ${id} status updated to ${newStatus}`);
+        setTimeout(() => setSuccessMessage(''), 4000);
+      }
+    } catch (err) {
+      console.error('Failed to update booking status:', err);
+    }
+  };
+
+  const handleDeleteBooking = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this booking?')) return;
+    try {
+      const res = await fetch(`/api/admin/bookings/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setBookings((prev) => prev.filter((b) => b.id !== id));
+        setSuccessMessage(`Booking ${id} successfully removed`);
+        setTimeout(() => setSuccessMessage(''), 4000);
+      }
+    } catch (err) {
+      console.error('Failed to delete booking:', err);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-black text-white p-4 sm:p-6 lg:p-10 space-y-8">
       
@@ -191,12 +234,12 @@ export default function AdminPage() {
             Expedition & Trail Studio
           </h1>
           <p className="text-xs sm:text-sm text-gray-400 mt-1">
-            Manually draw high-altitude trail polyline tracks on Leaflet map, configure custom landmarks, and publish expeditions.
+            Manually draw high-altitude trail polyline tracks on Leaflet map, configure custom landmarks, and manage bookings.
           </p>
         </div>
 
         {/* Tab Buttons */}
-        <div className="flex items-center gap-2 bg-neutral-900 p-1.5 rounded-2xl border border-neutral-800 self-start md:self-auto">
+        <div className="flex flex-wrap items-center gap-2 bg-neutral-900 p-1.5 rounded-2xl border border-neutral-800 self-start md:self-auto">
           <button
             onClick={() => setActiveTab('create')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
@@ -218,7 +261,19 @@ export default function AdminPage() {
             }`}
           >
             <Layers className="h-4 w-4" />
-            <span>Expedition Directory ({expeditions.length})</span>
+            <span>Directory ({expeditions.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('bookings')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
+              activeTab === 'bookings'
+                ? 'bg-[#B68D40] text-black shadow-lg'
+                : 'text-gray-300 hover:text-white hover:bg-neutral-800'
+            }`}
+          >
+            <ShieldCheck className="h-4 w-4" />
+            <span>Customer Bookings ({bookings.length})</span>
           </button>
         </div>
       </div>
@@ -502,6 +557,83 @@ export default function AdminPage() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* TAB 3: CUSTOMER BOOKINGS & EXPEDITION DISPATCH */}
+      {activeTab === 'bookings' && (
+        <div className="p-6 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 border-b border-neutral-800 pb-4">
+            <div>
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-[#B68D40]" />
+                Customer Expedition Bookings ({bookings.length})
+              </h2>
+              <p className="text-xs text-gray-400 mt-1">
+                Real-time booking dispatch, permit status triage, and customer lifecycle management.
+              </p>
+            </div>
+          </div>
+
+          {loadingBookings ? (
+            <div className="py-12 text-center text-gray-400 flex items-center justify-center gap-2">
+              <Loader2 className="w-5 h-5 animate-spin text-[#B68D40]" />
+              <span>Loading customer bookings...</span>
+            </div>
+          ) : bookings.length === 0 ? (
+            <div className="py-12 text-center text-gray-500">No customer bookings found.</div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-neutral-800">
+              <table className="w-full text-left text-xs text-gray-300">
+                <thead className="bg-neutral-950 uppercase tracking-wider text-gray-400 border-b border-neutral-800">
+                  <tr>
+                    <th className="p-3">Reference</th>
+                    <th className="p-3">Customer</th>
+                    <th className="p-3">Start Date</th>
+                    <th className="p-3">Party</th>
+                    <th className="p-3">Total ($)</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-800">
+                  {bookings.map((booking: any) => (
+                    <tr key={booking.id} className="hover:bg-neutral-800/50 transition">
+                      <td className="p-3 font-mono text-[#B68D40]">{booking.id}</td>
+                      <td className="p-3">
+                        <div className="font-bold text-white">{booking.fullName}</div>
+                        <div className="text-[11px] text-gray-400">{booking.email} • {booking.phone}</div>
+                      </td>
+                      <td className="p-3 font-medium text-gray-200">{booking.startDate}</td>
+                      <td className="p-3">{booking.travelers} {booking.travelers === 1 ? 'Trekker' : 'Trekkers'}</td>
+                      <td className="p-3 font-bold text-white">${booking.totalPrice}</td>
+                      <td className="p-3">
+                        <select
+                          value={booking.status}
+                          onChange={(e) => handleUpdateBookingStatus(booking.id, e.target.value)}
+                          className="bg-neutral-950 border border-neutral-700 rounded-lg px-2 py-1 text-xs font-semibold text-white focus:outline-none focus:border-[#B68D40]"
+                        >
+                          <option value="CONFIRMED">CONFIRMED</option>
+                          <option value="EXPEDITION_ACTIVE">ACTIVE</option>
+                          <option value="COMPLETED">COMPLETED</option>
+                          <option value="CANCELLED">CANCELLED</option>
+                        </select>
+                      </td>
+                      <td className="p-3 text-right">
+                        <button
+                          onClick={() => handleDeleteBooking(booking.id)}
+                          className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20"
+                          title="Delete Booking"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 

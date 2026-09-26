@@ -13,9 +13,10 @@ export interface ElevationPoint {
 export interface ElevationProfileChartProps {
   trail: Trail;
   onClose?: () => void;
+  onHoverPoint?: (point: ElevationPoint | null) => void;
 }
 
-export default function ElevationProfileChart({ trail, onClose }: ElevationProfileChartProps) {
+export default function ElevationProfileChart({ trail, onClose, onHoverPoint }: ElevationProfileChartProps) {
   const [hoveredPoint, setHoveredPoint] = useState<ElevationPoint | null>(null);
   const [hoverX, setHoverX] = useState<number | null>(null);
   const [isExpanded, setIsExpanded] = useState<boolean>(true);
@@ -79,6 +80,7 @@ export default function ElevationProfileChart({ trail, onClose }: ElevationProfi
 
     setHoveredPoint(closestPt);
     setHoverX(svgX);
+    onHoverPoint?.(closestPt);
   };
 
   return (
@@ -148,6 +150,7 @@ export default function ElevationProfileChart({ trail, onClose }: ElevationProfi
               onMouseLeave={() => {
                 setHoveredPoint(null);
                 setHoverX(null);
+                onHoverPoint?.(null);
               }}
             >
               <defs>

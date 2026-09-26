@@ -1143,6 +1143,46 @@ export function getBookings(): Booking[] {
   }));
 }
 
+export function getBookingsByUserId(userId: string): (Booking & { trailName?: string; trailSlug?: string })[] {
+  const db = getDatabase();
+  const rows = db.prepare(`
+    SELECT b.*, t.name as trail_name, t.slug as trail_slug 
+    FROM bookings b
+    LEFT JOIN trails t ON b.trail_id = t.id
+    WHERE b.user_id = ?
+    ORDER BY b.created_at DESC
+  `).all(userId) as Record<string, unknown>[];
+
+  return rows.map((r) => ({
+    id: r.id as string,
+    trailId: r.trail_id as string,
+    userId: (r.user_id as string) || undefined,
+    fullName: r.full_name as string,
+    email: r.email as string,
+    phone: r.phone as string,
+    startDate: r.start_date as string,
+    travelers: Number(r.travelers),
+    specialRequests: (r.special_requests as string) || undefined,
+    totalPrice: Number(r.total_price),
+    status: r.status as 'CONFIRMED' | 'PENDING' | 'CANCELLED',
+    createdAt: r.created_at as string,
+    trailName: (r.trail_name as string) || undefined,
+    trailSlug: (r.trail_slug as string) || undefined
+  }));
+}
+
+export function updateBookingStatus(id: string, status: string): boolean {
+  const db = getDatabase();
+  const result = db.prepare('UPDATE bookings SET status = ? WHERE id = ?').run(status, id);
+  return result.changes > 0;
+}
+
+export function deleteBooking(id: string): boolean {
+  const db = getDatabase();
+  const result = db.prepare('DELETE FROM bookings WHERE id = ?').run(id);
+  return result.changes > 0;
+}
+
 export function createContactMessage(data: {
   name: string;
   email: string;

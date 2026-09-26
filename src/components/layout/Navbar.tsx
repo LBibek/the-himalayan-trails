@@ -32,14 +32,14 @@ export default function Navbar() {
 
   const rightNavItems = [
     { label: 'Itineraries', href: '/itineraries' },
-    { label: 'About', href: '/about' },
-    { label: 'Contact', href: '/contact' },
     { label: 'Weather', href: '/weather' },
+    { label: 'Dashboard', href: '/dashboard' },
     { label: 'Login', href: '/login' },
   ];
 
   const allNavItems = [
     { label: 'Home', href: '/', icon: Mountain },
+    { label: 'Dashboard', href: '/dashboard', icon: User },
     { label: 'Trails View', href: '/trails', icon: Mountain },
     { label: '3D MAP', href: '/map', icon: MapIcon },
     { label: 'Landmark Guide', href: '/landmarks', icon: MapPin },

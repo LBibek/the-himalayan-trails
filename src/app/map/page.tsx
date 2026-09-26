@@ -379,6 +379,27 @@ export default function AllTrailsExplorePage() {
           <ElevationProfileChart
             trail={activeTrail}
             onClose={() => setShowElevationProfile(false)}
+            onHoverPoint={(pt) => {
+              if (!pt || !activeTrail) {
+                setFocusedCoords(undefined);
+                return;
+              }
+              const ratio = activeTrail.distanceKm > 0 ? pt.distanceKm / activeTrail.distanceKm : 0;
+              const regionCoords: Record<string, [number, number]> = {
+                'Everest': [27.9881, 86.9250],
+                'Annapurna': [28.5960, 83.8200],
+                'Langtang': [28.2100, 85.5600],
+                'Manaslu': [28.5500, 84.5600],
+                'Mustang': [29.1800, 83.9500],
+                'Rolwaling': [27.8700, 86.4500]
+              };
+              const base = regionCoords[activeTrail.region] || [28.3949, 84.1240];
+              const interpolated: [number, number] = [
+                base[0] + (ratio - 0.5) * 0.08,
+                base[1] + (ratio - 0.5) * 0.08
+              ];
+              setFocusedCoords(interpolated);
+            }}
           />
         </div>
       )}

@@ -287,4 +287,63 @@ describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () =>
       assert.ok(!content.includes('MOCK_TRAILS'), 'Must not reference MOCK_TRAILS');
     });
   });
+
+  describe('7. Phase 2 User Dashboard & Admin Lifecycle Operations', () => {
+    const testUserId = `usr_phase2_${Date.now()}`;
+    const testBookingId = `book_phase2_${Date.now()}`;
+
+    test('User dashboard booking query retrieves only matching user bookings', () => {
+      const trail = db.prepare('SELECT id FROM trails LIMIT 1;').get();
+      assert.ok(trail);
+
+      // Insert booking for this specific user
+      const stmt = db.prepare(`
+        INSERT INTO bookings (id, trail_id, user_id, full_name, email, phone, start_date, travelers, special_requests, total_price, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+      `);
+      stmt.run(
+        testBookingId,
+        trail.id,
+        testUserId,
+        'Kami Rita Sherpa',
+        'kamirita@example.com',
+        '+977 9800000000',
+        '2026-11-01',
+        1,
+        'High altitude gear logistics needed',
+        1500.0,
+        'CONFIRMED',
+        new Date().toISOString()
+      );
+
+      // Query specifically by user_id
+      const userBookings = db.prepare('SELECT * FROM bookings WHERE user_id = ?;').all(testUserId);
+      assert.equal(userBookings.length, 1);
+      assert.equal(userBookings[0].id, testBookingId);
+      assert.equal(userBookings[0].full_name, 'Kami Rita Sherpa');
+    });
+
+    test('Admin status transition mutates booking status to EXPEDITION_ACTIVE and COMPLETED', () => {
+      const updateStmt = db.prepare('UPDATE bookings SET status = ? WHERE id = ?;');
+      
+      // Transition to ACTIVE
+      updateStmt.run('EXPEDITION_ACTIVE', testBookingId);
+      let record = db.prepare('SELECT status FROM bookings WHERE id = ?;').get(testBookingId);
+      assert.equal(record.status, 'EXPEDITION_ACTIVE');
+
+      // Transition to COMPLETED
+      updateStmt.run('COMPLETED', testBookingId);
+      record = db.prepare('SELECT status FROM bookings WHERE id = ?;').get(testBookingId);
+      assert.equal(record.status, 'COMPLETED');
+    });
+
+    test('Admin booking deletion cleanly removes record from database', () => {
+      const deleteStmt = db.prepare('DELETE FROM bookings WHERE id = ?;');
+      deleteStmt.run(testBookingId);
+
+      const record = db.prepare('SELECT * FROM bookings WHERE id = ?;').get(testBookingId);
+      assert.equal(record, undefined, 'Deleted booking must no longer exist in database');
+    });
+  });
 });
+
