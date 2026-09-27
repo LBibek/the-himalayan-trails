@@ -35,6 +35,10 @@ import {
   Route,
   RefreshCw,
   ExternalLink,
+  Edit3,
+  Check,
+  X,
+  Copy,
 } from 'lucide-react';
 import {
   DndContext,
@@ -293,9 +297,14 @@ interface SortableWaypointItemProps {
   index: number;
   isActive: boolean;
   isHovered: boolean;
+  isEditing: boolean;
   onSelect: (index: number) => void;
   onHover: (index: number | null) => void;
   onDelete: (index: number) => void;
+  onStartEdit: (index: number) => void;
+  onSaveEdit: (index: number, updatedItem: Partial<PlannerWaypoint>) => void;
+  onCancelEdit: () => void;
+  onInsertRestDayAfter?: (index: number) => void;
 }
 
 function SortableWaypointItem({
@@ -303,9 +312,14 @@ function SortableWaypointItem({
   index,
   isActive,
   isHovered,
+  isEditing,
   onSelect,
   onHover,
   onDelete,
+  onStartEdit,
+  onSaveEdit,
+  onCancelEdit,
+  onInsertRestDayAfter,
 }: SortableWaypointItemProps) {
   const itemId = item.id || `waypoint-${item.day}-${index}`;
   const {
@@ -315,15 +329,49 @@ function SortableWaypointItem({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: itemId });
+  } = useSortable({ id: itemId, disabled: isEditing });
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    zIndex: isDragging ? 50 : 1,
+    zIndex: isDragging ? 50 : isEditing ? 30 : 1,
   };
 
   const cfg = ACTIVITY_CONFIG[item.activityType] || ACTIVITY_CONFIG.trekking;
+
+  // Edit draft states
+  const [draftTitle, setDraftTitle] = useState(item.title);
+  const [draftActivity, setDraftActivity] = useState<ActivityType>(item.activityType);
+  const [draftDistance, setDraftDistance] = useState<number | string>(item.distanceKm);
+  const [draftAltitude, setDraftAltitude] = useState<number | string>(item.sleepingAltitude);
+  const [draftLat, setDraftLat] = useState<number | string>(item.coordinates.lat);
+  const [draftLng, setDraftLng] = useState<number | string>(item.coordinates.lng);
+  const [draftNotes, setDraftNotes] = useState(item.notes || '');
+
+  // Keep draft in sync with item changes when entering or resetting edit mode
+  useEffect(() => {
+    setDraftTitle(item.title);
+    setDraftActivity(item.activityType);
+    setDraftDistance(item.distanceKm);
+    setDraftAltitude(item.sleepingAltitude);
+    setDraftLat(item.coordinates.lat);
+    setDraftLng(item.coordinates.lng);
+    setDraftNotes(item.notes || '');
+  }, [item, isEditing]);
+
+  const handleSave = () => {
+    onSaveEdit(index, {
+      title: draftTitle.trim() || item.title,
+      activityType: draftActivity,
+      distanceKm: Math.max(0.5, Number(draftDistance) || item.distanceKm),
+      sleepingAltitude: Math.max(500, Number(draftAltitude) || item.sleepingAltitude),
+      coordinates: {
+        lat: Number(draftLat) || item.coordinates.lat,
+        lng: Number(draftLng) || item.coordinates.lng,
+      },
+      notes: draftNotes.trim(),
+    });
+  };
 
   return (
     <div
@@ -334,94 +382,285 @@ function SortableWaypointItem({
       data-selected={isActive}
       data-hovered={isHovered}
       data-dragging={isDragging}
+      data-editing={isEditing}
       onClick={() => onSelect(index)}
+      onDoubleClick={() => !isEditing && onStartEdit(index)}
       onMouseEnter={() => onHover(index)}
       onMouseLeave={() => onHover(null)}
-      className={`relative p-4 rounded-2xl border transition-all duration-200 cursor-pointer backdrop-blur-2xl group select-none print:border-neutral-300 print:bg-white print:text-black ${
-        isDragging
-          ? 'opacity-80 bg-neutral-900/95 border-[#B68D40] shadow-2xl ring-4 ring-[#B68D40]/50 scale-[1.03] z-50'
+      className={`relative p-4 rounded-2xl border transition-all duration-200 backdrop-blur-2xl group select-none print:border-neutral-300 print:bg-white print:text-black ${
+        isEditing
+          ? 'bg-neutral-950/95 border-2 border-[#B68D40] shadow-2xl ring-4 ring-[#B68D40]/30 cursor-default'
+          : isDragging
+          ? 'opacity-80 bg-neutral-900/95 border-[#B68D40] shadow-2xl ring-4 ring-[#B68D40]/50 scale-[1.03] z-50 cursor-grabbing'
           : isActive
-          ? 'bg-neutral-900/90 border-[#B68D40] shadow-2xl ring-2 ring-[#B68D40]/50 scale-[1.01]'
+          ? 'bg-neutral-900/90 border-[#B68D40] shadow-2xl ring-2 ring-[#B68D40]/50 scale-[1.01] cursor-pointer'
           : isHovered
-          ? 'bg-neutral-900/70 border-amber-400/50 shadow-lg'
-          : 'bg-black/60 border-white/10 hover:border-white/20'
+          ? 'bg-neutral-900/70 border-amber-400/50 shadow-lg cursor-pointer'
+          : 'bg-black/60 border-white/10 hover:border-white/20 cursor-pointer'
       }`}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-3">
-          {/* DnD Drag Handle */}
-          <div
-            {...attributes}
-            {...listeners}
-            data-slot="handle"
-            className="mt-1 p-1 -ml-1 text-gray-500 hover:text-amber-400 cursor-grab active:cursor-grabbing rounded-lg hover:bg-white/10 transition print:hidden"
-            title="Drag to reorder itinerary day"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <GripVertical className="h-4 w-4" />
+      {isEditing ? (
+        /* INLINE DAY EDITOR FORM */
+        <div className="space-y-3" onClick={(e) => e.stopPropagation()}>
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded-md bg-[#B68D40] text-black font-extrabold text-[11px]">
+                Day {item.day}
+              </span>
+              <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                <Edit3 className="h-3.5 w-3.5 text-[#B68D40]" />
+                <span>Edit Stage Details</span>
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={onCancelEdit}
+              className="p-1 text-gray-400 hover:text-white rounded-lg hover:bg-white/10 transition cursor-pointer"
+              title="Close and Discard Changes"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
 
-          {/* Activity Icon Badge */}
-          <div
-            data-slot="indicator"
-            className={`w-10 h-10 shrink-0 rounded-xl ${cfg.badgeBg} border ${cfg.borderColor} text-white font-extrabold flex flex-col items-center justify-center shadow-lg text-xs`}
-          >
-            <span>{cfg.iconSymbol}</span>
-            <span className="text-[9px] font-mono">D{item.day}</span>
+          {/* Title input */}
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1">
+              Stage Destination Title
+            </label>
+            <input
+              type="text"
+              value={draftTitle}
+              onChange={(e) => setDraftTitle(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl bg-black border border-white/20 text-white text-xs font-bold focus:outline-none focus:border-[#B68D40] focus:ring-1 focus:ring-[#B68D40]"
+              placeholder="e.g. Dingboche to Lobuche High Camp"
+            />
           </div>
 
-          {/* Waypoint Details */}
-          <div data-slot="body" className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h4 className="text-sm font-bold text-white print:text-black leading-snug">
-                {item.title}
-              </h4>
-              <span
-                className={`text-[10px] font-bold px-2 py-0.5 rounded ${cfg.badgeBg} text-white border ${cfg.borderColor}`}
+          {/* Activity selector */}
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1">
+              Activity &amp; Terrain Type
+            </label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+              {(Object.keys(ACTIVITY_CONFIG) as ActivityType[]).map((actKey) => {
+                const act = ACTIVITY_CONFIG[actKey];
+                const isAct = draftActivity === actKey;
+                return (
+                  <button
+                    key={actKey}
+                    type="button"
+                    onClick={() => setDraftActivity(actKey)}
+                    className={`p-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1.5 transition cursor-pointer border ${
+                      isAct
+                        ? `${act.badgeBg} text-white ${act.borderColor} shadow-md`
+                        : 'bg-black/60 text-gray-400 border-white/10 hover:border-white/30 hover:text-white'
+                    }`}
+                  >
+                    <span>{act.iconSymbol}</span>
+                    <span className="truncate">{act.label.split('/')[0]}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Distance and Altitude */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1">
+                Distance (km)
+              </label>
+              <input
+                type="number"
+                min="0.5"
+                step="0.5"
+                value={draftDistance}
+                onChange={(e) => setDraftDistance(e.target.value)}
+                className="w-full px-3 py-1.5 rounded-xl bg-black border border-white/20 text-white text-xs font-mono font-bold focus:outline-none focus:border-[#B68D40]"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1">
+                Sleeping Altitude (m)
+              </label>
+              <input
+                type="number"
+                min="500"
+                max="8848"
+                value={draftAltitude}
+                onChange={(e) => setDraftAltitude(e.target.value)}
+                className="w-full px-3 py-1.5 rounded-xl bg-black border border-white/20 text-amber-400 text-xs font-mono font-bold focus:outline-none focus:border-[#B68D40]"
+              />
+            </div>
+          </div>
+
+          {/* GPS Coordinates: Lat & Lng */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1">
+                Latitude (°N)
+              </label>
+              <input
+                type="number"
+                step="0.0001"
+                value={draftLat}
+                onChange={(e) => setDraftLat(e.target.value)}
+                className="w-full px-3 py-1.5 rounded-xl bg-black border border-white/20 text-gray-200 text-xs font-mono focus:outline-none focus:border-[#B68D40]"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1">
+                Longitude (°E)
+              </label>
+              <input
+                type="number"
+                step="0.0001"
+                value={draftLng}
+                onChange={(e) => setDraftLng(e.target.value)}
+                className="w-full px-3 py-1.5 rounded-xl bg-black border border-white/20 text-gray-200 text-xs font-mono focus:outline-none focus:border-[#B68D40]"
+              />
+            </div>
+          </div>
+
+          {/* Route Notes */}
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1">
+              Stage Notes, Lodges &amp; Acclimatization
+            </label>
+            <textarea
+              rows={2}
+              value={draftNotes}
+              onChange={(e) => setDraftNotes(e.target.value)}
+              className="w-full px-3 py-1.5 rounded-xl bg-black border border-white/20 text-white text-xs focus:outline-none focus:border-[#B68D40]"
+              placeholder="Teahouse lodges, suspension bridge crossings, high passes..."
+            />
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/10">
+            {onInsertRestDayAfter && (
+              <button
+                type="button"
+                onClick={() => onInsertRestDayAfter(index)}
+                className="px-2.5 py-1.5 rounded-xl bg-cyan-950/60 hover:bg-cyan-900/60 text-cyan-300 text-[10px] font-semibold border border-cyan-500/30 flex items-center gap-1 transition cursor-pointer"
+                title="Insert an acclimatization rest day immediately after this stage"
               >
-                {cfg.label.split('/')[0]}
-              </span>
-            </div>
-
-            <div className="text-xs text-gray-400 print:text-neutral-600 font-mono flex flex-wrap items-center gap-3">
-              <span>
-                Dist: <strong className="text-white print:text-black">{item.distanceKm} km</strong>
-              </span>
-              <span>•</span>
-              <span>
-                Sleeping Alt:{' '}
-                <strong className="text-amber-400 print:text-black">
-                  {item.sleepingAltitude.toLocaleString()}m
-                </strong>
-              </span>
-              <span>•</span>
-              <span className={item.altitudeGain >= 0 ? 'text-green-400' : 'text-cyan-400'}>
-                {item.altitudeGain >= 0 ? `+${item.altitudeGain}m` : `${item.altitudeGain}m`}
-              </span>
-            </div>
-
-            {item.notes && (
-              <p className="text-[11px] text-gray-400 print:text-neutral-700 line-clamp-2 pt-1 border-t border-white/10 print:border-neutral-200">
-                {item.notes}
-              </p>
+                <span>🧘</span>
+                <span>+ Rest Day After</span>
+              </button>
             )}
+
+            <div className="flex items-center gap-2 ml-auto">
+              <button
+                type="button"
+                onClick={onCancelEdit}
+                className="px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-gray-300 text-xs font-semibold transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                className="px-4 py-1.5 rounded-xl bg-[#B68D40] hover:bg-[#c99e4b] text-black text-xs font-extrabold flex items-center gap-1.5 shadow-lg transition cursor-pointer"
+              >
+                <Check className="h-3.5 w-3.5" />
+                <span>Save Changes</span>
+              </button>
+            </div>
           </div>
         </div>
+      ) : (
+        /* STANDARD VIEW CARD */
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            {/* DnD Drag Handle */}
+            <div
+              {...attributes}
+              {...listeners}
+              data-slot="handle"
+              className="mt-1 p-1 -ml-1 text-gray-500 hover:text-amber-400 cursor-grab active:cursor-grabbing rounded-lg hover:bg-white/10 transition print:hidden"
+              title="Drag to reorder itinerary day"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <GripVertical className="h-4 w-4" />
+            </div>
 
-        {/* Action Controls */}
-        <div data-slot="actions" className="flex items-center gap-1">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete(index);
-            }}
-            className="p-1.5 text-neutral-500 hover:text-red-400 rounded-lg hover:bg-neutral-900 transition print:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
-            title="Delete Day"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
+            {/* Activity Icon Badge */}
+            <div
+              data-slot="indicator"
+              className={`w-10 h-10 shrink-0 rounded-xl ${cfg.badgeBg} border ${cfg.borderColor} text-white font-extrabold flex flex-col items-center justify-center shadow-lg text-xs`}
+            >
+              <span>{cfg.iconSymbol}</span>
+              <span className="text-[9px] font-mono">D{item.day}</span>
+            </div>
+
+            {/* Waypoint Details */}
+            <div data-slot="body" className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="text-sm font-bold text-white print:text-black leading-snug group-hover:text-amber-200 transition">
+                  {item.title}
+                </h4>
+                <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded ${cfg.badgeBg} text-white border ${cfg.borderColor}`}
+                >
+                  {cfg.label.split('/')[0]}
+                </span>
+              </div>
+
+              <div className="text-xs text-gray-400 print:text-neutral-600 font-mono flex flex-wrap items-center gap-3">
+                <span>
+                  Dist: <strong className="text-white print:text-black">{item.distanceKm} km</strong>
+                </span>
+                <span>•</span>
+                <span>
+                  Sleeping Alt:{' '}
+                  <strong className="text-amber-400 print:text-black">
+                    {item.sleepingAltitude.toLocaleString()}m
+                  </strong>
+                </span>
+                <span>•</span>
+                <span className={item.altitudeGain >= 0 ? 'text-green-400' : 'text-cyan-400'}>
+                  {item.altitudeGain >= 0 ? `+${item.altitudeGain}m` : `${item.altitudeGain}m`}
+                </span>
+              </div>
+
+              {item.notes && (
+                <p className="text-[11px] text-gray-400 print:text-neutral-700 line-clamp-2 pt-1 border-t border-white/10 print:border-neutral-200">
+                  {item.notes}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Action Controls */}
+          <div data-slot="actions" className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onStartEdit(index);
+              }}
+              className="p-1.5 text-neutral-400 hover:text-[#B68D40] rounded-lg hover:bg-white/10 transition print:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B68D40] cursor-pointer"
+              title="Edit Day Details (Title, Altitude, Distance, Activity)"
+            >
+              <Edit3 className="h-4 w-4" />
+            </button>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(index);
+              }}
+              className="p-1.5 text-neutral-500 hover:text-red-400 rounded-lg hover:bg-neutral-900 transition print:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 cursor-pointer"
+              title="Delete Day"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -448,6 +687,7 @@ function ItineraryPlannerContent() {
   // Three-Way Synchronization State (Map ↔ Timeline ↔ Elevation Line Chart)
   const [activeDayIndex, setActiveDayIndex] = useState<number | null>(0);
   const [hoveredDayIndex, setHoveredDayIndex] = useState<number | null>(null);
+  const [editingDayIndex, setEditingDayIndex] = useState<number | null>(null);
 
   const [selectedActivity, setSelectedActivity] = useState<ActivityType>('trekking');
   const [viewLayout, setViewLayout] = useState<'split' | 'mapOnly' | 'timelineOnly'>('split');
@@ -462,6 +702,7 @@ function ItineraryPlannerContent() {
 
   // Persistence State
   const [isSaving, setIsSaving] = useState(false);
+  const [isUpdatingExpedition, setIsUpdatingExpedition] = useState(false);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
 
   // Fetch all expeditions from DB API on mount
@@ -753,6 +994,72 @@ function ItineraryPlannerContent() {
     });
   };
 
+  // Save Edited Waypoint in Itinerary Timeline
+  const handleSaveEditWaypoint = (index: number, updatedFields: Partial<PlannerWaypoint>) => {
+    setWaypoints((prev) => {
+      const updated = [...prev];
+      if (!updated[index]) return prev;
+
+      updated[index] = {
+        ...updated[index],
+        ...updatedFields,
+      };
+
+      // Recalculate altitude gains relative to previous days
+      for (let i = 0; i < updated.length; i++) {
+        const prevAlt = i > 0 ? updated[i - 1].sleepingAltitude : 2000;
+        updated[i].altitudeGain = updated[i].sleepingAltitude - prevAlt;
+      }
+
+      return updated;
+    });
+
+    setEditingDayIndex(null);
+    setActiveDayIndex(index);
+    setSaveSuccessMessage(`Day ${waypoints[index]?.day || index + 1} updated successfully!`);
+    setTimeout(() => setSaveSuccessMessage(null), 3000);
+  };
+
+  // Insert Rest / Acclimatization Day After specified index
+  const handleInsertRestDayAfter = (index: number) => {
+    const currentWp = waypoints[index];
+    if (!currentWp) return;
+
+    const restDay: PlannerWaypoint = {
+      id: `wp-rest-${Date.now()}`,
+      day: index + 2,
+      title: `${currentWp.title.split(' to ')[1] || currentWp.title} Acclimatization & Ridge Exploration`,
+      distanceKm: 4,
+      sleepingAltitude: currentWp.sleepingAltitude,
+      altitudeGain: 0,
+      activityType: 'acclimatization',
+      coordinates: {
+        lat: currentWp.coordinates.lat + 0.003,
+        lng: currentWp.coordinates.lng + 0.003,
+      },
+      notes: 'Acclimatization rest day. High-altitude ridge day hike, hydration, and medical pulse oximeter check.',
+    };
+
+    const updated = [
+      ...waypoints.slice(0, index + 1),
+      restDay,
+      ...waypoints.slice(index + 1),
+    ];
+
+    const renumbered = updated.map((w, idx) => {
+      const prevAlt = idx > 0 ? updated[idx - 1].sleepingAltitude : 2000;
+      return {
+        ...w,
+        day: idx + 1,
+        altitudeGain: w.sleepingAltitude - prevAlt,
+      };
+    });
+
+    setWaypoints(renumbered);
+    setEditingDayIndex(index + 1);
+    setActiveDayIndex(index + 1);
+  };
+
   // Delete Day Waypoint
   const handleDeleteDay = (index: number) => {
     const filtered = waypoints.filter((_, i) => i !== index);
@@ -869,6 +1176,81 @@ function ItineraryPlannerContent() {
       alert(msg);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // Sync changes directly back to connected expedition in database
+  const handleUpdateExpedition = async () => {
+    if (!selectedTrail || !waypoints.length) return;
+    setIsUpdatingExpedition(true);
+    try {
+      let cumDist = 0;
+      const elevationProfile = waypoints.map((w) => {
+        cumDist += w.distanceKm;
+        return {
+          distanceKm: Math.round(cumDist * 10) / 10,
+          elevation: w.sleepingAltitude,
+          label: w.title,
+        };
+      });
+
+      const routeCoordinates =
+        expeditionPolyline.length > 0
+          ? expeditionPolyline
+          : waypoints.map((w) => [w.coordinates.lat, w.coordinates.lng, w.sleepingAltitude]);
+
+      const resTrail = await fetch(`/api/trails/${selectedTrail.slug}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          durationDays: waypoints.length,
+          distanceKm: totalDistance,
+          maxElevation: maxAltitude,
+          elevationProfile,
+          routeCoordinates,
+        }),
+      });
+
+      if (!resTrail.ok) {
+        const errData = await resTrail.json();
+        throw new Error(errData.error || 'Failed to update expedition record');
+      }
+
+      const updatedTrailData = await resTrail.json();
+      setSelectedTrail(updatedTrailData);
+
+      // Also persist to custom itineraries catalog
+      await fetch('/api/itineraries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: `${selectedTrail.name} Official Itinerary`,
+          trailName: selectedTrail.name,
+          author: 'Expedition Guide & Route Master',
+          totalDays: waypoints.length,
+          maxAltitude,
+          difficulty: selectedTrail.difficulty,
+          estimatedCostUSD: waypoints.length * 85,
+          days: waypoints.map((w) => ({
+            day: w.day,
+            title: w.title,
+            route: `Day ${w.day}: ${w.coordinates.lat.toFixed(3)}°N, ${w.coordinates.lng.toFixed(3)}°E`,
+            distanceKm: w.distanceKm,
+            hours: Math.round(w.distanceKm / 2.5),
+            sleepingAltitude: w.sleepingAltitude,
+            altitudeGain: w.altitudeGain,
+            highlights: w.notes || `${ACTIVITY_CONFIG[w.activityType]?.label || 'Trek'} route section`,
+          })),
+        }),
+      });
+
+      setSaveSuccessMessage(`Expedition "${selectedTrail.name}" successfully updated with ${waypoints.length} itinerary days!`);
+      setTimeout(() => setSaveSuccessMessage(null), 5000);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error updating expedition';
+      alert(msg);
+    } finally {
+      setIsUpdatingExpedition(false);
     }
   };
 
@@ -1036,6 +1418,23 @@ function ItineraryPlannerContent() {
             {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             <span>{isSaving ? 'Saving...' : 'Save Cloud'}</span>
           </button>
+
+          {/* Sync Changes to Expedition Button */}
+          {selectedTrail && (
+            <button
+              onClick={handleUpdateExpedition}
+              disabled={isUpdatingExpedition}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold transition shadow-xl disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 cursor-pointer"
+              title={`Save modified itinerary directly back into ${selectedTrail.name} in the database`}
+            >
+              {isUpdatingExpedition ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              <span>{isUpdatingExpedition ? 'Syncing...' : 'Sync to Expedition'}</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1446,17 +1845,75 @@ function ItineraryPlannerContent() {
               viewLayout === 'timelineOnly' ? 'lg:col-span-12' : 'lg:col-span-5'
             } space-y-6 print:col-span-12 print:w-full`}
           >
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2 print:text-black">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-[#B68D40]" />
-                <span>
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider print:text-black">
                   Itinerary Timeline ({waypoints.length} Days)
+                </h3>
+              </div>
+
+              <div className="flex items-center gap-2 print:hidden">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (editingDayIndex !== null) {
+                      setEditingDayIndex(null);
+                    } else {
+                      setEditingDayIndex(activeDayIndex !== null ? activeDayIndex : 0);
+                    }
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition border flex items-center gap-1.5 cursor-pointer ${
+                    editingDayIndex !== null
+                      ? 'bg-[#B68D40] text-black border-[#B68D40] shadow-md'
+                      : 'bg-neutral-800 text-[#B68D40] border-white/10 hover:border-[#B68D40]'
+                  }`}
+                  title="Toggle day editing mode for active stage"
+                >
+                  <Edit3 className="h-3.5 w-3.5" />
+                  <span>{editingDayIndex !== null ? 'Close Edit Mode' : 'Edit Itinerary Day'}</span>
+                </button>
+                <span className="text-xs text-gray-400 font-mono hidden sm:inline">
+                  Drag handle to reorder
                 </span>
-              </h3>
-              <span className="text-xs text-gray-400 font-mono print:hidden">
-                Drag grip handle to reorder days
-              </span>
+              </div>
             </div>
+
+            {/* Active Day Quick Inspector & Edit Shortcut Bar */}
+            {activeDayIndex !== null && waypoints[activeDayIndex] && editingDayIndex !== activeDayIndex && (
+              <div className="px-3.5 py-2.5 rounded-2xl bg-neutral-900/90 border border-white/10 text-xs flex items-center justify-between gap-2 backdrop-blur-xl shadow-lg print:hidden animate-in fade-in duration-150">
+                <div className="flex items-center gap-2 truncate">
+                  <span className="w-2 h-2 rounded-full bg-[#B68D40] animate-pulse shrink-0" />
+                  <span className="text-gray-400 font-mono text-[11px] shrink-0">Selected:</span>
+                  <span className="font-bold text-white truncate text-xs">
+                    Day {waypoints[activeDayIndex].day}: {waypoints[activeDayIndex].title}
+                  </span>
+                  <span className="text-amber-400 font-mono text-[11px] shrink-0 hidden sm:inline">
+                    ({waypoints[activeDayIndex].sleepingAltitude}m)
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setEditingDayIndex(activeDayIndex)}
+                    className="px-2.5 py-1 rounded-lg bg-[#B68D40]/20 hover:bg-[#B68D40] text-[#B68D40] hover:text-black text-[11px] font-bold border border-[#B68D40]/40 transition flex items-center gap-1 cursor-pointer"
+                    title={`Edit all details for Day ${waypoints[activeDayIndex].day}`}
+                  >
+                    <Edit3 className="h-3 w-3" />
+                    <span>Edit Day {waypoints[activeDayIndex].day}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleInsertRestDayAfter(activeDayIndex)}
+                    className="px-2.5 py-1 rounded-lg bg-cyan-950/60 hover:bg-cyan-900/60 text-cyan-300 text-[11px] font-semibold border border-cyan-500/30 transition flex items-center gap-1 cursor-pointer hidden sm:flex"
+                    title="Insert an acclimatization rest day immediately after this stage"
+                  >
+                    <span>🧘</span>
+                    <span>+ Rest Day</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* DND CONTEXT WRAPPER */}
             <DndContext
@@ -1477,9 +1934,14 @@ function ItineraryPlannerContent() {
                       index={idx}
                       isActive={activeDayIndex === idx}
                       isHovered={hoveredDayIndex === idx}
+                      isEditing={editingDayIndex === idx}
                       onSelect={(index) => setActiveDayIndex(index)}
                       onHover={(index) => setHoveredDayIndex(index)}
                       onDelete={(index) => handleDeleteDay(index)}
+                      onStartEdit={(index) => setEditingDayIndex(index)}
+                      onSaveEdit={handleSaveEditWaypoint}
+                      onCancelEdit={() => setEditingDayIndex(null)}
+                      onInsertRestDayAfter={handleInsertRestDayAfter}
                     />
                   ))}
                 </div>
