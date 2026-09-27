@@ -164,6 +164,22 @@ export class CesiumController implements IMapController {
     const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
     this.viewer.resolutionScale = Math.min(dpr, 1.5);
 
+    // 5.5 Google Photorealistic 3D Tiles Integration (Cesium Sandcastle: google-photorealistic-3d-tiles)
+    try {
+      if (typeof this.Cesium.createGooglePhotorealistic3DTileset === 'function') {
+        const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+        const options = googleApiKey ? { key: googleApiKey } : undefined;
+        const googleTileset = await this.Cesium.createGooglePhotorealistic3DTileset(options);
+        this.viewer.scene.primitives.add(googleTileset);
+      } else if (this.Cesium.Cesium3DTileset?.fromIonAssetId) {
+        // Asset ID 2275207 is Google Photorealistic 3D Tiles on Cesium ion
+        const googleTileset = await this.Cesium.Cesium3DTileset.fromIonAssetId(2275207);
+        this.viewer.scene.primitives.add(googleTileset);
+      }
+    } catch (googleTilesetErr) {
+      console.info('Google Photorealistic 3D Tiles fallback to high-resolution satellite topography:', googleTilesetErr);
+    }
+
     // Initial camera placement over default Himalayan center
     this.flyTo(defaultCenter, defaultCenter.altitude || 12000, 2);
 

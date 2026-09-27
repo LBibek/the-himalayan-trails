@@ -44,6 +44,7 @@ interface CesiumGlobeMapProps {
   mode?: 'freeroam' | 'summit-tours' | 'drone-flight';
   initialSummitSlug?: string;
   onFlightTelemetry?: (telemetry: DroneFlightTelemetry) => void;
+  hideHUD?: boolean;
 }
 
 export default function CesiumGlobeMap({
@@ -61,6 +62,7 @@ export default function CesiumGlobeMap({
   mode = 'freeroam',
   initialSummitSlug = 'everest',
   onFlightTelemetry,
+  hideHUD = false,
 }: CesiumGlobeMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const hudRef = useRef<HTMLDivElement>(null);
@@ -489,7 +491,7 @@ export default function CesiumGlobeMap({
                 initialSummitSlug={initialSummitSlug}
               />
             </div>
-          ) : (
+          ) : !hideHUD ? (
             <FloatingMapPanel
               id="cesium-hud-window"
               title="Himalayan Mountain Ranges & Summit Fly-To"
@@ -640,7 +642,7 @@ export default function CesiumGlobeMap({
                 </div>
               </div>
             </FloatingMapPanel>
-          )}
+          ) : null}
         </div>
       )}
     </div>

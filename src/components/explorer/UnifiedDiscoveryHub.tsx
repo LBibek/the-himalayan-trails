@@ -725,6 +725,55 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                             Contour isolines, high-altitude passes, and glacial moraines rendered dynamically.
                           </p>
                         </div>
+
+                        {/* 4. Quick Trail Selector HUD (Docked into Sidebar) */}
+                        <div id="trail-switcher-hud" className="space-y-2 pt-2 border-t border-neutral-900">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">
+                              Quick Trail Selector:
+                            </span>
+                            <span className="text-[9px] text-[#B68D40] font-mono">
+                              {uniqueHudTrails.length} Tracks
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5 max-h-52 overflow-y-auto pr-1">
+                            {uniqueHudTrails.map((t: Trail) => {
+                              const isSelected = activeTrail?.id === t.id;
+                              const cleanName = getCleanTrailName(t.name);
+                              const formattedElevation = t.maxElevation
+                                ? `${t.maxElevation.toLocaleString()}m`
+                                : '';
+                              return (
+                                <button
+                                  key={t.id}
+                                  data-slot="trail-button"
+                                  data-trail-id={t.id}
+                                  aria-pressed={isSelected}
+                                  onClick={() => handleTrailSelect(t)}
+                                  className={`px-2.5 py-1.5 rounded-xl text-[11px] font-semibold transition flex items-center gap-1.5 focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none ${
+                                    isSelected
+                                      ? 'bg-[#B68D40] text-black font-bold shadow-md'
+                                      : 'bg-neutral-900/90 text-gray-300 border border-neutral-800 hover:border-neutral-700 hover:text-white'
+                                  }`}
+                                  title={`${cleanName} (${formattedElevation}) — ${t.region}`}
+                                >
+                                  <span>{cleanName}</span>
+                                  {formattedElevation && (
+                                    <span
+                                      className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${
+                                        isSelected
+                                          ? 'bg-black/20 text-black font-extrabold'
+                                          : 'bg-neutral-800 text-[#B68D40]'
+                                      }`}
+                                    >
+                                      {formattedElevation}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
                       </div>
                     )}
 
@@ -763,15 +812,53 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                           </div>
                         </div>
 
+                        {/* Range Boundaries in 3D */}
+                        <div className="space-y-2 pt-2 border-t border-neutral-900">
+                          <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider block">
+                            Explore Range Boundaries:
+                          </span>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {Object.keys(REGION_FOCUS_COORDS).map((reg) => (
+                              <button
+                                key={reg}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedRegion(reg);
+                                  const target = REGION_FOCUS_COORDS[reg];
+                                  if (target) setFocusedCoords(target.center);
+                                }}
+                                className={`px-2.5 py-1.5 rounded-xl text-[11px] font-semibold transition border text-left flex items-center gap-1.5 ${
+                                  selectedRegion.toLowerCase() === reg.toLowerCase()
+                                    ? 'bg-[#B68D40] text-black border-[#B68D40] font-bold shadow-md'
+                                    : 'bg-neutral-900/90 text-gray-300 border-neutral-800 hover:border-neutral-700 hover:text-white'
+                                }`}
+                              >
+                                <Layers className="h-3 w-3 text-[#B68D40]" />
+                                <span className="truncate">{reg}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
                         {/* Mode Action */}
-                        <button
-                          type="button"
-                          onClick={() => setMapEngine('3d-summit-tours')}
-                          className="w-full py-2.5 rounded-xl bg-[#B68D40] hover:bg-[#c99e4b] text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg transition"
-                        >
-                          <Mountain className="h-4 w-4" />
-                          <span>Launch 3D Summit Orbital Tours</span>
-                        </button>
+                        <div className="space-y-2 pt-2 border-t border-neutral-900">
+                          <button
+                            type="button"
+                            onClick={() => setMapEngine('3d-summit-tours')}
+                            className="w-full py-2.5 rounded-xl bg-[#B68D40] hover:bg-[#c99e4b] text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg transition"
+                          >
+                            <Mountain className="h-4 w-4" />
+                            <span>Launch 3D Summit Orbital Tours</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setMapEngine('2d')}
+                            className="w-full py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-gray-300 text-xs font-semibold transition"
+                          >
+                            Switch to 2D Topo Map
+                          </button>
+                        </div>
                       </div>
                     )}
 
@@ -1223,79 +1310,8 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                       : undefined
                   }
                   onClose3D={() => setMapEngine('2d')}
+                  hideHUD={true}
                 />
-              )}
-
-              {/* ─────────────────────────────────────────── */}
-              {/* TRAIL SWITCHER HUD — top-left inside map    */}
-              {/* ─────────────────────────────────────────── */}
-              {showTrailSwitcher && (
-                <div className="absolute top-3 left-3 z-[999] max-w-[calc(100%-6rem)]">
-                  <FloatingMapPanel
-                    id="trail-switcher-hud"
-                    title="Trail Selector"
-                    icon={<TrendingUp className="h-3.5 w-3.5 text-[#B68D40]" />}
-                    allowDrag={true}
-                    allowResize={false}
-                    allowMinimize={true}
-                    allowMaximize={false}
-                    allowClose={true}
-                    onClose={() => setShowTrailSwitcher(false)}
-                    defaultWidth="w-auto"
-                  >
-                    <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                      <span className="text-[10px] text-gray-400 uppercase font-semibold px-1">
-                        Select Trail:
-                      </span>
-                      {uniqueHudTrails.map((t: Trail) => {
-                        const isSelected = activeTrail?.id === t.id;
-                        const cleanName = getCleanTrailName(t.name);
-                        const formattedElevation = t.maxElevation
-                          ? `${t.maxElevation.toLocaleString()}m`
-                          : '';
-                        return (
-                          <button
-                            key={t.id}
-                            data-slot="trail-button"
-                            data-trail-id={t.id}
-                            aria-pressed={isSelected}
-                            onClick={() => handleTrailSelect(t)}
-                            className={`px-3 py-1.5 rounded-xl text-[11px] font-semibold transition flex items-center gap-1.5 focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none ${
-                              isSelected
-                                ? 'bg-[#B68D40] text-black font-bold shadow-md'
-                                : 'text-gray-300 hover:bg-neutral-800 hover:text-white'
-                            }`}
-                            title={`${cleanName} (${formattedElevation}) — ${t.region}`}
-                          >
-                            <span>{cleanName}</span>
-                            {formattedElevation && (
-                              <span
-                                className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${
-                                  isSelected
-                                    ? 'bg-black/20 text-black font-extrabold'
-                                    : 'bg-neutral-800 text-[#B68D40]'
-                                }`}
-                              >
-                                {formattedElevation}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </FloatingMapPanel>
-                </div>
-              )}
-
-              {/* Restore trail switcher button */}
-              {!showTrailSwitcher && (
-                <button
-                  onClick={() => setShowTrailSwitcher(true)}
-                  className="absolute top-3 left-3 z-[999] px-3 py-1.5 rounded-xl bg-black/80 backdrop-blur-md border border-[#B68D40]/50 text-[#B68D40] hover:text-white hover:bg-black font-bold text-xs flex items-center gap-1.5 shadow-xl transition focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none"
-                >
-                  <TrendingUp className="h-3.5 w-3.5" />
-                  <span>Trails</span>
-                </button>
               )}
 
               {/* ─────────────────────────────────────────────────── */}
