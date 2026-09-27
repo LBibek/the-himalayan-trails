@@ -28,6 +28,8 @@ import {
 } from 'lucide-react';
 import { Trail, Landmark, Inquiry, ContactMessage } from '@/types';
 import { EditableLandmark } from '@/components/admin/ExpeditionMapEditor';
+import GpxRouteUploader from '@/components/admin/GpxRouteUploader';
+import { ParsedRouteResult } from '@/lib/gpxParser';
 
 // Dynamically import map editor with SSR disabled
 const ExpeditionMapEditor = dynamic(() => import('@/components/admin/ExpeditionMapEditor'), {
@@ -109,12 +111,69 @@ export default function AdminPage() {
   const [highlightsInput, setHighlightsInput] = useState('Kala Patthar Sunrise, Khumbu Icefall, Tengboche Monastery');
   const [imageUrl, setImageUrl] = useState('/steps/trails.jpg');
 
-  // Manual Map Drawn Data
+  // Manual Map Drawn & GPX Imported Data
   const [waypoints, setWaypoints] = useState<[number, number][]>([]);
   const [landmarks, setLandmarks] = useState<EditableLandmark[]>([]);
+  const [elevationProfile, setElevationProfile] = useState<{ distanceKm: number; elevation: number; label?: string }[]>([]);
+  const [uploadedGpxInfo, setUploadedGpxInfo] = useState<ParsedRouteResult | null>(null);
 
   // Notification State
   const [successMessage, setSuccessMessage] = useState('');
+
+  // Handle GPX Route Loaded
+  const handleRouteLoaded = (result: ParsedRouteResult) => {
+    setUploadedGpxInfo(result);
+    setWaypoints(result.waypoints);
+    if (result.landmarks.length > 0) {
+      setLandmarks(result.landmarks);
+    }
+    setElevationProfile(result.elevationProfile);
+  };
+
+  // Handle Auto-fill Form with GPX Metadata
+  const handleApplyGpxToForm = (result: ParsedRouteResult) => {
+    if (result.name) setTitle(result.name);
+    if (result.description) setDescription(result.description);
+    if (result.maxElevationM > 0) setMaxElevation(result.maxElevationM);
+    if (result.estimatedDays > 0) setDurationDays(result.estimatedDays);
+    if (result.startPoint) setStartPoint(result.startPoint);
+    if (result.endPoint) setEndPoint(result.endPoint);
+
+    // Auto-detect Himalayan region from geographic longitude & latitude
+    if (result.waypoints.length > 0) {
+      const [lat, lng] = result.waypoints[0];
+      if (lng > 86.4 && lng < 87.2) setRegion('Everest');
+      else if (lng >= 83.5 && lng <= 84.6) setRegion('Annapurna');
+      else if (lng >= 84.6 && lng <= 85.2) setRegion('Manaslu');
+      else if (lng >= 85.2 && lng <= 85.8) setRegion('Langtang');
+      else if (lng >= 83.6 && lng <= 84.2 && lat > 28.7) setRegion('Mustang');
+      else if (lng >= 86.2 && lng <= 86.6) setRegion('Rolwaling');
+    }
+
+    // Auto-detect difficulty based on max altitude & distance
+    if (result.maxElevationM >= 5400 || result.totalDistanceKm > 100) {
+      setDifficulty('Extreme');
+    } else if (result.maxElevationM >= 4500 || result.totalDistanceKm > 60) {
+      setDifficulty('Challenging');
+    } else if (result.maxElevationM >= 3500) {
+      setDifficulty('Strenuous');
+    } else {
+      setDifficulty('Moderate');
+    }
+
+    // Auto-populate highlights from parsed landmark names
+    if (result.landmarks.length > 0) {
+      const lmHighlights = result.landmarks.slice(0, 5).map((l) => l.name).join(', ');
+      setHighlightsInput(lmHighlights);
+    }
+  };
+
+  const handleClearGpx = () => {
+    setUploadedGpxInfo(null);
+    setWaypoints([]);
+    setLandmarks([]);
+    setElevationProfile([]);
+  };
 
   const handleEditExpedition = (trail: Trail) => {
     setEditingTrailSlug(trail.slug);
@@ -128,6 +187,12 @@ export default function AdminPage() {
     setImageUrl(trail.image);
     setHighlightsInput(trail.highlights.join(', '));
     setDescription(trail.description);
+    if (trail.routeCoordinates && Array.isArray(trail.routeCoordinates)) {
+      setWaypoints(trail.routeCoordinates.map((pt) => [pt[0], pt[1]]));
+    }
+    if (trail.elevationProfile && Array.isArray(trail.elevationProfile)) {
+      setElevationProfile(trail.elevationProfile);
+    }
     setActiveTab('create');
   };
 
@@ -137,6 +202,8 @@ export default function AdminPage() {
     setDescription('');
     setWaypoints([]);
     setLandmarks([]);
+    setElevationProfile([]);
+    setUploadedGpxInfo(null);
   };
 
   const handleSaveExpedition = (e: React.FormEvent) => {
@@ -186,7 +253,9 @@ export default function AdminPage() {
       highlights: highlightsArray.length ? highlightsArray : ['High Pass Traverse', 'Panoramic Snow Views'],
       bestMonths: ['Mar-May', 'Sep-Nov'],
       startPoint,
-      endPoint
+      endPoint,
+      routeCoordinates: waypoints.length > 0 ? waypoints : undefined,
+      elevationProfile: elevationProfile.length > 0 ? elevationProfile : undefined
     };
 
     if (editingTrailSlug) {
@@ -633,22 +702,47 @@ export default function AdminPage() {
             </div>
           </div>
 
-          {/* Section 2: Interactive Leaflet Map Trail & Landmark Builder */}
-          <div className="p-6 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-4">
+          {/* Section 2: GPX Route Upload & Interactive Map Studio */}
+          <div className="p-6 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-800 pb-3">
               <div className="flex items-center gap-2">
                 <Route className="h-5 w-5 text-[#B68D40]" />
-                <h2 className="text-lg font-bold text-white">2. Interactive Map Studio — Draw Trail & Place Landmarks</h2>
+                <h2 className="text-lg font-bold text-white">2. Route Studio — Upload GPX / KML &amp; Interactive Map Editor</h2>
               </div>
               <span className="text-xs text-[#B68D40] font-semibold bg-[#B68D40]/10 px-3 py-1 rounded-full border border-[#B68D40]/30">
-                Leaflet Point-by-Point Studio
+                GPX 1.1 Native &amp; Leaflet Studio
               </span>
             </div>
 
-            <ExpeditionMapEditor
-              onWaypointsChange={(pts) => setWaypoints(pts)}
-              onLandmarksChange={(lms) => setLandmarks(lms)}
+            {/* GPX & KML Route Importer Dropzone */}
+            <GpxRouteUploader
+              onRouteLoaded={handleRouteLoaded}
+              onApplyToForm={handleApplyGpxToForm}
+              onClear={handleClearGpx}
+              initialRouteName={title}
             />
+
+            {/* Interactive Leaflet Map Editor */}
+            <div className="space-y-3 pt-2">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <MapPin className="h-4 w-4 text-[#B68D40]" />
+                  <span>Interactive Map Studio (Visual Waypoints &amp; Landmark Placement)</span>
+                </h3>
+                {waypoints.length > 0 && (
+                  <span className="text-xs text-gray-400 font-mono">
+                    <strong className="text-[#B68D40]">{waypoints.length}</strong> waypoints mapped
+                  </span>
+                )}
+              </div>
+
+              <ExpeditionMapEditor
+                initialWaypoints={waypoints}
+                initialLandmarks={landmarks}
+                onWaypointsChange={(pts) => setWaypoints(pts)}
+                onLandmarksChange={(lms) => setLandmarks(lms)}
+              />
+            </div>
           </div>
 
           {/* Action Footer */}

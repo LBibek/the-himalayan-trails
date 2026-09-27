@@ -2489,7 +2489,59 @@ describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () =>
       assert.ok(hubSrc.includes('onClick={() => handleTrailSelect(t)}'), 'Button click must call handleTrailSelect(t)');
     });
   });
+
+  describe('21. Admin GPX Route Uploader, Native XML Parser & Route Persistence', () => {
+    test('GpxRouteUploader component exists and implements full drag-and-drop dropzone contract', () => {
+      const uploaderSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'admin', 'GpxRouteUploader.tsx'), 'utf8');
+
+      // Assert HeroUI compound slots and drag-and-drop events
+      assert.ok(uploaderSrc.includes('data-slot="base"'), 'Component must declare data-slot="base"');
+      assert.ok(uploaderSrc.includes('onDragOver={handleDragOver}'), 'Must handle dragOver event');
+      assert.ok(uploaderSrc.includes('onDrop={handleDrop}'), 'Must handle drop event');
+      assert.ok(uploaderSrc.includes('accept=".gpx,.kml,.xml"'), 'Must accept standard .gpx, .kml, and .xml file formats');
+      assert.ok(uploaderSrc.includes('FileReader'), 'Must use native FileReader to read route files');
+      assert.ok(uploaderSrc.includes('SAMPLE_EBC_GPX'), 'Must provide authentic Himalayan EBC GPX preset for 1-click test');
+      assert.ok(uploaderSrc.includes('SAMPLE_ANNAPURNA_GPX'), 'Must provide authentic Annapurna GPX preset');
+    });
+
+    test('parseGpx extracts authentic GPS trackpoints, landmarks and elevation profile', async () => {
+      const gpxModule = await import('../src/lib/gpxParser.ts');
+      assert.ok(typeof gpxModule.parseGpx === 'function', 'parseGpx must be an exported function');
+      assert.ok(typeof gpxModule.parseRouteFile === 'function', 'parseRouteFile must be an exported function');
+
+      const result = gpxModule.parseRouteFile(gpxModule.SAMPLE_EBC_GPX, 'Everest_Base_Camp.gpx');
+      assert.equal(result.format, 'gpx');
+      assert.ok(result.trackpoints.length >= 10, 'Must extract at least 10 GPS trackpoints');
+      assert.ok(result.waypoints.length === result.trackpoints.length, 'Waypoints array must match trackpoint count');
+      assert.ok(result.totalDistanceKm > 40, 'EBC total distance must be calculated > 40 km');
+      assert.equal(result.maxElevationM, 5364, 'Max elevation must be 5364m at Everest Base Camp');
+      assert.ok(result.landmarks.length >= 5, 'Must extract at least 5 key landmarks');
+      assert.ok(result.elevationGainM > 2000, 'Elevation gain must be > 2000m');
+      assert.ok(Array.isArray(result.elevationProfile) && result.elevationProfile.length > 0, 'Must generate elevationProfile array');
+    });
+
+    test('Admin page renders GpxRouteUploader and passes waypoints to ExpeditionMapEditor', () => {
+      const adminSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'admin', 'page.tsx'), 'utf8');
+
+      assert.ok(adminSrc.includes('<GpxRouteUploader'), 'Admin page must mount GpxRouteUploader component');
+      assert.ok(adminSrc.includes('onRouteLoaded={handleRouteLoaded}'), 'Admin must listen to route load event');
+      assert.ok(adminSrc.includes('onApplyToForm={handleApplyGpxToForm}'), 'Admin must support auto-filling form details');
+      assert.ok(adminSrc.includes('initialWaypoints={waypoints}'), 'ExpeditionMapEditor must receive initialWaypoints');
+      assert.ok(adminSrc.includes('initialLandmarks={landmarks}'), 'ExpeditionMapEditor must receive initialLandmarks');
+      assert.ok(adminSrc.includes('routeCoordinates: waypoints'), 'handleSaveExpedition must pass routeCoordinates in payload');
+    });
+
+    test('Database and /api/trails endpoints persist route_coordinates and elevation_profile', () => {
+      const trailsApiSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'api', 'trails', 'route.ts'), 'utf8');
+      const dbSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'lib', 'db.ts'), 'utf8');
+
+      assert.ok(trailsApiSrc.includes('routeCoordinates: body.routeCoordinates'), 'POST /api/trails must persist routeCoordinates');
+      assert.ok(dbSrc.includes('route_coordinates'), 'trails table must have route_coordinates column');
+      assert.ok(dbSrc.includes('elevation_profile'), 'trails table must have elevation_profile column');
+    });
+  });
 });
+
 
 
 

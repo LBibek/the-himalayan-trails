@@ -57,7 +57,8 @@ export async function POST(request: NextRequest) {
       bestMonths: Array.isArray(body.bestMonths) ? body.bestMonths : ['Mar-May', 'Oct-Nov'],
       startPoint: body.startPoint || 'Kathmandu',
       endPoint: body.endPoint || 'Kathmandu',
-      elevationProfile: body.elevationProfile
+      elevationProfile: body.elevationProfile,
+      routeCoordinates: body.routeCoordinates
     });
 
     return NextResponse.json(newTrail, { status: 201 });

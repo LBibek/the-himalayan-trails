@@ -46,6 +46,19 @@ function MapEventsHandler({
   return null;
 }
 
+function MapBoundsUpdater({ waypoints }: { waypoints: [number, number][] }) {
+  const map = useMap();
+  useEffect(() => {
+    if (waypoints.length > 1) {
+      const bounds = L.latLngBounds(waypoints.map((w) => [w[0], w[1]]));
+      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+    } else if (waypoints.length === 1) {
+      map.setView(waypoints[0], 12);
+    }
+  }, [waypoints, map]);
+  return null;
+}
+
 // Calculate total distance along polyline coords in kilometers
 function calculatePolylineDistance(coords: [number, number][]): number {
   if (coords.length < 2) return 0;
@@ -94,6 +107,19 @@ export default function ExpeditionMapEditor({
   const [mode, setMode] = useState<'drawTrail' | 'addLandmark' | 'view'>('drawTrail');
   const [waypoints, setWaypoints] = useState<[number, number][]>(initialWaypoints);
   const [landmarks, setLandmarks] = useState<EditableLandmark[]>(initialLandmarks);
+
+  // Synchronize when parent passes updated initialWaypoints or initialLandmarks (e.g. GPX upload or edit)
+  useEffect(() => {
+    if (initialWaypoints) {
+      setWaypoints(initialWaypoints);
+    }
+  }, [initialWaypoints]);
+
+  useEffect(() => {
+    if (initialLandmarks) {
+      setLandmarks(initialLandmarks);
+    }
+  }, [initialLandmarks]);
 
   // New Landmark Modal / Form State
   const [pendingLandmarkCoords, setPendingLandmarkCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -266,6 +292,8 @@ export default function ExpeditionMapEditor({
             onAddWaypoint={handleAddWaypoint}
             onSelectLocationForLandmark={handleSelectLocationForLandmark}
           />
+
+          <MapBoundsUpdater waypoints={waypoints} />
 
           {/* Draw Polyline for Trail */}
           {waypoints.length > 0 && (
