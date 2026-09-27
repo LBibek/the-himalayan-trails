@@ -68,5 +68,6 @@ export interface IMapController {
   seekDroneFlight?(distanceMetersOrRatio: number): void;
   stopDroneFlight?(): void;
   onDroneTelemetry?(listener: (telemetry: DroneFlightTelemetry) => void): () => void;
+  onMarkerClick?(listener: (markerId: string) => void): () => void;
 }
 

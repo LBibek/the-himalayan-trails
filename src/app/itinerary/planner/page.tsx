@@ -109,6 +109,7 @@ function SortableWaypointItem({
 
   return (
     <div
+      id={`planner-day-card-${item.day}`}
       ref={setNodeRef}
       style={style}
       data-slot="base"
@@ -827,6 +828,20 @@ export default function ItineraryPlannerPage() {
                 height={viewLayout === 'mapOnly' ? 'h-[650px]' : 'h-[520px]'}
                 polyline={cesiumPolyline}
                 markers={cesiumMarkers}
+                onMarkerClick={(markerId) => {
+                  const match = markerId.match(/planner-marker-(\d+)/);
+                  if (match) {
+                    const dayNum = parseInt(match[1], 10);
+                    const idx = waypoints.findIndex((w) => w.day === dayNum);
+                    if (idx !== -1) {
+                      setActiveDayIndex(idx);
+                      const el = document.getElementById(`planner-day-card-${dayNum}`);
+                      if (el) {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                      }
+                    }
+                  }
+                }}
                 scrubberPoint={
                   activeWp
                     ? {
@@ -841,7 +856,7 @@ export default function ItineraryPlannerPage() {
                     ? {
                         lat: activeWp.coordinates.lat,
                         lng: activeWp.coordinates.lng,
-                        altitude: 9000,
+                        altitude: (activeWp.sleepingAltitude || 3500) + 2500,
                       }
                     : { lat: 27.85, lng: 86.75, altitude: 9000 }
                 }

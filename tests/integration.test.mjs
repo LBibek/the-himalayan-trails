@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { scryptSync, randomBytes, timingSafeEqual, createHmac } from 'node:crypto';
+import { CesiumController } from '../src/lib/map/CesiumController.ts';
 
 describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () => {
   let db;
@@ -1881,6 +1882,140 @@ describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () =>
       assert.ok(userBadges.includes('trail_blazer'));
       assert.ok(userBadges.includes('safety_sentinel'));
       assert.ok(userBadges.includes('everest_pioneer'));
+    });
+  });
+
+  // =========================================================================
+  // 15. Cesium 3D Entity Collision Resolution & Planner 2D/3D Synchronization
+  // =========================================================================
+  describe('15. Cesium 3D Entity Collision Resolution & Planner 2D/3D Synchronization', () => {
+    function createMockViewer() {
+      const entitiesMap = new Map();
+      const viewer = {
+        scene: {
+          requestRender: () => {},
+        },
+        camera: {
+          flyTo: () => {},
+          setView: () => {},
+          cancelFlight: () => {},
+        },
+        entities: {
+          get values() {
+            return Array.from(entitiesMap.values());
+          },
+          add: (opts) => {
+            if (!opts || !opts.id) throw new Error('Entity id required');
+            if (entitiesMap.has(opts.id)) {
+              throw new Error(`DeveloperError: An entity with id ${opts.id} already exists in this collection.`);
+            }
+            const entity = { id: opts.id, ...opts };
+            entitiesMap.set(opts.id, entity);
+            return entity;
+          },
+          getById: (id) => entitiesMap.get(id) || null,
+          contains: (entity) => entity && entitiesMap.has(entity.id),
+          remove: (entity) => {
+            if (entity && entity.id) {
+              return entitiesMap.delete(entity.id);
+            }
+            return false;
+          },
+        },
+      };
+
+      const ctrl = new CesiumController();
+      ctrl.viewer = viewer;
+      ctrl.Cesium = {
+        Cartesian3: {
+          fromDegrees: (lng, lat, alt) => ({ x: lng, y: lat, z: alt }),
+        },
+        Color: {
+          BLACK: { r: 0, g: 0, b: 0 },
+          fromCssColorString: () => ({ r: 1, g: 0.8, b: 0 }),
+        },
+        LabelStyle: { FILL_AND_OUTLINE: 0 },
+        Cartesian2: function (x, y) { return { x, y }; },
+        Math: {
+          toRadians: (d) => (d * Math.PI) / 180,
+        },
+      };
+      return { ctrl, viewer, entitiesMap };
+    }
+
+    test('addMarkers is strictly idempotent and prevents Cesium DeveloperError on duplicate IDs', () => {
+      const { ctrl, entitiesMap } = createMockViewer();
+
+      const testMarkers = [
+        { id: 'planner-marker-1', position: { lat: 27.8, lng: 86.7 }, title: 'Day 1: Lukla to Phakding' },
+        { id: 'planner-marker-2', position: { lat: 27.81, lng: 86.71 }, title: 'Day 2: Phakding to Namche' },
+      ];
+
+      // First addition
+      assert.doesNotThrow(() => {
+        ctrl.addMarkers(testMarkers);
+      });
+      assert.equal(entitiesMap.size, 2);
+      assert.ok(entitiesMap.has('planner-marker-1'));
+      assert.ok(entitiesMap.has('planner-marker-2'));
+
+      // Second identical addition (simulating rapid 2D/3D toggle or React re-render)
+      // Without our fix, this threw: DeveloperError: An entity with id planner-marker-1 already exists
+      assert.doesNotThrow(() => {
+        ctrl.addMarkers(testMarkers);
+      });
+      assert.equal(entitiesMap.size, 2, 'Entity count must remain 2 after re-adding existing markers');
+      assert.ok(entitiesMap.has('planner-marker-1'));
+      assert.ok(entitiesMap.has('planner-marker-2'));
+    });
+
+    test('clearMarkers cleanly removes both tracked and orphaned planner/landmark marker entities', () => {
+      const { ctrl, entitiesMap } = createMockViewer();
+
+      ctrl.addMarkers([
+        { id: 'planner-marker-1', position: { lat: 27.8, lng: 86.7 }, title: 'Day 1' },
+        { id: 'planner-marker-2', position: { lat: 27.81, lng: 86.71 }, title: 'Day 2' },
+      ]);
+      assert.equal(entitiesMap.size, 2);
+
+      ctrl.clearMarkers();
+      assert.equal(entitiesMap.size, 0, 'All planner markers should be cleared');
+    });
+
+    test('setTrailPolyline safely replaces existing polyline without ID collision', () => {
+      const { ctrl, entitiesMap } = createMockViewer();
+
+      const poly1 = {
+        id: 'planner-3d-route',
+        points: [{ lat: 27.8, lng: 86.7, altitude: 3000 }, { lat: 27.81, lng: 86.71, altitude: 3400 }],
+      };
+      const poly2 = {
+        id: 'planner-3d-route',
+        points: [{ lat: 27.8, lng: 86.7, altitude: 3000 }, { lat: 27.82, lng: 86.72, altitude: 3800 }],
+      };
+
+      assert.doesNotThrow(() => {
+        ctrl.setTrailPolyline(poly1);
+        ctrl.setTrailPolyline(poly2);
+      });
+      assert.ok(entitiesMap.has('planner-3d-route'));
+    });
+
+    test('onMarkerClick pub/sub registers and notifies listeners cleanly', () => {
+      const { ctrl } = createMockViewer();
+
+      let clicked = null;
+      const unsubscribe = ctrl.onMarkerClick((id) => {
+        clicked = id;
+      });
+
+      // Simulate click
+      ctrl.markerClickListeners.forEach((fn) => fn('planner-marker-3'));
+      assert.equal(clicked, 'planner-marker-3');
+
+      unsubscribe();
+      ctrl.markerClickListeners.forEach((fn) => fn('planner-marker-4'));
+      assert.equal(clicked, 'planner-marker-3', 'Unsubscribed listener must not be called');
     });
   });
 });

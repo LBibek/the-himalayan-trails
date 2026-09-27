@@ -45,6 +45,8 @@ export class CesiumController implements IMapController {
   private droneLandmarkCheckpoints: Array<{ id: string; name: string; distanceMeters: number }> = [];
   private lastDroneTickTime = 0;
   private lastPolylineObj: MapPolyline | null = null;
+  private markerClickListeners: Set<(markerId: string) => void> = new Set();
+  private clickHandler: any = null;
 
   get isInitialized(): boolean {
     return this._isInitialized;
@@ -144,6 +146,13 @@ export class CesiumController implements IMapController {
       msaaSamples: 2,
       skyAtmosphere: new this.Cesium.SkyAtmosphere(),
     });
+ 
+    // Suppress raw Cesium developer error popups & acceleration notices in production
+    if (this.viewer?.cesiumWidget) {
+      this.viewer.cesiumWidget.showErrorPanel = (title: string, message: string, error: any) => {
+        console.warn('Cesium Notice (suppressed raw dialog):', title, message, error);
+      };
+    }
 
     // 5. Himalayan Lighting & Topographic Depth Tuning
     const scene = this.viewer.scene;
@@ -157,6 +166,28 @@ export class CesiumController implements IMapController {
 
     // Initial camera placement over default Himalayan center
     this.flyTo(defaultCenter, defaultCenter.altitude || 12000, 2);
+
+    // 6. Interactive Marker Click Handler
+    if (this.Cesium.ScreenSpaceEventHandler && this.viewer.scene?.canvas) {
+      this.clickHandler = new this.Cesium.ScreenSpaceEventHandler(this.viewer.scene.canvas);
+      this.clickHandler.setInputAction((click: any) => {
+        try {
+          const pickedObject = this.viewer.scene.pick(click.position);
+          if (this.Cesium.defined(pickedObject) && pickedObject.id && typeof pickedObject.id.id === 'string') {
+            const id = pickedObject.id.id;
+            this.markerClickListeners.forEach((fn) => {
+              try {
+                fn(id);
+              } catch (e) {
+                console.error('Marker click listener error:', e);
+              }
+            });
+          }
+        } catch (err) {
+          console.warn('Click pick error in Cesium:', err);
+        }
+      }, this.Cesium.ScreenSpaceEventType.LEFT_CLICK);
+    }
 
     this._isInitialized = true;
     scene.requestRender();
@@ -255,8 +286,14 @@ export class CesiumController implements IMapController {
       this.Cesium.Cartesian3.fromDegrees(p.lng, p.lat, (p.altitude || 3000) + 15)
     );
 
+    const polyId = polyline.id || 'himalayan-3d-trail';
+    const existing = this.viewer.entities.getById(polyId);
+    if (existing) {
+      this.viewer.entities.remove(existing);
+    }
+
     this.polylinesEntity = this.viewer.entities.add({
-      id: polyline.id || 'himalayan-3d-trail',
+      id: polyId,
       polyline: {
         positions,
         width: polyline.weight || 5,
@@ -282,9 +319,23 @@ export class CesiumController implements IMapController {
     this.droneTotalDistanceMeters = 0;
     this.droneCurrentDistanceMeters = 0;
 
-    if (this.viewer && this.polylinesEntity) {
-      this.viewer.entities.remove(this.polylinesEntity);
-      this.polylinesEntity = null;
+    if (this.viewer) {
+      if (this.polylinesEntity) {
+        try {
+          if (this.viewer.entities.contains(this.polylinesEntity)) {
+            this.viewer.entities.remove(this.polylinesEntity);
+          }
+        } catch {}
+        this.polylinesEntity = null;
+      }
+      const existingTrail = this.viewer.entities.getById('himalayan-3d-trail');
+      if (existingTrail) {
+        this.viewer.entities.remove(existingTrail);
+      }
+      const existingPlanner = this.viewer.entities.getById('planner-3d-route');
+      if (existingPlanner) {
+        this.viewer.entities.remove(existingPlanner);
+      }
       this.viewer.scene.requestRender();
     }
   }
@@ -302,8 +353,14 @@ export class CesiumController implements IMapController {
         this.Cesium.Cartesian3.fromDegrees(c[1], c[0], 3500)
       );
 
+      const entityId = `route-3d-${key}`;
+      const existing = this.viewer.entities.getById(entityId);
+      if (existing) {
+        this.viewer.entities.remove(existing);
+      }
+
       const entity = this.viewer.entities.add({
-        id: `route-3d-${key}`,
+        id: entityId,
         name: route.name,
         polyline: {
           positions,
@@ -321,7 +378,13 @@ export class CesiumController implements IMapController {
 
   clearAllRouteTracks(): void {
     if (!this.viewer) return;
-    this.routeEntities.forEach((entity) => this.viewer.entities.remove(entity));
+    this.routeEntities.forEach((entity) => {
+      try {
+        if (this.viewer.entities.contains(entity)) {
+          this.viewer.entities.remove(entity);
+        }
+      } catch {}
+    });
     this.routeEntities = [];
     this.viewer.scene.requestRender();
   }
@@ -342,8 +405,14 @@ export class CesiumController implements IMapController {
         positions.push(positions[0]);
       }
 
+      const entityId = `range-bound-${range.name.toLowerCase()}`;
+      const existing = this.viewer.entities.getById(entityId);
+      if (existing) {
+        this.viewer.entities.remove(existing);
+      }
+
       const entity = this.viewer.entities.add({
-        id: `range-bound-${range.name.toLowerCase()}`,
+        id: entityId,
         name: `${range.name} Range Boundary`,
         polyline: {
           positions,
@@ -361,7 +430,13 @@ export class CesiumController implements IMapController {
 
   clearRangeBoundaries(): void {
     if (!this.viewer) return;
-    this.rangeEntities.forEach((entity) => this.viewer.entities.remove(entity));
+    this.rangeEntities.forEach((entity) => {
+      try {
+        if (this.viewer.entities.contains(entity)) {
+          this.viewer.entities.remove(entity);
+        }
+      } catch {}
+    });
     this.rangeEntities = [];
     this.viewer.scene.requestRender();
   }
@@ -370,6 +445,12 @@ export class CesiumController implements IMapController {
     if (!this.viewer || !this.Cesium) return;
 
     markers.forEach((m) => {
+      // 1. Remove existing entity with identical ID to guarantee idempotency and avoid Cesium DeveloperError
+      const existing = this.viewer.entities.getById(m.id);
+      if (existing) {
+        this.viewer.entities.remove(existing);
+      }
+
       const entity = this.viewer.entities.add({
         id: m.id,
         position: this.Cesium.Cartesian3.fromDegrees(m.position.lng, m.position.lat, (m.elevation || 3500) + 15),
@@ -404,8 +485,28 @@ export class CesiumController implements IMapController {
 
   clearMarkers(): void {
     if (!this.viewer) return;
-    this.markersEntities.forEach((entity) => this.viewer.entities.remove(entity));
+    this.markersEntities.forEach((entity) => {
+      try {
+        if (this.viewer.entities.contains(entity)) {
+          this.viewer.entities.remove(entity);
+        }
+      } catch {}
+    });
     this.markersEntities = [];
+
+    // Also purge any lingering planner or landmark markers by prefix
+    try {
+      const allEntities = this.viewer.entities.values;
+      if (Array.isArray(allEntities)) {
+        for (let i = allEntities.length - 1; i >= 0; i--) {
+          const ent = allEntities[i];
+          if (ent && typeof ent.id === 'string' && (ent.id.startsWith('planner-marker-') || ent.id.startsWith('landmark-marker-'))) {
+            this.viewer.entities.remove(ent);
+          }
+        }
+      }
+    } catch {}
+
     this.viewer.scene.requestRender();
   }
 
@@ -973,10 +1074,24 @@ export class CesiumController implements IMapController {
     });
   }
 
+  onMarkerClick(listener: (markerId: string) => void): () => void {
+    this.markerClickListeners.add(listener);
+    return () => {
+      this.markerClickListeners.delete(listener);
+    };
+  }
+
   destroy(): void {
     this.stopTour();
     this.stopDroneFlight();
     this.droneTelemetryListeners.clear();
+    if (this.clickHandler) {
+      try {
+        this.clickHandler.destroy();
+      } catch {}
+      this.clickHandler = null;
+    }
+    this.markerClickListeners.clear();
     if (this.viewer && !this.viewer.isDestroyed()) {
       this.viewer.destroy();
       this.viewer = null;

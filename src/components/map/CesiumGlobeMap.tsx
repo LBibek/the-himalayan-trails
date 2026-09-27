@@ -20,6 +20,7 @@ import {
   Maximize2,
   Navigation,
   Plane,
+  AlertTriangle,
 } from 'lucide-react';
 import gsap from 'gsap';
 import { HIMALAYAN_SUMMITS } from '@/data/summitTours';
@@ -34,6 +35,8 @@ interface CesiumGlobeMapProps {
   markers?: MapMarker[];
   landmarks?: Landmark[];
   onSelectLandmark?: (landmark: Landmark) => void;
+  onMarkerClick?: (markerId: string) => void;
+  onFlyToFullRoute?: () => void;
   scrubberPoint?: GeoPoint | null;
   activeTrail?: Trail | null;
   height?: string;
@@ -49,6 +52,8 @@ export default function CesiumGlobeMap({
   markers = [],
   landmarks: propLandmarks,
   onSelectLandmark,
+  onMarkerClick,
+  onFlyToFullRoute,
   scrubberPoint,
   activeTrail,
   height = 'h-[600px]',
@@ -113,6 +118,17 @@ export default function CesiumGlobeMap({
       .then(() => {
         setIsLoading(false);
 
+        // Register interactive marker click listener
+        if (controller.onMarkerClick) {
+          controller.onMarkerClick((markerId: string) => {
+            onMarkerClick?.(markerId);
+            const matched = allLandmarks.find((lm) => lm.id === markerId);
+            if (matched) {
+              onSelectLandmark?.(matched);
+            }
+          });
+        }
+
         if (polyline) {
           controller.setTrailPolyline(polyline);
         } else if (activeTrail) {
@@ -134,6 +150,7 @@ export default function CesiumGlobeMap({
         }
 
         if (allMarkers.length > 0) {
+          controller.clearMarkers();
           controller.addMarkers(allMarkers);
         }
 
@@ -320,19 +337,27 @@ export default function CesiumGlobeMap({
         </div>
       )}
 
-      {/* Error Fallback */}
+      {/* Non-Intrusive Hardware Acceleration Notice & Fallback */}
       {loadError && (
-        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-neutral-950/90 p-6 text-center text-white space-y-3">
-          <Mountain className="w-10 h-10 text-red-400 mx-auto" />
-          <h3 className="text-lg font-bold text-red-300">Cesium 3D Acceleration Notice</h3>
-          <p className="text-xs text-gray-400 max-w-md">{loadError}</p>
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/85 backdrop-blur-xl p-6 text-center text-white space-y-4">
+          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center">
+            <AlertTriangle className="w-6 h-6 text-amber-400" />
+          </div>
+          <div className="space-y-1 max-w-md">
+            <h3 className="text-base font-bold text-amber-300">Cesium 3D Acceleration Notice</h3>
+            <p className="text-xs text-gray-300 leading-relaxed">
+              {loadError.includes('already exists')
+                ? 'Dynamic entity synchronization refreshed.'
+                : loadError}
+            </p>
+          </div>
           {onClose3D && (
             <button
               onClick={onClose3D}
               data-slot="trigger"
-              className="px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs font-semibold text-white transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B68D40]"
+              className="px-4 py-2 rounded-xl bg-[#B68D40] hover:bg-[#c99e4b] text-xs font-bold text-black transition shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B68D40]"
             >
-              Switch Back to 2D Topo Map
+              Switch to 2D Topo Map
             </button>
           )}
         </div>
@@ -385,8 +410,23 @@ export default function CesiumGlobeMap({
             )}
           </div>
 
-          {/* Perspective Preset Buttons */}
+          {/* Perspective Preset Buttons & Full Route Overview */}
           <div className="flex items-center gap-1 bg-black/75 backdrop-blur-xl border border-border/40 rounded-xl p-1 pointer-events-auto">
+            {polyline && polyline.points.length > 0 && (
+              <button
+                onClick={() => {
+                  const mid = polyline.points[Math.floor(polyline.points.length / 2)];
+                  controllerRef.current?.flyTo(mid, 18000, 2.0);
+                  onFlyToFullRoute?.();
+                }}
+                data-slot="trigger"
+                className="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-gray-300 hover:text-white hover:bg-white/10 transition flex items-center gap-1"
+                title="View Full Route from Orbit"
+              >
+                <Eye className="w-3 h-3 text-[#B68D40]" />
+                <span>Full Route</span>
+              </button>
+            )}
             <button
               onClick={() => handlePerspectiveChange('topo')}
               data-slot="trigger"
