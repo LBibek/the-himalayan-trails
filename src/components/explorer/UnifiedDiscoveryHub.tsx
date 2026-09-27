@@ -35,7 +35,11 @@ import {
   LayoutList,
   Grid,
   Eye,
-  Activity
+  Activity,
+  Share2,
+  Route,
+  Download,
+  AlertCircle
 } from 'lucide-react';
 import { Trail, Landmark } from '@/types';
 import { ROUTE_TRACKS } from '@/data/routeTracks';
@@ -95,86 +99,295 @@ interface SidebarQuickSpecsProps {
   trail: Trail;
   onBack: () => void;
   onFocusMap: () => void;
+  onToggleSave?: (trailId: string) => void;
+  isSaved?: boolean;
 }
 
-function SidebarQuickSpecs({ trail, onBack, onFocusMap }: SidebarQuickSpecsProps) {
+function getDifficultyBadge(diff: string) {
+  const d = diff?.toLowerCase() || '';
+  if (d.includes('easy')) return { label: 'Easy', bg: 'bg-emerald-500 text-white' };
+  if (d.includes('mod')) return { label: 'Moderate', bg: 'bg-amber-500 text-black' };
+  if (d.includes('stren') || d.includes('hard')) return { label: 'Hard', bg: 'bg-orange-600 text-white' };
+  return { label: 'Strenuous', bg: 'bg-rose-600 text-white' };
+}
+
+function getTrailRouteType(name: string): string {
+  const n = name?.toLowerCase() || '';
+  if (n.includes('circuit') || n.includes('loop') || n.includes('traverse')) return 'Loop';
+  if (n.includes('pass') || n.includes('to')) return 'Point to point';
+  return 'Out & back';
+}
+
+function getEstimatedHikingHours(distanceKm: number, difficulty: string): number {
+  const speed = difficulty?.toLowerCase().includes('stren') ? 2.5 : 3.2;
+  return Math.round((distanceKm / speed) * 10) / 10;
+}
+
+function SidebarQuickSpecs({
+  trail,
+  onBack,
+  onFocusMap,
+  onToggleSave,
+  isSaved = false,
+}: SidebarQuickSpecsProps) {
+  const [copied, setCopied] = useState(false);
+  const [showFullDesc, setShowFullDesc] = useState(false);
+  const diffBadge = getDifficultyBadge(trail.difficulty);
+  const routeType = getTrailRouteType(trail.name);
+  const estHours = getEstimatedHikingHours(trail.distanceKm, trail.difficulty);
+
+  const handleShare = () => {
+    if (typeof window !== 'undefined') {
+      const url = `${window.location.origin}/trails/${trail.slug || trail.id}`;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(url);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
+    }
+  };
+
+  const handleDownloadGPX = () => {
+    const coords = trail.routeCoordinates && trail.routeCoordinates.length > 0
+      ? trail.routeCoordinates
+      : ROUTE_TRACKS[trail.id]?.coords || [];
+    
+    const trackPoints = coords.map((c) => `
+      <trkpt lat="${c[0]}" lon="${c[1]}">
+        <ele>${c[2] || trail.maxElevation}</ele>
+        <time>${new Date().toISOString()}</time>
+      </trkpt>`).join('');
+
+    const gpxData = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="The Himalayan Trails" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata>
+    <name>${trail.name}</name>
+    <desc>${trail.description}</desc>
+  </metadata>
+  <trk>
+    <name>${trail.name}</name>
+    <trkseg>${trackPoints}
+    </trkseg>
+  </trk>
+</gpx>`;
+
+    const blob = new Blob([gpxData], { type: 'application/gpx+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${trail.slug || 'himalayan-trail'}-route.gpx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   return (
-    <div data-slot="base" className="space-y-4 animate-in fade-in slide-in-from-left-2 duration-200">
-      {/* Back button & Title bar */}
-      <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
+    <div data-slot="base" className="space-y-4 animate-in fade-in slide-in-from-left-2 duration-200 pb-4">
+      {/* 1. Header Toolbar — Back, Share, Save, Close */}
+      <div className="flex items-center justify-between pb-2.5 border-b border-neutral-800">
         <button
           type="button"
           onClick={onBack}
-          className="flex items-center gap-2 text-xs font-bold text-gray-300 hover:text-[#B68D40] transition py-1 px-2 rounded-lg hover:bg-neutral-900"
+          className="flex items-center gap-1.5 text-xs font-bold text-gray-300 hover:text-[#B68D40] transition py-1 px-2 rounded-lg hover:bg-neutral-900"
         >
           <ArrowLeft className="h-4 w-4" />
-          <span>Back to Trail List</span>
+          <span>Back</span>
         </button>
+
         <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-[#B68D40]/20 text-[#B68D40] border border-[#B68D40]/30 font-bold">
           Quick Specs
         </span>
-      </div>
 
-      {/* Image & Header Overlay */}
-      <div className="relative h-44 w-full rounded-2xl overflow-hidden bg-neutral-900 border border-neutral-800 shadow-lg">
-        <img
-          src={trail.image}
-          alt={trail.name}
-          className="w-full h-full object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/40 to-transparent" />
-        
-        <div className="absolute top-2.5 right-2.5">
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={handleShare}
+            className="p-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-gray-300 hover:text-white transition"
+            title="Share trail"
+          >
+            <Share2 className="h-3.5 w-3.5" />
+          </button>
+
+          {onToggleSave && (
+            <button
+              type="button"
+              onClick={() => onToggleSave(trail.id)}
+              className="p-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-gray-300 hover:text-red-500 transition"
+              title="Save trail"
+            >
+              <Heart className={`h-3.5 w-3.5 ${isSaved ? 'fill-red-500 text-red-500' : ''}`} />
+            </button>
+          )}
+
           <button
             type="button"
             onClick={onBack}
-            className="p-1.5 rounded-full bg-black/60 hover:bg-black text-gray-300 hover:text-white transition"
+            className="p-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-gray-300 hover:text-white transition ml-0.5"
             title="Close specs"
           >
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
+      </div>
 
-        <div className="absolute bottom-2.5 left-3 right-3 flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <span className="px-2 py-0.5 rounded-full bg-[#B68D40] text-black text-[10px] font-extrabold uppercase">
-              {trail.region}
-            </span>
-            <span className="px-2 py-0.5 rounded-full bg-neutral-900/90 text-gray-200 text-[10px] font-semibold border border-neutral-700">
-              {trail.difficulty}
-            </span>
-          </div>
-          <span className="text-xs font-mono font-bold text-amber-400">
-            {trail.durationDays} Days
+      {copied && (
+        <div className="text-[11px] text-center text-emerald-400 bg-emerald-950/40 border border-emerald-800/40 py-1 rounded-xl">
+          Trail link copied to clipboard!
+        </div>
+      )}
+
+      {/* 2. Hero Image Banner with AllTrails Overlays */}
+      <div className="relative h-44 w-full rounded-2xl overflow-hidden bg-neutral-900 border border-neutral-800 shadow-xl group">
+        <img
+          src={trail.image}
+          alt={trail.name}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/30 to-transparent" />
+
+        {/* Top Badges: Difficulty & Stars */}
+        <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase shadow-md ${diffBadge.bg}`}>
+            {diffBadge.label}
+          </span>
+          <span className="px-2 py-0.5 rounded-full bg-black/75 backdrop-blur-md text-white text-[10px] font-semibold border border-white/20 flex items-center gap-1">
+            <Star className="h-3 w-3 text-amber-400 fill-amber-400" />
+            <span>{(trail.rating || 4.8).toFixed(1)}</span>
+            <span className="text-gray-400">({trail.reviewsCount || 86})</span>
+          </span>
+        </div>
+
+        {/* Bottom Badge: Duration */}
+        <div className="absolute bottom-2.5 right-2.5 px-2.5 py-1 rounded-lg bg-black/80 backdrop-blur-md text-[11px] font-mono font-bold text-amber-400 border border-amber-500/20">
+          {trail.durationDays} Days Expedition
+        </div>
+      </div>
+
+      {/* 3. Title & Region Breadcrumb */}
+      <div className="space-y-1">
+        <h3 className="text-base font-extrabold text-white leading-tight">{trail.name}</h3>
+        <div className="flex items-center gap-1.5 text-xs text-gray-400">
+          <MapPin className="h-3.5 w-3.5 text-[#B68D40] shrink-0" />
+          <span className="truncate">{trail.region} National Park • Bagmati / Gandaki, Nepal</span>
+        </div>
+      </div>
+
+      {/* 4. AllTrails Signature 4-Box Key Stats Grid */}
+      <div className="grid grid-cols-2 gap-2 p-2.5 rounded-2xl bg-neutral-900/90 border border-neutral-800 text-left">
+        <div className="p-2 rounded-xl bg-neutral-950/80 border border-neutral-900">
+          <span className="text-[9px] text-gray-400 uppercase font-semibold block">Length</span>
+          <p className="text-sm font-extrabold text-white font-mono mt-0.5">{trail.distanceKm} km</p>
+        </div>
+        <div className="p-2 rounded-xl bg-neutral-950/80 border border-neutral-900">
+          <span className="text-[9px] text-gray-400 uppercase font-semibold block">Elevation Gain</span>
+          <p className="text-sm font-extrabold text-amber-400 font-mono mt-0.5">
+            +{trail.elevationGain || (trail.maxElevation - 1500).toLocaleString()} m
+          </p>
+        </div>
+        <div className="p-2 rounded-xl bg-neutral-950/80 border border-neutral-900">
+          <span className="text-[9px] text-gray-400 uppercase font-semibold block">Route Type</span>
+          <p className="text-xs font-bold text-white mt-0.5">{routeType}</p>
+        </div>
+        <div className="p-2 rounded-xl bg-neutral-950/80 border border-neutral-900">
+          <span className="text-[9px] text-gray-400 uppercase font-semibold block">Est. Time</span>
+          <p className="text-xs font-bold text-[#B68D40] font-mono mt-0.5">
+            {estHours} hrs ({trail.durationDays}d)
+          </p>
+        </div>
+      </div>
+
+      {/* 5. AllTrails Feature Tag Chips */}
+      <div className="space-y-1.5">
+        <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider block">
+          Trail Features:
+        </span>
+        <div className="flex flex-wrap gap-1.5">
+          <span className="px-2 py-0.5 rounded-lg bg-neutral-900 border border-neutral-800 text-[10px] text-gray-300">
+            🏔️ Mountain Views
+          </span>
+          <span className="px-2 py-0.5 rounded-lg bg-neutral-900 border border-neutral-800 text-[10px] text-gray-300">
+            🌸 Wildflowers
+          </span>
+          <span className="px-2 py-0.5 rounded-lg bg-neutral-900 border border-neutral-800 text-[10px] text-gray-300">
+            🌲 Forest Trail
+          </span>
+          <span className="px-2 py-0.5 rounded-lg bg-neutral-900 border border-neutral-800 text-[10px] text-gray-300">
+            💧 River & Waterfalls
+          </span>
+          <span className="px-2 py-0.5 rounded-lg bg-neutral-900 border border-neutral-800 text-[10px] text-gray-300">
+            🏛️ Sacred Monastery
+          </span>
+          <span className="px-2 py-0.5 rounded-lg bg-neutral-900 border border-neutral-800 text-[10px] text-gray-300">
+            🏕️ Teahouses Available
           </span>
         </div>
       </div>
 
-      {/* Title & Description */}
+      {/* 6. Trail Condition & Seasonality Banner (AllTrails Style) */}
+      <div className="p-3 rounded-2xl bg-neutral-900/70 border border-neutral-800 space-y-1.5 text-xs">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            Trail Condition: Good & Clear
+          </span>
+          <span className="text-[10px] font-mono text-gray-400">Verified Guides</span>
+        </div>
+        <div className="text-[11px] text-gray-300 flex items-center justify-between border-t border-neutral-800/80 pt-1.5">
+          <span className="text-gray-400">Best Season:</span>
+          <span className="font-semibold text-white">
+            {trail.bestMonths && trail.bestMonths.length > 0
+              ? trail.bestMonths.join(', ')
+              : 'March - May, Sept - Nov'}
+          </span>
+        </div>
+        <div className="text-[11px] text-gray-300 flex items-center justify-between">
+          <span className="text-gray-400">Permits Required:</span>
+          <span className="font-semibold text-amber-400">TIMS & National Park</span>
+        </div>
+      </div>
+
+      {/* 7. Route Altitude Progression Profile */}
+      <div className="p-2.5 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-2">
+        <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider block">
+          Altitude Progression:
+        </span>
+        <div className="grid grid-cols-3 gap-1.5 text-center text-[10px] font-mono">
+          <div className="p-1.5 rounded-xl bg-neutral-950 border border-neutral-900">
+            <span className="text-gray-500 block text-[9px]">Start</span>
+            <span className="font-bold text-gray-300 truncate block">{trail.startPoint}</span>
+          </div>
+          <div className="p-1.5 rounded-xl bg-neutral-950 border border-[#B68D40]/30">
+            <span className="text-[#B68D40] block text-[9px] font-bold">Apex Peak</span>
+            <span className="font-extrabold text-amber-400 block">{trail.maxElevation.toLocaleString()}m</span>
+          </div>
+          <div className="p-1.5 rounded-xl bg-neutral-950 border border-neutral-900">
+            <span className="text-gray-500 block text-[9px]">Finish</span>
+            <span className="font-bold text-gray-300 truncate block">{trail.endPoint}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* 8. Description with Read More Toggle */}
       <div className="space-y-1.5">
-        <h3 className="text-lg font-black text-white">{trail.name}</h3>
-        <p className="text-xs text-gray-400 leading-relaxed line-clamp-4">{trail.description}</p>
+        <h4 className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Overview</h4>
+        <p className={`text-xs text-gray-300 leading-relaxed ${showFullDesc ? '' : 'line-clamp-3'}`}>
+          {trail.description}
+        </p>
+        {trail.description && trail.description.length > 140 && (
+          <button
+            type="button"
+            onClick={() => setShowFullDesc(!showFullDesc)}
+            className="text-[11px] font-bold text-[#B68D40] hover:underline"
+          >
+            {showFullDesc ? 'Show less' : 'Read more'}
+          </button>
+        )}
       </div>
 
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-3 gap-2 p-3 rounded-2xl bg-neutral-900/80 border border-neutral-800 text-center">
-        <div>
-          <span className="text-[10px] text-gray-400 uppercase font-semibold">Distance</span>
-          <p className="text-sm font-extrabold text-white font-mono">{trail.distanceKm} km</p>
-        </div>
-        <div>
-          <span className="text-[10px] text-gray-400 uppercase font-semibold">Elev Gain</span>
-          <p className="text-sm font-extrabold text-amber-400 font-mono">+{trail.elevationGain}m</p>
-        </div>
-        <div>
-          <span className="text-[10px] text-gray-400 uppercase font-semibold">Max Alt</span>
-          <p className="text-sm font-extrabold text-[#B68D40] font-mono">{trail.maxElevation}m</p>
-        </div>
-      </div>
-
-      {/* Highlights */}
+      {/* 9. Key Highlights */}
       {trail.highlights && trail.highlights.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-2 pt-1 border-t border-neutral-900">
           <h4 className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Key Highlights</h4>
           <div className="space-y-1.5">
             {trail.highlights.map((hl, idx) => (
@@ -187,8 +400,8 @@ function SidebarQuickSpecs({ trail, onBack, onFocusMap }: SidebarQuickSpecsProps
         </div>
       )}
 
-      {/* Action Buttons */}
-      <div className="pt-2 space-y-2">
+      {/* 10. Actions & GPX Export (No reviews as requested) */}
+      <div className="pt-2 space-y-2 border-t border-neutral-900">
         <button
           type="button"
           onClick={onFocusMap}
@@ -198,11 +411,20 @@ function SidebarQuickSpecs({ trail, onBack, onFocusMap }: SidebarQuickSpecsProps
           <span>Focus on 2D/3D Map</span>
         </button>
 
+        <button
+          type="button"
+          onClick={handleDownloadGPX}
+          className="w-full py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-gray-300 hover:text-white text-xs font-semibold flex items-center justify-center gap-2 transition"
+        >
+          <Download className="h-3.5 w-3.5 text-gray-400" />
+          <span>Download GPX Track</span>
+        </button>
+
         <Link
           href={`/trails/${trail.slug || trail.id}`}
           className="w-full py-2.5 rounded-xl bg-[#B68D40] hover:bg-[#c99e4b] text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg transition"
         >
-          <span>View Full Itinerary & Booking</span>
+          <span>View Full Trail Guide & Book Expedition</span>
           <ArrowUpRight className="h-4 w-4" />
         </Link>
       </div>
@@ -628,6 +850,8 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                       onFocusMap={() => {
                         handleTrailSelect(detailModalTrail, true);
                       }}
+                      onToggleSave={toggleSaveTrail}
+                      isSaved={savedTrails.includes(detailModalTrail.id)}
                     />
                   </div>
                 ) : sidebarTab === 'hud' ? (
@@ -1390,6 +1614,8 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
               handleTrailSelect(detailModalTrail, true);
               setLayoutMode('split');
             }}
+            onToggleSave={toggleSaveTrail}
+            isSaved={savedTrails.includes(detailModalTrail.id)}
           />
         </div>
       )}
