@@ -222,8 +222,8 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
   const [hoveredTrailId, setHoveredTrailId] = useState<string | null>(null);
   const [focusedCoords, setFocusedCoords] = useState<[number, number] | undefined>(undefined);
   const [savedTrails, setSavedTrails] = useState<string[]>([]);
-  const [showElevationProfile, setShowElevationProfile] = useState<boolean>(true);
   const [showTrailSwitcher, setShowTrailSwitcher] = useState<boolean>(true);
+  const [leftPanelOpen, setLeftPanelOpen] = useState<boolean>(true);
 
   // Quick Detail Modal / Slide-Over State
   const [detailModalTrail, setDetailModalTrail] = useState<Trail | null>(null);
@@ -474,194 +474,201 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
           </div>
         </div>
 
-        {/* ROW 2: QUICK FILTERS & STATS BAR */}
-        <div className="px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs bg-neutral-950/80">
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Region Filter Pill */}
-            <select
-              value={selectedRegion}
-              onChange={(e) => setSelectedRegion(e.target.value)}
-              className="px-3 py-1 rounded-full bg-neutral-900 border border-neutral-700/80 text-gray-200 font-medium focus:outline-none focus:border-[#B68D40] cursor-pointer"
-            >
-              <option value="All">Region: All</option>
-              <option value="Everest">Everest / Khumbu</option>
-              <option value="Annapurna">Annapurna</option>
-              <option value="Langtang">Langtang</option>
-              <option value="Manaslu">Manaslu</option>
-              <option value="Mustang">Mustang</option>
-              <option value="Rolwaling">Rolwaling Valley</option>
-              <option value="Kanchenjunga">Kangchenjunga</option>
-            </select>
-
-            {/* Difficulty Filter Pill */}
-            <select
-              value={selectedDifficulty}
-              onChange={(e) => setSelectedDifficulty(e.target.value)}
-              className="px-3 py-1 rounded-full bg-neutral-900 border border-neutral-700/80 text-gray-200 font-medium focus:outline-none focus:border-[#B68D40] cursor-pointer"
-            >
-              <option value="All">Difficulty: All</option>
-              <option value="Moderate">Moderate</option>
-              <option value="Strenuous">Strenuous</option>
-              <option value="Challenging">Challenging</option>
-            </select>
-
-            {/* Elevation Slider */}
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-neutral-900 border border-neutral-700/80 text-gray-200">
-              <Gauge className="h-3.5 w-3.5 text-[#B68D40]" />
-              <span>Max Elev: <strong className="text-[#B68D40] font-mono">{maxAltitude}m</strong></span>
-              <input
-                type="range"
-                min="3000"
-                max="6000"
-                step="100"
-                value={maxAltitude}
-                onChange={(e) => setMaxAltitude(Number(e.target.value))}
-                className="w-20 accent-[#B68D40] cursor-pointer"
-              />
-            </div>
-
-            {/* Reset Filters Button if Active */}
-            {hasActiveFilters && (
-              <button
-                onClick={resetFilters}
-                className="px-2.5 py-1 rounded-full bg-neutral-800 hover:bg-neutral-700 text-gray-300 hover:text-white flex items-center gap-1 transition"
-                title="Reset all filters"
-              >
-                <RotateCcw className="h-3 w-3" />
-                <span>Reset</span>
-              </button>
-            )}
-          </div>
-
-          {/* Active Trail Count & Quick Stats */}
-          <div className="flex items-center gap-2 text-[11px] text-gray-400">
-            <span className="px-2.5 py-0.5 rounded-full bg-neutral-900 border border-neutral-800 font-mono font-semibold text-gray-300">
-              {filteredTrails.length} {filteredTrails.length === 1 ? 'Expedition' : 'Expeditions'}
-            </span>
-          </div>
-        </div>
-
       </header>
 
       {/* 2. MAIN WORKSPACE CONTAINER */}
       <div className="flex-1 flex overflow-hidden relative">
 
-        {/* A. LEFT SCROLLABLE TRAIL CARDS LIST (IN SPLIT MODE) */}
+        {/* A. LEFT PANEL — FILTER SIDEBAR + TRAIL CARDS LIST (SPLIT MODE) */}
         {layoutMode === 'split' && (
-          <div className="w-full lg:w-[40%] xl:w-[35%] h-full overflow-y-auto border-r border-neutral-800 bg-neutral-950 p-4 space-y-4 shrink-0">
-            {detailModalTrail ? (
-              <SidebarQuickSpecs
-                trail={detailModalTrail}
-                onBack={() => setDetailModalTrail(null)}
-                onFocusMap={() => {
-                  handleTrailSelect(detailModalTrail, true);
-                }}
-              />
-            ) : (
-              <>
-                <div className="flex items-center justify-between pb-2 border-b border-neutral-900">
-                  <span className="text-xs text-gray-400 uppercase font-semibold tracking-wider">
-                    {filteredTrails.length} Himalayan Expeditions Found
-                  </span>
-                  <span className="text-[11px] text-[#B68D40]">Click card to focus map & profile</span>
-                </div>
+          <div className={`${leftPanelOpen ? 'w-full lg:w-[38%] xl:w-[33%]' : 'w-12'} h-full border-r border-neutral-800 bg-neutral-950 flex flex-col shrink-0 transition-all duration-300`}>
 
-            {loading ? (
-              <div className="flex flex-col items-center justify-center py-20 text-[#B68D40] gap-2">
-                <Loader2 className="h-6 w-6 animate-spin" />
-                <span className="text-xs">Loading Trails Catalog...</span>
-              </div>
-            ) : filteredTrails.length === 0 ? (
-              <div className="text-center py-16 text-gray-500 text-xs">
-                No trails match the selected region or elevation criteria.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {filteredTrails.map((trail) => {
-                  const isSelected = activeTrail?.id === trail.id;
-                  const isSaved = savedTrails.includes(trail.id);
+            {/* ── Left Panel Filter Header ── */}
+            <div className="shrink-0 border-b border-neutral-800 bg-neutral-950">
 
-                  return (
-                    <div
-                      key={trail.id}
-                      onClick={() => handleTrailSelect(trail)}
-                      onMouseEnter={() => handleTrailCardHover(trail)}
-                      className={`group cursor-pointer rounded-2xl border transition-all duration-200 overflow-hidden bg-neutral-900/60 ${
-                        isSelected
-                          ? 'border-[#B68D40] shadow-xl shadow-[#B68D40]/10 bg-neutral-900'
-                          : 'border-neutral-800/80 hover:border-neutral-700'
-                      }`}
+              {/* Panel title + collapse toggle */}
+              <div className="flex items-center justify-between px-3 py-2.5 border-b border-neutral-900">
+                {leftPanelOpen && (
+                  <div className="flex items-center gap-1.5 text-[#B68D40] font-black text-[11px] uppercase tracking-widest">
+                    <SlidersHorizontal className="h-3.5 w-3.5" />
+                    <span>Filters</span>
+                    <span className="ml-1.5 px-2 py-0.5 rounded-full bg-neutral-800 text-gray-300 font-mono text-[10px] border border-neutral-700">
+                      {filteredTrails.length} found
+                    </span>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setLeftPanelOpen((v) => !v)}
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-[#B68D40] hover:bg-neutral-900 transition ml-auto"
+                  title={leftPanelOpen ? 'Collapse panel' : 'Expand panel'}
+                >
+                  {leftPanelOpen ? <ChevronDown className="h-3.5 w-3.5 -rotate-90" /> : <ChevronDown className="h-3.5 w-3.5 rotate-90" />}
+                </button>
+              </div>
+
+              {leftPanelOpen && (
+                <div className="px-3 py-2.5 space-y-2.5">
+                  {/* Region filter */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Region</label>
+                    <select
+                      value={selectedRegion}
+                      onChange={(e) => setSelectedRegion(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-xl bg-neutral-900 border border-neutral-700/80 text-xs text-gray-200 font-medium focus:outline-none focus:border-[#B68D40] cursor-pointer"
                     >
-                      <div className="flex gap-3.5 p-3.5">
-                        <div className="relative w-28 h-28 rounded-xl overflow-hidden shrink-0 bg-neutral-800">
-                          <img
-                            src={trail.image}
-                            alt={trail.name}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          />
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleSaveTrail(trail.id);
-                            }}
-                            className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 backdrop-blur-md text-white hover:text-red-500 transition"
-                          >
-                            <Heart className={`h-3.5 w-3.5 ${isSaved ? 'fill-red-500 text-red-500' : ''}`} />
-                          </button>
-                        </div>
+                      <option value="All">All Regions</option>
+                      <option value="Everest">Everest / Khumbu</option>
+                      <option value="Annapurna">Annapurna</option>
+                      <option value="Langtang">Langtang</option>
+                      <option value="Manaslu">Manaslu</option>
+                      <option value="Mustang">Mustang</option>
+                      <option value="Rolwaling">Rolwaling Valley</option>
+                      <option value="Kanchenjunga">Kangchenjunga</option>
+                    </select>
+                  </div>
 
-                        <div className="flex-1 min-w-0 space-y-1.5 flex flex-col justify-between">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-[10px] uppercase font-bold text-[#B68D40] tracking-wider">
-                                {trail.region}
-                              </span>
-                              <span className="text-[10px] text-gray-400 font-mono">•</span>
-                              <span className="text-[10px] text-gray-300 font-semibold">{trail.difficulty}</span>
-                            </div>
-                            <h3 className="text-sm font-bold text-white truncate group-hover:text-[#E2C085] transition">
-                              {trail.name}
-                            </h3>
-                            <p className="text-xs text-gray-400 line-clamp-2 leading-relaxed">
-                              {trail.description}
-                            </p>
-                          </div>
+                  {/* Difficulty filter */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Difficulty</label>
+                    <select
+                      value={selectedDifficulty}
+                      onChange={(e) => setSelectedDifficulty(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-xl bg-neutral-900 border border-neutral-700/80 text-xs text-gray-200 font-medium focus:outline-none focus:border-[#B68D40] cursor-pointer"
+                    >
+                      <option value="All">All Difficulties</option>
+                      <option value="Moderate">Moderate</option>
+                      <option value="Strenuous">Strenuous</option>
+                      <option value="Challenging">Challenging</option>
+                    </select>
+                  </div>
 
-                          <div className="pt-2 flex flex-wrap items-center gap-3 text-xs text-gray-300 font-semibold border-t border-neutral-900">
-                            <div>{trail.distanceKm} km</div>
-                            <div className="text-amber-400">+{trail.elevationGain}m</div>
-                            <div>{trail.durationDays} Days</div>
-                          </div>
-                        </div>
-                      </div>
+                  {/* Reset filters row */}
+                  {hasActiveFilters && (
+                    <button
+                      onClick={resetFilters}
+                      className="w-full px-2.5 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-gray-300 hover:text-white flex items-center justify-center gap-1.5 text-xs font-semibold transition border border-neutral-700"
+                      title="Reset all filters"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                      Reset Filters
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
 
-                      <div className="px-3.5 pb-3 flex items-center justify-between text-xs border-t border-neutral-900 pt-2">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDetailModalTrail(trail);
-                          }}
-                          className="text-[#B68D40] text-[11px] font-semibold flex items-center gap-1 hover:underline"
-                        >
-                          <Info className="h-3 w-3" />
-                          <span>Quick Specs</span>
-                        </button>
-                        <Link
-                          href={`/trails/${trail.slug || trail.id}`}
-                          className="text-gray-300 hover:text-[#B68D40] flex items-center gap-1 font-bold text-xs"
-                        >
-                          <span>Full Detail</span>
-                          <ArrowUpRight className="h-3.5 w-3.5" />
-                        </Link>
-                      </div>
+            {/* ── Trail Cards Scrollable List ── */}
+            {leftPanelOpen && (
+            <div className="flex-1 overflow-y-auto p-3 space-y-3">
+              {detailModalTrail ? (
+                <SidebarQuickSpecs
+                  trail={detailModalTrail}
+                  onBack={() => setDetailModalTrail(null)}
+                  onFocusMap={() => {
+                    handleTrailSelect(detailModalTrail, true);
+                  }}
+                />
+              ) : (
+                <>
+                  {loading ? (
+                    <div className="flex flex-col items-center justify-center py-20 text-[#B68D40] gap-2">
+                      <Loader2 className="h-6 w-6 animate-spin" />
+                      <span className="text-xs">Loading Trails Catalog...</span>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-            </>
+                  ) : filteredTrails.length === 0 ? (
+                    <div className="text-center py-16 text-gray-500 text-xs">
+                      No trails match the selected region or elevation criteria.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {filteredTrails.map((trail) => {
+                        const isSelected = activeTrail?.id === trail.id;
+                        const isSaved = savedTrails.includes(trail.id);
+
+                        return (
+                          <div
+                            key={trail.id}
+                            onClick={() => handleTrailSelect(trail)}
+                            onMouseEnter={() => handleTrailCardHover(trail)}
+                            className={`group cursor-pointer rounded-2xl border transition-all duration-200 overflow-hidden bg-neutral-900/60 ${
+                              isSelected
+                                ? 'border-[#B68D40] shadow-xl shadow-[#B68D40]/10 bg-neutral-900'
+                                : 'border-neutral-800/80 hover:border-neutral-700'
+                            }`}
+                          >
+                            <div className="flex gap-3.5 p-3.5">
+                              <div className="relative w-28 h-28 rounded-xl overflow-hidden shrink-0 bg-neutral-800">
+                                <img
+                                  src={trail.image}
+                                  alt={trail.name}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleSaveTrail(trail.id);
+                                  }}
+                                  className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 backdrop-blur-md text-white hover:text-red-500 transition"
+                                >
+                                  <Heart className={`h-3.5 w-3.5 ${isSaved ? 'fill-red-500 text-red-500' : ''}`} />
+                                </button>
+                              </div>
+
+                              <div className="flex-1 min-w-0 space-y-1.5 flex flex-col justify-between">
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] uppercase font-bold text-[#B68D40] tracking-wider">
+                                      {trail.region}
+                                    </span>
+                                    <span className="text-[10px] text-gray-400 font-mono">•</span>
+                                    <span className="text-[10px] text-gray-300 font-semibold">{trail.difficulty}</span>
+                                  </div>
+                                  <h3 className="text-sm font-bold text-white truncate group-hover:text-[#E2C085] transition">
+                                    {trail.name}
+                                  </h3>
+                                  <p className="text-xs text-gray-400 line-clamp-2 leading-relaxed">
+                                    {trail.description}
+                                  </p>
+                                </div>
+
+                                <div className="pt-2 flex flex-wrap items-center gap-3 text-xs text-gray-300 font-semibold border-t border-neutral-900">
+                                  <div>{trail.distanceKm} km</div>
+                                  <div className="text-amber-400">+{trail.elevationGain}m</div>
+                                  <div>{trail.durationDays} Days</div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="px-3.5 pb-3 flex items-center justify-between text-xs border-t border-neutral-900 pt-2">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDetailModalTrail(trail);
+                                }}
+                                className="text-[#B68D40] text-[11px] font-semibold flex items-center gap-1 hover:underline"
+                              >
+                                <Info className="h-3 w-3" />
+                                <span>Quick Specs</span>
+                              </button>
+                              <Link
+                                href={`/trails/${trail.slug || trail.id}`}
+                                className="text-gray-300 hover:text-[#B68D40] flex items-center gap-1 font-bold text-xs"
+                              >
+                                <span>Full Detail</span>
+                                <ArrowUpRight className="h-3.5 w-3.5" />
+                              </Link>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
             )}
           </div>
         )}
@@ -837,81 +844,17 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                 />
               )}
 
-              {/* 1. FLOATING INTERACTIVE ALTITUDE PROFILE INSIDE MAP */}
-              {activeTrail && showElevationProfile && (
-                <div className="absolute bottom-4 left-4 right-4 z-[1000] pointer-events-none flex justify-center">
-                  <div className="pointer-events-auto w-full max-w-5xl">
-                    <ElevationProfileChart
-                      trail={activeTrail}
-                      onClose={() => setShowElevationProfile(false)}
-                      onSelectPoint={(pt) => {
-                        if (pt.lat && pt.lng) {
-                          setFocusedCoords([pt.lat, pt.lng]);
-                        }
-                      }}
-                      onSelectLandmark={(lm) => {
-                        setFocusedCoords([lm.coordinates.lat, lm.coordinates.lng]);
-                      }}
-                      onHoverPoint={(pt) => {
-                        if (!pt || !activeTrail) {
-                          setFocusedCoords(undefined);
-                          return;
-                        }
-                        if (pt.lat && pt.lng) {
-                          setFocusedCoords([pt.lat, pt.lng]);
-                          return;
-                        }
-                        const track = ROUTE_TRACKS[activeTrail.id];
-                        if (track && track.coords.length > 0 && activeTrail.distanceKm > 0) {
-                          const ratio = Math.max(0, Math.min(1, pt.distanceKm / activeTrail.distanceKm));
-                          const targetIdx = Math.min(
-                            track.coords.length - 1,
-                            Math.floor(ratio * (track.coords.length - 1))
-                          );
-                          setFocusedCoords(track.coords[targetIdx]);
-                          return;
-                        }
-                        const ratio = activeTrail.distanceKm > 0 ? pt.distanceKm / activeTrail.distanceKm : 0;
-                        const regionCoords: Record<string, [number, number]> = {
-                          'Everest': [27.9881, 86.9250],
-                          'Annapurna': [28.5960, 83.8200],
-                          'Langtang': [28.2100, 85.5600],
-                          'Manaslu': [28.5500, 84.5600],
-                          'Mustang': [29.1800, 83.9500],
-                          'Rolwaling': [27.8700, 86.4500]
-                        };
-                        const base = regionCoords[activeTrail.region] || [28.3949, 84.1240];
-                        const interpolated: [number, number] = [
-                          base[0] + (ratio - 0.5) * 0.08,
-                          base[1] + (ratio - 0.5) * 0.08
-                        ];
-                        setFocusedCoords(interpolated);
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* 2. RE-OPEN ALTITUDE GRAPH BUTTON INSIDE MAP IF CLOSED */}
-              {!showElevationProfile && activeTrail && (
-                <button
-                  onClick={() => setShowElevationProfile(true)}
-                  className="absolute bottom-4 right-4 z-[1000] px-4 py-2 rounded-full bg-[#B68D40] text-black font-bold text-xs flex items-center gap-2 shadow-2xl hover:bg-[#c99e4b] transition pointer-events-auto backdrop-blur-md border border-white/20"
-                >
-                  <TrendingUp className="h-4 w-4" />
-                  <span>Show Altitude Profile</span>
-                </button>
-              )}
-
-              {/* 3. QUICK TRAIL ELEVATION SWITCHER PILLS BAR */}
+              {/* ─────────────────────────────────────────── */}
+              {/* TRAIL SWITCHER HUD — top-left inside map    */}
+              {/* ─────────────────────────────────────────── */}
               {showTrailSwitcher && (
-                <div className="absolute top-4 right-4 z-[999]">
+                <div className="absolute top-3 left-3 z-[999] max-w-[calc(100%-6rem)]">
                   <FloatingMapPanel
                     id="trail-switcher-hud"
                     title="Trail Selector"
                     icon={<TrendingUp className="h-3.5 w-3.5 text-[#B68D40]" />}
                     allowDrag={true}
-                    allowResize={true}
+                    allowResize={false}
                     allowMinimize={true}
                     allowMaximize={false}
                     allowClose={true}
@@ -962,15 +905,74 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                 </div>
               )}
 
-              {/* RESTORE TRAIL SWITCHER BUTTON IF CLOSED */}
+              {/* Restore trail switcher button */}
               {!showTrailSwitcher && (
                 <button
                   onClick={() => setShowTrailSwitcher(true)}
-                  className="absolute top-4 right-4 z-[999] px-3 py-1.5 rounded-xl bg-slate-900/90 border border-[#B68D40]/50 text-[#B68D40] hover:text-white hover:bg-slate-800 font-bold text-xs flex items-center gap-1.5 shadow-xl transition backdrop-blur-md focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none"
+                  className="absolute top-3 left-3 z-[999] px-3 py-1.5 rounded-xl bg-black/80 backdrop-blur-md border border-[#B68D40]/50 text-[#B68D40] hover:text-white hover:bg-black font-bold text-xs flex items-center gap-1.5 shadow-xl transition focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none"
                 >
                   <TrendingUp className="h-3.5 w-3.5" />
-                  <span>Show Trail Selector</span>
+                  <span>Trails</span>
                 </button>
+              )}
+
+              {/* ─────────────────────────────────────────────────── */}
+              {/* ALTITUDE PROFILE — always visible, mid-bottom glass */}
+              {/* ─────────────────────────────────────────────────── */}
+              {activeTrail && (
+                <div className="absolute bottom-0 left-0 right-0 z-[1000] pointer-events-none flex justify-center px-2 pb-2">
+                  <div
+                    data-slot="altitude-bar"
+                    className="pointer-events-auto w-full max-w-4xl rounded-2xl overflow-hidden backdrop-blur-xl bg-black/60 border border-white/10 shadow-2xl shadow-black/60"
+                  >
+                    <ElevationProfileChart
+                      trail={activeTrail}
+                      onClose={() => {/* no-op — altitude bar is always visible */}}
+                      onSelectPoint={(pt) => {
+                        if (pt.lat && pt.lng) {
+                          setFocusedCoords([pt.lat, pt.lng]);
+                        }
+                      }}
+                      onSelectLandmark={(lm) => {
+                        setFocusedCoords([lm.coordinates.lat, lm.coordinates.lng]);
+                      }}
+                      onHoverPoint={(pt) => {
+                        if (!pt || !activeTrail) {
+                          setFocusedCoords(undefined);
+                          return;
+                        }
+                        if (pt.lat && pt.lng) {
+                          setFocusedCoords([pt.lat, pt.lng]);
+                          return;
+                        }
+                        const track = ROUTE_TRACKS[activeTrail.id];
+                        if (track && track.coords.length > 0 && activeTrail.distanceKm > 0) {
+                          const ratio = Math.max(0, Math.min(1, pt.distanceKm / activeTrail.distanceKm));
+                          const targetIdx = Math.min(
+                            track.coords.length - 1,
+                            Math.floor(ratio * (track.coords.length - 1))
+                          );
+                          setFocusedCoords(track.coords[targetIdx]);
+                          return;
+                        }
+                        const ratio = activeTrail.distanceKm > 0 ? pt.distanceKm / activeTrail.distanceKm : 0;
+                        const regionCoords: Record<string, [number, number]> = {
+                          'Everest': [27.9881, 86.9250],
+                          'Annapurna': [28.5960, 83.8200],
+                          'Langtang': [28.2100, 85.5600],
+                          'Manaslu': [28.5500, 84.5600],
+                          'Mustang': [29.1800, 83.9500],
+                          'Rolwaling': [27.8700, 86.4500]
+                        };
+                        const base = regionCoords[activeTrail.region] || [28.3949, 84.1240];
+                        setFocusedCoords([
+                          base[0] + (ratio - 0.5) * 0.08,
+                          base[1] + (ratio - 0.5) * 0.08
+                        ]);
+                      }}
+                    />
+                  </div>
+                </div>
               )}
 
             </div>
