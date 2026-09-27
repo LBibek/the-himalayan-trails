@@ -31,12 +31,29 @@ import {
   ShieldCheck,
   CheckCircle2,
   ArrowLeft,
-  RotateCcw
+  RotateCcw,
+  LayoutList,
+  Grid,
+  Eye,
+  Activity
 } from 'lucide-react';
 import { Trail, Landmark } from '@/types';
 import { ROUTE_TRACKS } from '@/data/routeTracks';
 import ElevationProfileChart from '@/components/map/ElevationProfileChart';
 import FloatingMapPanel from '@/components/ui/FloatingMapPanel';
+import { HIMALAYAN_SUMMITS, SUMMIT_TOURS, ApexSummit } from '@/data/summitTours';
+
+// Himalayan regional coordinate presets for one-click navigator camera fly-to
+export const REGION_FOCUS_COORDS: Record<string, { center: [number, number]; zoom: number }> = {
+  'All': { center: [28.2500, 85.4000], zoom: 7.5 },
+  'Everest': { center: [27.9881, 86.9250], zoom: 10.5 },
+  'Annapurna': { center: [28.6000, 83.9500], zoom: 10 },
+  'Langtang': { center: [28.2000, 85.4500], zoom: 11 },
+  'Manaslu': { center: [28.4500, 84.6500], zoom: 10.5 },
+  'Mustang': { center: [29.0000, 83.8500], zoom: 10 },
+  'Rolwaling': { center: [27.8800, 86.4200], zoom: 10.5 },
+  'Kanchenjunga': { center: [27.7025, 88.1475], zoom: 10.5 },
+};
 
 // Clean and standardize trail names for compact HUD presentation
 export function getCleanTrailName(name: string): string {
@@ -224,6 +241,9 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
   const [savedTrails, setSavedTrails] = useState<string[]>([]);
   const [showTrailSwitcher, setShowTrailSwitcher] = useState<boolean>(true);
   const [leftPanelOpen, setLeftPanelOpen] = useState<boolean>(true);
+  const [sidebarView, setSidebarView] = useState<'card' | 'list'>('card');
+  const [sidebarTab, setSidebarTab] = useState<'trails' | 'hud'>('trails');
+  const [activeSummit, setActiveSummit] = useState<string | null>(null);
 
   // Quick Detail Modal / Slide-Over State
   const [detailModalTrail, setDetailModalTrail] = useState<Trail | null>(null);
@@ -479,166 +499,557 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
       {/* 2. MAIN WORKSPACE CONTAINER */}
       <div className="flex-1 flex overflow-hidden relative">
 
-        {/* A. LEFT PANEL — COMPACT NAVIGATOR HUB (25% width, SPLIT MODE) */}
+        {/* A. LEFT PANEL — DYNAMIC GEOSPATIAL HUD & EXPEDITION NAVIGATOR (SPLIT MODE) */}
         {layoutMode === 'split' && (
-          <div className={`${leftPanelOpen ? 'w-full lg:w-[25%]' : 'w-10'} h-full border-r border-neutral-800 bg-neutral-950 flex flex-col shrink-0 transition-all duration-300`}>
-
-            {/* ── Hub Header — title + inline filters ── */}
-            <div className="shrink-0 border-b border-neutral-800">
-              {/* Title row */}
-              <div className="flex items-center justify-between px-2.5 py-2">
+          <div
+            data-slot="navigator-sidebar"
+            className={`${
+              leftPanelOpen ? 'w-full lg:w-[28%] xl:w-[26%] min-w-[320px] max-w-[440px]' : 'w-12'
+            } h-full border-r border-neutral-800 bg-neutral-950/95 backdrop-blur-xl flex flex-col shrink-0 transition-all duration-300 shadow-2xl z-20`}
+          >
+            {/* ── 1. HUD Status Bar & Mode Indicator ── */}
+            <div className="shrink-0 border-b border-neutral-800/80 bg-neutral-950">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-900">
                 {leftPanelOpen && (
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <Compass className="h-3.5 w-3.5 text-[#B68D40] shrink-0" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-[#B68D40] truncate">Navigator</span>
-                    <span className="px-1.5 py-0.5 rounded bg-neutral-800 text-gray-400 font-mono text-[9px] border border-neutral-700 shrink-0">
-                      {filteredTrails.length}
-                    </span>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Compass className="h-4 w-4 text-[#B68D40] shrink-0 animate-pulse" />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-white truncate">
+                          {mapEngine === '2d'
+                            ? '2D Geospatial'
+                            : mapEngine === '3d-summit-tours'
+                            ? 'Summit Tours'
+                            : '3D Globe'}
+                        </span>
+                        <span className="px-1.5 py-0.2 rounded-full bg-[#B68D40]/20 text-[#B68D40] border border-[#B68D40]/30 font-mono text-[9px] font-bold">
+                          HUD
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 )}
+
+                {leftPanelOpen && (
+                  <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/40 border border-emerald-800/40 px-2 py-0.5 rounded-full truncate">
+                    {focusedCoords
+                      ? `${focusedCoords[0].toFixed(2)}°N, ${focusedCoords[1].toFixed(2)}°E`
+                      : '27.83°N, 86.74°E'}
+                  </span>
+                )}
+
                 <button
                   type="button"
                   onClick={() => setLeftPanelOpen((v) => !v)}
-                  className="p-1 rounded-md text-gray-500 hover:text-[#B68D40] hover:bg-neutral-900 transition ml-auto shrink-0"
-                  title={leftPanelOpen ? 'Collapse' : 'Expand'}
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-[#B68D40] hover:bg-neutral-900 transition ml-auto shrink-0"
+                  title={leftPanelOpen ? 'Collapse HUD' : 'Expand HUD'}
                 >
-                  {leftPanelOpen ? <ChevronDown className="h-3 w-3 -rotate-90" /> : <ChevronDown className="h-3 w-3 rotate-90" />}
+                  {leftPanelOpen ? (
+                    <ChevronDown className="h-3.5 w-3.5 -rotate-90" />
+                  ) : (
+                    <ChevronDown className="h-3.5 w-3.5 rotate-90" />
+                  )}
                 </button>
               </div>
 
-              {/* Inline filters row */}
+              {/* ── 2. Navigation Mode Tabs: Trails Catalog vs Geospatial HUD ── */}
               {leftPanelOpen && (
-                <div className="px-2.5 pb-2 flex items-center gap-1.5">
-                  <select
-                    value={selectedRegion}
-                    onChange={(e) => setSelectedRegion(e.target.value)}
-                    className="flex-1 min-w-0 px-1.5 py-1 rounded-lg bg-neutral-900 border border-neutral-800 text-[10px] text-gray-300 focus:outline-none focus:border-[#B68D40] cursor-pointer truncate"
-                  >
-                    <option value="All">All Regions</option>
-                    <option value="Everest">Everest</option>
-                    <option value="Annapurna">Annapurna</option>
-                    <option value="Langtang">Langtang</option>
-                    <option value="Manaslu">Manaslu</option>
-                    <option value="Mustang">Mustang</option>
-                    <option value="Rolwaling">Rolwaling</option>
-                    <option value="Kanchenjunga">Kangchenjunga</option>
-                  </select>
-                  <select
-                    value={selectedDifficulty}
-                    onChange={(e) => setSelectedDifficulty(e.target.value)}
-                    className="flex-1 min-w-0 px-1.5 py-1 rounded-lg bg-neutral-900 border border-neutral-800 text-[10px] text-gray-300 focus:outline-none focus:border-[#B68D40] cursor-pointer truncate"
-                  >
-                    <option value="All">All Diff.</option>
-                    <option value="Moderate">Moderate</option>
-                    <option value="Strenuous">Strenuous</option>
-                    <option value="Challenging">Challenging</option>
-                  </select>
-                  {hasActiveFilters && (
+                <div className="px-3 py-2 flex items-center justify-between gap-2 bg-neutral-900/60">
+                  <div className="flex items-center p-0.5 rounded-xl bg-neutral-950 border border-neutral-800 text-[11px] font-bold">
                     <button
-                      onClick={resetFilters}
-                      className="p-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-gray-400 hover:text-white transition shrink-0"
-                      title="Reset"
+                      type="button"
+                      onClick={() => setSidebarTab('trails')}
+                      className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 ${
+                        sidebarTab === 'trails'
+                          ? 'bg-[#B68D40] text-black shadow'
+                          : 'text-gray-400 hover:text-white'
+                      }`}
                     >
-                      <RotateCcw className="h-3 w-3" />
+                      <Mountain className="h-3 w-3" />
+                      <span>Expeditions ({filteredTrails.length})</span>
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSidebarTab('hud')}
+                      className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 ${
+                        sidebarTab === 'hud'
+                          ? 'bg-[#B68D40] text-black shadow'
+                          : 'text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      <Layers className="h-3 w-3" />
+                      <span>Navigator</span>
+                    </button>
+                  </div>
+
+                  {/* Card vs List View Toggle (When in Trails mode) */}
+                  {sidebarTab === 'trails' && (
+                    <div className="flex items-center p-0.5 rounded-lg bg-neutral-950 border border-neutral-800">
+                      <button
+                        type="button"
+                        onClick={() => setSidebarView('card')}
+                        className={`p-1 rounded-md transition ${
+                          sidebarView === 'card'
+                            ? 'bg-[#B68D40] text-black'
+                            : 'text-gray-400 hover:text-white'
+                        }`}
+                        title="Card View (Large Cards with Specs)"
+                      >
+                        <Grid className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSidebarView('list')}
+                        className={`p-1 rounded-md transition ${
+                          sidebarView === 'list'
+                            ? 'bg-[#B68D40] text-black'
+                            : 'text-gray-400 hover:text-white'
+                        }`}
+                        title="List View (Compact Rows)"
+                      >
+                        <LayoutList className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
             </div>
 
-            {/* ── Trail Navigator List ── */}
+            {/* ── 3. Main Sidebar Body Content ── */}
             {leftPanelOpen && (
-            <div className="flex-1 overflow-y-auto">
-              {detailModalTrail ? (
-                <SidebarQuickSpecs
-                  trail={detailModalTrail}
-                  onBack={() => setDetailModalTrail(null)}
-                  onFocusMap={() => {
-                    handleTrailSelect(detailModalTrail, true);
-                  }}
-                />
-              ) : (
-                <>
-                  {loading ? (
-                    <div className="flex flex-col items-center justify-center py-16 text-[#B68D40] gap-2">
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                      <span className="text-[10px]">Loading...</span>
-                    </div>
-                  ) : filteredTrails.length === 0 ? (
-                    <div className="text-center py-12 text-gray-500 text-[10px] px-3">
-                      No trails match filters.
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-neutral-800/60">
-                      {filteredTrails.map((trail) => {
-                        const isSelected = activeTrail?.id === trail.id;
-                        const isSaved = savedTrails.includes(trail.id);
+              <div className="flex-1 overflow-y-auto">
+                {/* A. If Quick Specs is active for a trail, render SidebarQuickSpecs */}
+                {detailModalTrail ? (
+                  <div className="p-3">
+                    <SidebarQuickSpecs
+                      trail={detailModalTrail}
+                      onBack={() => setDetailModalTrail(null)}
+                      onFocusMap={() => {
+                        handleTrailSelect(detailModalTrail, true);
+                      }}
+                    />
+                  </div>
+                ) : sidebarTab === 'hud' ? (
+                  /* B. Geospatial HUD View (Adapted for 2D, 3D Roam, 3D Summit Tours) */
+                  <div className="p-3 space-y-4 animate-in fade-in duration-200">
+                    {/* MODE 1: 2D Geospatial Navigator */}
+                    {mapEngine === '2d' && (
+                      <div className="space-y-4">
+                        {/* 1. Regional Range Selector */}
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">
+                              Select Himalayan Range:
+                            </span>
+                            <span className="text-[9px] text-[#B68D40] font-mono">
+                              {selectedRegion} Active
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {Object.keys(REGION_FOCUS_COORDS).map((reg) => {
+                              const isSelected =
+                                selectedRegion.toLowerCase() === reg.toLowerCase() ||
+                                (selectedRegion === 'All' && reg === 'All');
+                              return (
+                                <button
+                                  key={reg}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedRegion(reg);
+                                    const target = REGION_FOCUS_COORDS[reg];
+                                    if (target) setFocusedCoords(target.center);
+                                  }}
+                                  className={`px-2.5 py-1.5 rounded-xl text-[11px] font-semibold transition border flex items-center gap-1.5 ${
+                                    isSelected
+                                      ? 'bg-[#B68D40] text-black border-[#B68D40] shadow-md font-bold'
+                                      : 'bg-neutral-900/90 text-gray-300 border-neutral-800 hover:border-neutral-700 hover:text-white'
+                                  }`}
+                                >
+                                  <Layers className={`h-3 w-3 ${isSelected ? 'text-black' : 'text-[#B68D40]'}`} />
+                                  <span className="truncate">{reg}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
 
-                        return (
-                          <div
-                            key={trail.id}
-                            onClick={() => handleTrailSelect(trail)}
-                            onMouseEnter={() => handleTrailCardHover(trail)}
-                            className={`group flex items-center gap-2 px-2.5 py-2 cursor-pointer transition-all ${
-                              isSelected
-                                ? 'bg-[#B68D40]/10 border-l-2 border-l-[#B68D40]'
-                                : 'hover:bg-white/[0.03] border-l-2 border-l-transparent'
-                            }`}
+                        {/* 2. Apex Summits 8,000m+ Giants Fly-To */}
+                        <div className="space-y-2 pt-2 border-t border-neutral-900">
+                          <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider block">
+                            Apex Summits (8,000m+ Giants):
+                          </span>
+                          <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                            {HIMALAYAN_SUMMITS.map((summit: ApexSummit) => {
+                              const isActive = activeSummit === summit.name;
+                              return (
+                                <button
+                                  key={summit.name}
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveSummit(summit.name);
+                                    setFocusedCoords([summit.coords.lat, summit.coords.lng]);
+                                    setSelectedRegion(summit.region);
+                                  }}
+                                  className={`w-full px-2.5 py-1.5 rounded-xl text-[11px] font-semibold transition flex items-center justify-between border ${
+                                    isActive
+                                      ? 'bg-[#B68D40] text-black border-[#B68D40] font-bold shadow'
+                                      : 'bg-neutral-900/80 text-gray-200 border-neutral-800 hover:border-neutral-700'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-xs">⛰️</span>
+                                    <span>{summit.name}</span>
+                                  </div>
+                                  <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
+                                    isActive ? 'bg-black/20 text-black font-extrabold' : 'bg-neutral-800 text-amber-400'
+                                  }`}>
+                                    {summit.elevation}m
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* 3. Layer Mode Indicator */}
+                        <div className="p-3 rounded-2xl bg-neutral-900/60 border border-neutral-800 text-xs space-y-1.5">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
+                            Active Map Engine:
+                          </span>
+                          <div className="flex items-center justify-between text-gray-300">
+                            <span>OpenTopoMap Topo Layers</span>
+                            <span className="text-emerald-400 font-mono text-[10px]">● Online</span>
+                          </div>
+                          <p className="text-[10px] text-gray-500 leading-relaxed">
+                            Contour isolines, high-altitude passes, and glacial moraines rendered dynamically.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* MODE 2: 3D Free Roam Globe HUD */}
+                    {mapEngine === '3d-freeroam' && (
+                      <div className="space-y-4">
+                        <div className="p-3 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] uppercase font-bold text-[#B68D40]">Cesium 3D Globe</span>
+                            <span className="text-[10px] text-emerald-400 font-mono">60 FPS</span>
+                          </div>
+                          <p className="text-xs text-gray-300 leading-relaxed">
+                            Photorealistic 3D Himalayan terrain engine with global elevation mesh & satellite orthophotos.
+                          </p>
+                        </div>
+
+                        {/* Apex Summit Fly-To */}
+                        <div className="space-y-2">
+                          <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider block">
+                            Summit 3D Camera Teleport:
+                          </span>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {HIMALAYAN_SUMMITS.slice(0, 6).map((summit: ApexSummit) => (
+                              <button
+                                key={summit.name}
+                                type="button"
+                                onClick={() => {
+                                  setFocusedCoords([summit.coords.lat, summit.coords.lng]);
+                                }}
+                                className="px-2.5 py-1.5 rounded-xl bg-neutral-900 border border-neutral-800 text-[11px] text-gray-200 hover:border-[#B68D40] transition text-left"
+                              >
+                                <div className="font-bold truncate">{summit.name}</div>
+                                <div className="text-[10px] font-mono text-[#B68D40]">{summit.elevation}m</div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Mode Action */}
+                        <button
+                          type="button"
+                          onClick={() => setMapEngine('3d-summit-tours')}
+                          className="w-full py-2.5 rounded-xl bg-[#B68D40] hover:bg-[#c99e4b] text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg transition"
+                        >
+                          <Mountain className="h-4 w-4" />
+                          <span>Launch 3D Summit Orbital Tours</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* MODE 3: 3D Summit Tours Console */}
+                    {mapEngine === '3d-summit-tours' && (
+                      <div className="space-y-4">
+                        <div className="p-3 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] uppercase font-bold text-amber-400">Summit Orbital Tours</span>
+                            <span className="text-[10px] text-amber-400 font-mono">Flight Active</span>
+                          </div>
+                          <p className="text-xs text-gray-300 leading-relaxed">
+                            Kinetic orbital fly-through featuring base camps, technical seracs, and summit ridges.
+                          </p>
+                        </div>
+
+                        {/* Summit Tours List */}
+                        <div className="space-y-2">
+                          <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider block">
+                            Select Peak Tour:
+                          </span>
+                          <div className="space-y-2">
+                            {SUMMIT_TOURS.map((tour) => (
+                              <div
+                                key={tour.id}
+                                className="p-3 rounded-2xl bg-neutral-900/90 border border-neutral-800 hover:border-[#B68D40] transition space-y-2"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <h4 className="text-xs font-black text-white">{tour.name}</h4>
+                                  <span className="text-[10px] font-mono text-[#B68D40] font-bold">
+                                    #{tour.rankInWorld} World
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-gray-400 border-t border-neutral-800 pt-1.5">
+                                  <div>Elevation: <strong className="text-white">{tour.elevation}m</strong></div>
+                                  <div>Oxygen: <strong className="text-amber-400">{tour.oxygenAtSummitPercent}%</strong></div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setMapEngine('2d')}
+                          className="w-full py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-gray-300 text-xs font-bold transition"
+                        >
+                          Return to 2D Topo Navigator
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* C. Expeditions Catalog List / Card View */
+                  <div className="p-3 space-y-3">
+                    {/* Inline Quick Filter Bar */}
+                    <div className="space-y-2 pb-2 border-b border-neutral-900">
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          value={selectedRegion}
+                          onChange={(e) => setSelectedRegion(e.target.value)}
+                          className="flex-1 min-w-0 px-2.5 py-1.5 rounded-xl bg-neutral-900 border border-neutral-800 text-xs text-gray-300 focus:outline-none focus:border-[#B68D40] cursor-pointer"
+                        >
+                          <option value="All">All Regions</option>
+                          <option value="Everest">Everest / Khumbu</option>
+                          <option value="Annapurna">Annapurna</option>
+                          <option value="Langtang">Langtang</option>
+                          <option value="Manaslu">Manaslu</option>
+                          <option value="Mustang">Mustang</option>
+                          <option value="Rolwaling">Rolwaling</option>
+                          <option value="Kanchenjunga">Kangchenjunga</option>
+                        </select>
+
+                        <select
+                          value={selectedDifficulty}
+                          onChange={(e) => setSelectedDifficulty(e.target.value)}
+                          className="flex-1 min-w-0 px-2.5 py-1.5 rounded-xl bg-neutral-900 border border-neutral-800 text-xs text-gray-300 focus:outline-none focus:border-[#B68D40] cursor-pointer"
+                        >
+                          <option value="All">All Difficulties</option>
+                          <option value="Moderate">Moderate</option>
+                          <option value="Strenuous">Strenuous</option>
+                          <option value="Challenging">Challenging</option>
+                        </select>
+
+                        {hasActiveFilters && (
+                          <button
+                            type="button"
+                            onClick={resetFilters}
+                            className="p-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-gray-300 hover:text-white transition"
+                            title="Reset filters"
                           >
-                            {/* Tiny thumbnail */}
-                            <div className="relative w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-neutral-800">
-                              <img
-                                src={trail.image}
-                                alt={trail.name}
-                                className="w-full h-full object-cover"
-                              />
-                            </div>
+                            <RotateCcw className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
 
-                            {/* Info */}
-                            <div className="flex-1 min-w-0">
-                              <h4 className={`text-[11px] font-bold truncate ${isSelected ? 'text-[#B68D40]' : 'text-white group-hover:text-[#E2C085]'} transition`}>
-                                {trail.name}
-                              </h4>
-                              <div className="flex items-center gap-1.5 text-[9px] text-gray-500 font-mono mt-0.5">
-                                <span>{trail.distanceKm}km</span>
-                                <span className="text-[#B68D40]">{trail.maxElevation}m</span>
-                                <span>{trail.durationDays}d</span>
+                    {loading ? (
+                      <div className="flex flex-col items-center justify-center py-20 text-[#B68D40] gap-2">
+                        <Loader2 className="h-6 w-6 animate-spin" />
+                        <span className="text-xs">Loading Trails...</span>
+                      </div>
+                    ) : filteredTrails.length === 0 ? (
+                      <div className="text-center py-16 text-gray-500 text-xs">
+                        No expeditions match the selected filters.
+                      </div>
+                    ) : sidebarView === 'card' ? (
+                      /* ── 1. EXPANDED CARD VIEW (Rich HeroUI Cards with Quick Specs on Click) ── */
+                      <div className="space-y-3">
+                        {filteredTrails.map((trail) => {
+                          const isSelected = activeTrail?.id === trail.id;
+                          const isSaved = savedTrails.includes(trail.id);
+
+                          return (
+                            <div
+                              key={trail.id}
+                              onClick={() => {
+                                handleTrailSelect(trail);
+                                setDetailModalTrail(trail); // Click opens quick specs directly in sidebar!
+                              }}
+                              onMouseEnter={() => handleTrailCardHover(trail)}
+                              className={`group cursor-pointer rounded-2xl border transition-all duration-200 overflow-hidden bg-neutral-900/70 hover:bg-neutral-900 ${
+                                isSelected
+                                  ? 'border-[#B68D40] shadow-xl shadow-[#B68D40]/15'
+                                  : 'border-neutral-800 hover:border-neutral-700'
+                              }`}
+                            >
+                              {/* Card Image Banner */}
+                              <div className="relative h-32 w-full overflow-hidden bg-neutral-800">
+                                <img
+                                  src={trail.image}
+                                  alt={trail.name}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/20 to-transparent" />
+
+                                <div className="absolute top-2 left-2 flex items-center gap-1.5">
+                                  <span className="px-2 py-0.5 rounded-full bg-black/75 backdrop-blur-md text-[#B68D40] text-[9px] font-bold border border-[#B68D40]/30 uppercase">
+                                    {trail.region}
+                                  </span>
+                                  <span className="px-2 py-0.5 rounded-full bg-black/75 backdrop-blur-md text-white text-[9px] font-semibold border border-white/20">
+                                    {trail.difficulty}
+                                  </span>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleSaveTrail(trail.id);
+                                  }}
+                                  className="absolute top-2 right-2 p-1.5 rounded-full bg-black/70 backdrop-blur-md text-white hover:text-red-500 transition"
+                                >
+                                  <Heart
+                                    className={`h-3.5 w-3.5 ${isSaved ? 'fill-red-500 text-red-500' : ''}`}
+                                  />
+                                </button>
+
+                                <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded-md bg-black/75 backdrop-blur-md text-[10px] font-mono text-amber-400 font-bold border border-amber-500/20">
+                                  {trail.durationDays} Days
+                                </div>
+                              </div>
+
+                              {/* Card Info */}
+                              <div className="p-3 space-y-2">
+                                <h4 className="text-sm font-bold text-white group-hover:text-[#E2C085] transition truncate">
+                                  {trail.name}
+                                </h4>
+
+                                <div className="grid grid-cols-3 gap-1 py-1.5 px-2 rounded-xl bg-neutral-950 border border-neutral-900 text-center text-[10px]">
+                                  <div>
+                                    <span className="text-gray-500 block text-[9px] uppercase">Dist</span>
+                                    <span className="font-mono font-bold text-white">{trail.distanceKm}km</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-500 block text-[9px] uppercase">Gain</span>
+                                    <span className="font-mono font-bold text-amber-400">+{trail.elevationGain}m</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-500 block text-[9px] uppercase">Max</span>
+                                    <span className="font-mono font-bold text-[#B68D40]">{trail.maxElevation}m</span>
+                                  </div>
+                                </div>
+
+                                {/* Action Buttons */}
+                                <div className="flex items-center justify-between pt-1 border-t border-neutral-900 text-xs">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleTrailSelect(trail);
+                                      setDetailModalTrail(trail);
+                                    }}
+                                    className="text-[#B68D40] text-[11px] font-bold flex items-center gap-1 hover:underline"
+                                  >
+                                    <Info className="h-3 w-3" />
+                                    <span>Quick Specs</span>
+                                  </button>
+
+                                  <Link
+                                    href={`/trails/${trail.slug || trail.id}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="text-gray-300 hover:text-white flex items-center gap-1 text-[11px] font-semibold"
+                                  >
+                                    <span>Details</span>
+                                    <ArrowUpRight className="h-3 w-3" />
+                                  </Link>
+                                </div>
                               </div>
                             </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      /* ── 2. COMPACT LIST VIEW ── */
+                      <div className="divide-y divide-neutral-900 rounded-2xl border border-neutral-900 overflow-hidden bg-neutral-900/50">
+                        {filteredTrails.map((trail) => {
+                          const isSelected = activeTrail?.id === trail.id;
+                          const isSaved = savedTrails.includes(trail.id);
 
-                            {/* Action icons — appear on hover */}
-                            <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleSaveTrail(trail.id);
-                                }}
-                                className="p-1 rounded text-gray-500 hover:text-red-400 transition"
-                                title="Save"
-                              >
-                                <Heart className={`h-3 w-3 ${isSaved ? 'fill-red-500 text-red-500' : ''}`} />
-                              </button>
+                          return (
+                            <div
+                              key={trail.id}
+                              onClick={() => {
+                                handleTrailSelect(trail);
+                                setDetailModalTrail(trail); // Click opens quick specs directly in sidebar!
+                              }}
+                              onMouseEnter={() => handleTrailCardHover(trail)}
+                              className={`group flex items-center gap-2.5 p-2.5 cursor-pointer transition-all ${
+                                isSelected
+                                  ? 'bg-[#B68D40]/15 border-l-2 border-l-[#B68D40]'
+                                  : 'hover:bg-neutral-900 border-l-2 border-l-transparent'
+                              }`}
+                            >
+                              <div className="relative w-11 h-11 rounded-lg overflow-hidden shrink-0 bg-neutral-800">
+                                <img
+                                  src={trail.image}
+                                  alt={trail.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+
+                              <div className="flex-1 min-w-0">
+                                <h4
+                                  className={`text-xs font-bold truncate ${
+                                    isSelected
+                                      ? 'text-[#B68D40]'
+                                      : 'text-white group-hover:text-[#E2C085]'
+                                  } transition`}
+                                >
+                                  {trail.name}
+                                </h4>
+                                <div className="flex items-center gap-2 text-[10px] text-gray-400 font-mono mt-0.5">
+                                  <span>{trail.distanceKm}km</span>
+                                  <span className="text-amber-400">+{trail.elevationGain}m</span>
+                                  <span className="text-[#B68D40]">{trail.maxElevation}m</span>
+                                </div>
+                              </div>
+
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setDetailModalTrail(trail);
                                 }}
-                                className="p-1 rounded text-gray-500 hover:text-[#B68D40] transition"
+                                className="p-1.5 rounded-lg text-gray-500 hover:text-[#B68D40] transition"
                                 title="Quick Specs"
                               >
-                                <Info className="h-3 w-3" />
+                                <Info className="h-3.5 w-3.5" />
                               </button>
                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         )}
@@ -790,6 +1201,7 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                     setFocusedCoords([lm.coordinates.lat, lm.coordinates.lng]);
                   }}
                   height="h-full"
+                  hideHeaderControls={true}
                 />
               ) : (
                 <CesiumGlobeMap
