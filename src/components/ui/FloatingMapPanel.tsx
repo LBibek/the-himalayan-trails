@@ -33,6 +33,7 @@ export interface FloatingMapPanelProps {
   minWidth?: number;
   minHeight?: number;
   defaultWidth?: string; // e.g. "max-w-3xl w-full"
+  theme?: 'dark' | 'light';
 }
 
 export default function FloatingMapPanel({
@@ -57,6 +58,7 @@ export default function FloatingMapPanel({
   minWidth = 280,
   minHeight = 120,
   defaultWidth = 'max-w-3xl w-full',
+  theme = 'dark',
 }: FloatingMapPanelProps) {
   const [position, setPosition] = useState(initialPosition);
   const [size, setSize] = useState<{ width?: number; height?: number }>(initialSize || {});
@@ -187,7 +189,11 @@ export default function FloatingMapPanel({
               height: size.height && !isMinimized ? `${size.height}px` : undefined,
             }
       }
-      className={`transition-shadow pointer-events-auto rounded-3xl border border-[#B68D40]/30 shadow-2xl backdrop-blur-2xl bg-slate-950/90 text-slate-100 select-none overflow-hidden relative ${
+      className={`transition-shadow pointer-events-auto rounded-3xl border shadow-2xl backdrop-blur-2xl select-none overflow-hidden relative ${
+        theme === 'light'
+          ? 'bg-white/75 text-slate-900 border-black/15 shadow-xl'
+          : 'bg-slate-950/80 text-slate-100 border-[#B68D40]/30 shadow-2xl'
+      } ${
         isMaximized
           ? 'fixed inset-4 z-[9999] flex flex-col m-auto w-[calc(100%-2rem)] h-[calc(100%-2rem)]'
           : `${defaultWidth} ${className}`
@@ -201,7 +207,11 @@ export default function FloatingMapPanel({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        className={`flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-800/80 bg-slate-900/60 ${
+        className={`flex items-center justify-between gap-3 px-4 py-3 border-b ${
+          theme === 'light'
+            ? 'border-black/10 bg-white/60'
+            : 'border-slate-800/80 bg-slate-900/60'
+        } ${
           allowDrag && !isMaximized ? 'cursor-grab active:cursor-grabbing' : ''
         } ${headerClassName}`}
       >
@@ -213,7 +223,7 @@ export default function FloatingMapPanel({
             </div>
           )}
           {icon && <div className="text-[#B68D40] shrink-0">{icon}</div>}
-          <div data-slot="title" className="font-bold text-xs sm:text-sm text-white truncate">
+          <div data-slot="title" className={`font-bold text-xs sm:text-sm truncate ${theme === 'light' ? 'text-slate-900' : 'text-white'}`}>
             {title}
           </div>
           {badge && <div className="shrink-0">{badge}</div>}
@@ -227,7 +237,11 @@ export default function FloatingMapPanel({
               type="button"
               data-slot="minimize-btn"
               onClick={toggleMinimize}
-              className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white transition focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:outline-none"
+              className={`p-1.5 rounded-lg transition focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:outline-none ${
+                theme === 'light'
+                  ? 'bg-slate-200/80 hover:bg-slate-300 text-slate-700 hover:text-slate-900'
+                  : 'bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white'
+              }`}
               title={isMinimized ? 'Expand Window' : 'Minimize Window'}
               aria-label={isMinimized ? 'Expand' : 'Minimize'}
             >
@@ -241,11 +255,15 @@ export default function FloatingMapPanel({
               type="button"
               data-slot="maximize-btn"
               onClick={toggleMaximize}
-              className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white transition focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:outline-none"
+              className={`p-1.5 rounded-lg transition focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:outline-none ${
+                theme === 'light'
+                  ? 'bg-slate-200/80 hover:bg-slate-300 text-slate-700 hover:text-slate-900'
+                  : 'bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white'
+              }`}
               title={isMaximized ? 'Restore Size' : 'Maximize Window'}
               aria-label={isMaximized ? 'Restore' : 'Maximize'}
             >
-              {isMaximized ? <Minimize2 className="h-3.5 w-3.5 text-amber-400" /> : <Maximize2 className="h-3.5 w-3.5" />}
+              {isMaximized ? <Minimize2 className="h-3.5 w-3.5 text-amber-500" /> : <Maximize2 className="h-3.5 w-3.5" />}
             </button>
           )}
 

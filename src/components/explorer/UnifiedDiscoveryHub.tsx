@@ -29,7 +29,9 @@ import {
   Sparkles,
   ExternalLink,
   ShieldCheck,
-  CheckCircle2
+  CheckCircle2,
+  ArrowLeft,
+  RotateCcw
 } from 'lucide-react';
 import { Trail, Landmark } from '@/types';
 import { ROUTE_TRACKS } from '@/data/routeTracks';
@@ -58,6 +60,125 @@ const CesiumGlobeMap = dynamic(() => import('@/components/map/CesiumGlobeMap'), 
 
 export interface UnifiedDiscoveryHubProps {
   defaultLayout?: 'split' | 'mapOnly' | 'cardsOnly';
+}
+
+interface SidebarQuickSpecsProps {
+  trail: Trail;
+  onBack: () => void;
+  onFocusMap: () => void;
+}
+
+function SidebarQuickSpecs({ trail, onBack, onFocusMap }: SidebarQuickSpecsProps) {
+  return (
+    <div data-slot="base" className="space-y-4 animate-in fade-in slide-in-from-left-2 duration-200">
+      {/* Back button & Title bar */}
+      <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
+        <button
+          type="button"
+          onClick={onBack}
+          className="flex items-center gap-2 text-xs font-bold text-gray-300 hover:text-[#B68D40] transition py-1 px-2 rounded-lg hover:bg-neutral-900"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          <span>Back to Trail List</span>
+        </button>
+        <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-[#B68D40]/20 text-[#B68D40] border border-[#B68D40]/30 font-bold">
+          Quick Specs
+        </span>
+      </div>
+
+      {/* Image & Header Overlay */}
+      <div className="relative h-44 w-full rounded-2xl overflow-hidden bg-neutral-900 border border-neutral-800 shadow-lg">
+        <img
+          src={trail.image}
+          alt={trail.name}
+          className="w-full h-full object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/40 to-transparent" />
+        
+        <div className="absolute top-2.5 right-2.5">
+          <button
+            type="button"
+            onClick={onBack}
+            className="p-1.5 rounded-full bg-black/60 hover:bg-black text-gray-300 hover:text-white transition"
+            title="Close specs"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        <div className="absolute bottom-2.5 left-3 right-3 flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <span className="px-2 py-0.5 rounded-full bg-[#B68D40] text-black text-[10px] font-extrabold uppercase">
+              {trail.region}
+            </span>
+            <span className="px-2 py-0.5 rounded-full bg-neutral-900/90 text-gray-200 text-[10px] font-semibold border border-neutral-700">
+              {trail.difficulty}
+            </span>
+          </div>
+          <span className="text-xs font-mono font-bold text-amber-400">
+            {trail.durationDays} Days
+          </span>
+        </div>
+      </div>
+
+      {/* Title & Description */}
+      <div className="space-y-1.5">
+        <h3 className="text-lg font-black text-white">{trail.name}</h3>
+        <p className="text-xs text-gray-400 leading-relaxed line-clamp-4">{trail.description}</p>
+      </div>
+
+      {/* Metrics Grid */}
+      <div className="grid grid-cols-3 gap-2 p-3 rounded-2xl bg-neutral-900/80 border border-neutral-800 text-center">
+        <div>
+          <span className="text-[10px] text-gray-400 uppercase font-semibold">Distance</span>
+          <p className="text-sm font-extrabold text-white font-mono">{trail.distanceKm} km</p>
+        </div>
+        <div>
+          <span className="text-[10px] text-gray-400 uppercase font-semibold">Elev Gain</span>
+          <p className="text-sm font-extrabold text-amber-400 font-mono">+{trail.elevationGain}m</p>
+        </div>
+        <div>
+          <span className="text-[10px] text-gray-400 uppercase font-semibold">Max Alt</span>
+          <p className="text-sm font-extrabold text-[#B68D40] font-mono">{trail.maxElevation}m</p>
+        </div>
+      </div>
+
+      {/* Highlights */}
+      {trail.highlights && trail.highlights.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Key Highlights</h4>
+          <div className="space-y-1.5">
+            {trail.highlights.map((hl, idx) => (
+              <div key={idx} className="flex items-start gap-2 text-xs text-gray-200">
+                <CheckCircle2 className="h-3.5 w-3.5 text-[#B68D40] shrink-0 mt-0.5" />
+                <span>{hl}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Action Buttons */}
+      <div className="pt-2 space-y-2">
+        <button
+          type="button"
+          onClick={onFocusMap}
+          className="w-full py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-[#B68D40] text-xs font-bold flex items-center justify-center gap-2 transition"
+        >
+          <MapIcon className="h-4 w-4" />
+          <span>Focus on 2D/3D Map</span>
+        </button>
+
+        <Link
+          href={`/trails/${trail.slug || trail.id}`}
+          className="w-full py-2.5 rounded-xl bg-[#B68D40] hover:bg-[#c99e4b] text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg transition"
+        >
+          <span>View Full Itinerary & Booking</span>
+          <ArrowUpRight className="h-4 w-4" />
+        </Link>
+      </div>
+    </div>
+  );
 }
 
 export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedDiscoveryHubProps) {
@@ -207,146 +328,188 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
 
   const activeTrail = selectedTrail || (hoveredTrailId ? trails.find((t: Trail) => t.id === hoveredTrailId) : trails[0]) || null;
 
+  const hasActiveFilters = selectedRegion !== 'All' || selectedDifficulty !== 'All' || searchQuery !== '' || maxAltitude < 6000;
+  const resetFilters = () => {
+    setSelectedRegion('All');
+    setSelectedDifficulty('All');
+    setSearchQuery('');
+    setMaxAltitude(6000);
+  };
+
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] bg-black text-white overflow-hidden relative">
       
       {/* 1. DISCOVERY HUB TOP NAVIGATION & FILTER BAR */}
-      <header className="px-4 py-3 bg-neutral-950 border-b border-neutral-800 flex flex-wrap items-center justify-between gap-3 z-20 shrink-0">
+      <header className="bg-neutral-950 border-b border-neutral-800 shrink-0 z-20">
         
-        {/* Left Search Bar */}
-        <div className="flex items-center gap-3 flex-1 min-w-[260px] max-w-md">
-          <div className="relative w-full">
-            <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-gray-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search trails, passes, valleys..."
-              className="w-full pl-10 pr-4 py-2 rounded-full bg-neutral-900 border border-neutral-700 text-xs text-white placeholder-gray-400 focus:outline-none focus:border-[#B68D40]"
-            />
-            {searchQuery && (
-              <button 
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-2.5 text-gray-400 hover:text-white"
+        {/* ROW 1: PRIMARY CONTROLS (Search, Layout switcher, Engine switcher) */}
+        <div className="px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 border-b border-neutral-900">
+          {/* Navigator Title & Search */}
+          <div className="flex items-center gap-3 flex-1 min-w-[260px] max-w-md">
+            <div className="hidden sm:flex items-center gap-1.5 text-[#B68D40] font-black text-xs uppercase tracking-wider shrink-0">
+              <Compass className="h-4 w-4" />
+              <span>Navigator</span>
+            </div>
+
+            <div className="relative w-full">
+              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-gray-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search trails, peaks, passes, valleys..."
+                className="w-full pl-9 pr-8 py-1.5 rounded-full bg-neutral-900 border border-neutral-700/80 text-xs text-white placeholder-gray-400 focus:outline-none focus:border-[#B68D40] transition"
+              />
+              {searchQuery && (
+                <button 
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-2 text-gray-400 hover:text-white"
+                  title="Clear search"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Right Controls: View Layout Switcher + Map Engine Switcher */}
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {/* View Layout Toggle (Split Screen, Full Map, Grid View) */}
+            <div className="flex items-center p-0.5 rounded-full bg-neutral-900 border border-neutral-800 text-xs font-semibold">
+              <button
+                onClick={() => setLayoutMode('split')}
+                className={`px-3 py-1.5 rounded-full transition flex items-center gap-1.5 ${
+                  layoutMode === 'split' ? 'bg-[#B68D40] text-black shadow font-bold' : 'text-gray-400 hover:text-white'
+                }`}
+                title="Split Screen View"
               >
-                <X className="h-4 w-4" />
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                <span className="hidden md:inline">Split</span>
+              </button>
+
+              <button
+                onClick={() => setLayoutMode('mapOnly')}
+                className={`px-3 py-1.5 rounded-full transition flex items-center gap-1.5 ${
+                  layoutMode === 'mapOnly' ? 'bg-[#B68D40] text-black shadow font-bold' : 'text-gray-400 hover:text-white'
+                }`}
+                title="Full Map View"
+              >
+                <MapIcon className="h-3.5 w-3.5" />
+                <span className="hidden md:inline">Full Map</span>
+              </button>
+
+              <button
+                onClick={() => setLayoutMode('cardsOnly')}
+                className={`px-3 py-1.5 rounded-full transition flex items-center gap-1.5 ${
+                  layoutMode === 'cardsOnly' ? 'bg-[#B68D40] text-black shadow font-bold' : 'text-gray-400 hover:text-white'
+                }`}
+                title="Grid Catalog View"
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+                <span className="hidden md:inline">Grid</span>
+              </button>
+            </div>
+
+            {/* Map Engine Toggle: 2D Leaflet vs 3D Free Roam vs 3D Summit Tours */}
+            <div className="flex items-center p-0.5 rounded-full bg-neutral-900 border border-[#B68D40]/30 text-xs font-semibold shadow-lg">
+              <button
+                onClick={() => setMapEngine('2d')}
+                className={`px-3 py-1.5 rounded-full transition flex items-center gap-1.5 ${
+                  mapEngine === '2d' ? 'bg-[#B68D40] text-black font-bold shadow' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <MapIcon className="h-3.5 w-3.5" />
+                <span>2D Topo</span>
+              </button>
+
+              <button
+                onClick={() => setMapEngine('3d-freeroam')}
+                className={`px-3 py-1.5 rounded-full transition flex items-center gap-1.5 ${
+                  mapEngine === '3d-freeroam' ? 'bg-[#B68D40] text-black font-bold shadow' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <Globe className="h-3.5 w-3.5" />
+                <span>3D Roam</span>
+              </button>
+
+              <button
+                onClick={() => setMapEngine('3d-summit-tours')}
+                className={`px-3 py-1.5 rounded-full transition flex items-center gap-1.5 ${
+                  mapEngine === '3d-summit-tours' ? 'bg-[#B68D40] text-black font-bold shadow' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <Mountain className="h-3.5 w-3.5 text-amber-400" />
+                <span>Summit Tours</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ROW 2: QUICK FILTERS & STATS BAR */}
+        <div className="px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs bg-neutral-950/80">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Region Filter Pill */}
+            <select
+              value={selectedRegion}
+              onChange={(e) => setSelectedRegion(e.target.value)}
+              className="px-3 py-1 rounded-full bg-neutral-900 border border-neutral-700/80 text-gray-200 font-medium focus:outline-none focus:border-[#B68D40] cursor-pointer"
+            >
+              <option value="All">Region: All</option>
+              <option value="Everest">Everest / Khumbu</option>
+              <option value="Annapurna">Annapurna</option>
+              <option value="Langtang">Langtang</option>
+              <option value="Manaslu">Manaslu</option>
+              <option value="Mustang">Mustang</option>
+              <option value="Rolwaling">Rolwaling Valley</option>
+              <option value="Kanchenjunga">Kangchenjunga</option>
+            </select>
+
+            {/* Difficulty Filter Pill */}
+            <select
+              value={selectedDifficulty}
+              onChange={(e) => setSelectedDifficulty(e.target.value)}
+              className="px-3 py-1 rounded-full bg-neutral-900 border border-neutral-700/80 text-gray-200 font-medium focus:outline-none focus:border-[#B68D40] cursor-pointer"
+            >
+              <option value="All">Difficulty: All</option>
+              <option value="Moderate">Moderate</option>
+              <option value="Strenuous">Strenuous</option>
+              <option value="Challenging">Challenging</option>
+            </select>
+
+            {/* Elevation Slider */}
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-neutral-900 border border-neutral-700/80 text-gray-200">
+              <Gauge className="h-3.5 w-3.5 text-[#B68D40]" />
+              <span>Max Elev: <strong className="text-[#B68D40] font-mono">{maxAltitude}m</strong></span>
+              <input
+                type="range"
+                min="3000"
+                max="6000"
+                step="100"
+                value={maxAltitude}
+                onChange={(e) => setMaxAltitude(Number(e.target.value))}
+                className="w-20 accent-[#B68D40] cursor-pointer"
+              />
+            </div>
+
+            {/* Reset Filters Button if Active */}
+            {hasActiveFilters && (
+              <button
+                onClick={resetFilters}
+                className="px-2.5 py-1 rounded-full bg-neutral-800 hover:bg-neutral-700 text-gray-300 hover:text-white flex items-center gap-1 transition"
+                title="Reset all filters"
+              >
+                <RotateCcw className="h-3 w-3" />
+                <span>Reset</span>
               </button>
             )}
           </div>
-        </div>
 
-        {/* Filter Pills */}
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          
-          {/* Region Filter Pill */}
-          <select
-            value={selectedRegion}
-            onChange={(e) => setSelectedRegion(e.target.value)}
-            className="px-3 py-1.5 rounded-full bg-neutral-900 border border-neutral-700 text-gray-200 font-medium focus:outline-none focus:border-[#B68D40] cursor-pointer"
-          >
-            <option value="All">Region: All</option>
-            <option value="Everest">Everest / Khumbu</option>
-            <option value="Annapurna">Annapurna</option>
-            <option value="Langtang">Langtang</option>
-            <option value="Manaslu">Manaslu</option>
-            <option value="Mustang">Mustang</option>
-            <option value="Rolwaling">Rolwaling Valley</option>
-            <option value="Kanchenjunga">Kangchenjunga</option>
-          </select>
-
-          {/* Difficulty Filter Pill */}
-          <select
-            value={selectedDifficulty}
-            onChange={(e) => setSelectedDifficulty(e.target.value)}
-            className="px-3 py-1.5 rounded-full bg-neutral-900 border border-neutral-700 text-gray-200 font-medium focus:outline-none focus:border-[#B68D40] cursor-pointer"
-          >
-            <option value="All">Difficulty: All</option>
-            <option value="Moderate">Moderate</option>
-            <option value="Strenuous">Strenuous</option>
-            <option value="Challenging">Challenging</option>
-          </select>
-
-          {/* Elevation Slider Pill */}
-          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-neutral-900 border border-neutral-700 text-gray-200">
-            <Gauge className="h-3.5 w-3.5 text-[#B68D40]" />
-            <span>Max Elev: <strong className="text-[#B68D40]">{maxAltitude}m</strong></span>
-            <input
-              type="range"
-              min="3000"
-              max="6000"
-              step="100"
-              value={maxAltitude}
-              onChange={(e) => setMaxAltitude(Number(e.target.value))}
-              className="w-20 accent-[#B68D40] cursor-pointer"
-            />
+          {/* Active Trail Count & Quick Stats */}
+          <div className="flex items-center gap-2 text-[11px] text-gray-400">
+            <span className="px-2.5 py-0.5 rounded-full bg-neutral-900 border border-neutral-800 font-mono font-semibold text-gray-300">
+              {filteredTrails.length} {filteredTrails.length === 1 ? 'Expedition' : 'Expeditions'}
+            </span>
           </div>
-
-        </div>
-
-        {/* View Layout Toggle (Split Screen, Full Map, Grid View) */}
-        <div className="flex items-center p-1 rounded-full bg-neutral-900 border border-neutral-800 text-xs font-semibold">
-          <button
-            onClick={() => setLayoutMode('split')}
-            className={`px-3 py-1.5 rounded-full transition flex items-center gap-1.5 ${
-              layoutMode === 'split' ? 'bg-[#B68D40] text-black shadow' : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            <SlidersHorizontal className="h-3.5 w-3.5" />
-            <span className="hidden md:inline">Split Screen</span>
-          </button>
-
-          <button
-            onClick={() => setLayoutMode('mapOnly')}
-            className={`px-3 py-1.5 rounded-full transition flex items-center gap-1.5 ${
-              layoutMode === 'mapOnly' ? 'bg-[#B68D40] text-black shadow' : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            <MapIcon className="h-3.5 w-3.5" />
-            <span className="hidden md:inline">Full Map</span>
-          </button>
-
-          <button
-            onClick={() => setLayoutMode('cardsOnly')}
-            className={`px-3 py-1.5 rounded-full transition flex items-center gap-1.5 ${
-              layoutMode === 'cardsOnly' ? 'bg-[#B68D40] text-black shadow' : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            <LayoutGrid className="h-3.5 w-3.5" />
-            <span className="hidden md:inline">Grid View</span>
-          </button>
-        </div>
-
-        {/* Map Engine Toggle: 2D Leaflet vs 3D Free Roam vs 3D Summit Tours */}
-        <div className="flex items-center p-1 rounded-full bg-neutral-900 border border-[#B68D40]/30 text-xs font-semibold shadow-lg">
-          <button
-            onClick={() => setMapEngine('2d')}
-            className={`px-3 py-1.5 rounded-full transition flex items-center gap-1.5 ${
-              mapEngine === '2d' ? 'bg-[#B68D40] text-black font-bold shadow' : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            <MapIcon className="h-3.5 w-3.5" />
-            <span>2D Topo</span>
-          </button>
-
-          <button
-            onClick={() => setMapEngine('3d-freeroam')}
-            className={`px-3 py-1.5 rounded-full transition flex items-center gap-1.5 ${
-              mapEngine === '3d-freeroam' ? 'bg-[#B68D40] text-black font-bold shadow' : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            <Globe className="h-3.5 w-3.5" />
-            <span>3D Roam</span>
-          </button>
-
-          <button
-            onClick={() => setMapEngine('3d-summit-tours')}
-            className={`px-3 py-1.5 rounded-full transition flex items-center gap-1.5 ${
-              mapEngine === '3d-summit-tours' ? 'bg-[#B68D40] text-black font-bold shadow' : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            <Mountain className="h-3.5 w-3.5 text-amber-400" />
-            <span>Summit Tours</span>
-          </button>
         </div>
 
       </header>
@@ -357,13 +520,22 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
         {/* A. LEFT SCROLLABLE TRAIL CARDS LIST (IN SPLIT MODE) */}
         {layoutMode === 'split' && (
           <div className="w-full lg:w-[40%] xl:w-[35%] h-full overflow-y-auto border-r border-neutral-800 bg-neutral-950 p-4 space-y-4 shrink-0">
-            
-            <div className="flex items-center justify-between pb-2 border-b border-neutral-900">
-              <span className="text-xs text-gray-400 uppercase font-semibold tracking-wider">
-                {filteredTrails.length} Himalayan Expeditions Found
-              </span>
-              <span className="text-[11px] text-[#B68D40]">Click card to focus map & profile</span>
-            </div>
+            {detailModalTrail ? (
+              <SidebarQuickSpecs
+                trail={detailModalTrail}
+                onBack={() => setDetailModalTrail(null)}
+                onFocusMap={() => {
+                  handleTrailSelect(detailModalTrail, true);
+                }}
+              />
+            ) : (
+              <>
+                <div className="flex items-center justify-between pb-2 border-b border-neutral-900">
+                  <span className="text-xs text-gray-400 uppercase font-semibold tracking-wider">
+                    {filteredTrails.length} Himalayan Expeditions Found
+                  </span>
+                  <span className="text-[11px] text-[#B68D40]">Click card to focus map & profile</span>
+                </div>
 
             {loading ? (
               <div className="flex flex-col items-center justify-center py-20 text-[#B68D40] gap-2">
@@ -459,6 +631,8 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                   );
                 })}
               </div>
+            )}
+            </>
             )}
           </div>
         )}
@@ -755,105 +929,17 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
 
       </div>
 
-      {/* 4. QUICK TRAIL DETAIL SLIDE-OVER MODAL */}
-      {detailModalTrail && (
-        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-2xl bg-neutral-950 border border-[#B68D40]/50 rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
-            
-            {/* Modal Header Image */}
-            <div className="relative h-60 w-full overflow-hidden shrink-0">
-              <img
-                src={detailModalTrail.image}
-                alt={detailModalTrail.name}
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/40 to-transparent" />
-              
-              <button
-                onClick={() => setDetailModalTrail(null)}
-                className="absolute top-4 right-4 p-2 rounded-full bg-black/70 text-white hover:bg-neutral-800 transition"
-              >
-                <X className="h-5 w-5" />
-              </button>
-
-              <div className="absolute bottom-4 left-6 right-6">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="px-2.5 py-0.5 rounded-full bg-[#B68D40] text-black text-[10px] font-extrabold uppercase">
-                    {detailModalTrail.region}
-                  </span>
-                  <span className="px-2.5 py-0.5 rounded-full bg-neutral-900/90 text-gray-300 text-[10px] font-semibold border border-neutral-700">
-                    {detailModalTrail.difficulty}
-                  </span>
-                </div>
-                <h2 className="text-2xl font-black text-white">{detailModalTrail.name}</h2>
-              </div>
-            </div>
-
-            {/* Modal Body Specs */}
-            <div className="p-6 space-y-5 overflow-y-auto flex-1">
-              
-              {/* Metrics Grid */}
-              <div className="grid grid-cols-3 gap-3 p-4 rounded-2xl bg-neutral-900/80 border border-neutral-800 text-center">
-                <div>
-                  <span className="text-[10px] text-gray-400 uppercase font-semibold">Total Distance</span>
-                  <p className="text-base font-extrabold text-white font-mono">{detailModalTrail.distanceKm} km</p>
-                </div>
-                <div>
-                  <span className="text-[10px] text-gray-400 uppercase font-semibold">Elevation Gain</span>
-                  <p className="text-base font-extrabold text-amber-400 font-mono">+{detailModalTrail.elevationGain}m</p>
-                </div>
-                <div>
-                  <span className="text-[10px] text-gray-400 uppercase font-semibold">Max Altitude</span>
-                  <p className="text-base font-extrabold text-[#B68D40] font-mono">{detailModalTrail.maxElevation}m</p>
-                </div>
-              </div>
-
-              {/* Description */}
-              <div className="space-y-1.5">
-                <h4 className="text-xs uppercase font-bold text-gray-400 tracking-wider">Route Overview</h4>
-                <p className="text-xs text-gray-300 leading-relaxed">{detailModalTrail.description}</p>
-              </div>
-
-              {/* Highlights */}
-              {detailModalTrail.highlights && detailModalTrail.highlights.length > 0 && (
-                <div className="space-y-2">
-                  <h4 className="text-xs uppercase font-bold text-gray-400 tracking-wider">Key Highlights</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {detailModalTrail.highlights.map((hl, idx) => (
-                      <div key={idx} className="flex items-center gap-2 text-xs text-gray-200">
-                        <CheckCircle2 className="h-3.5 w-3.5 text-[#B68D40] shrink-0" />
-                        <span>{hl}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-            </div>
-
-            {/* Modal Footer Actions */}
-            <div className="p-6 pt-3 border-t border-neutral-900 flex items-center justify-between gap-3 shrink-0">
-              <button
-                onClick={() => {
-                  handleTrailSelect(detailModalTrail, true);
-                  setDetailModalTrail(null);
-                }}
-                className="px-4 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-white text-xs font-bold flex items-center gap-2 transition"
-              >
-                <MapIcon className="h-4 w-4 text-[#B68D40]" />
-                <span>Focus on 2D/3D Map</span>
-              </button>
-
-              <Link
-                href={`/trails/${detailModalTrail.slug || detailModalTrail.id}`}
-                className="px-5 py-2.5 rounded-xl bg-[#B68D40] hover:bg-[#c99e4b] text-black font-extrabold text-xs flex items-center gap-2 shadow-lg transition"
-              >
-                <span>View Full Itinerary & Booking</span>
-                <ArrowUpRight className="h-4 w-4" />
-              </Link>
-            </div>
-
-          </div>
+      {/* 4. SLIDE-OVER SIDEBAR FOR QUICK SPECS (WHEN NOT IN SPLIT MODE) */}
+      {layoutMode !== 'split' && detailModalTrail && (
+        <div className="fixed top-28 right-0 bottom-0 w-full sm:w-[420px] z-50 bg-neutral-950/95 border-l border-neutral-800 shadow-2xl backdrop-blur-2xl p-5 overflow-y-auto animate-in slide-in-from-right duration-200">
+          <SidebarQuickSpecs
+            trail={detailModalTrail}
+            onBack={() => setDetailModalTrail(null)}
+            onFocusMap={() => {
+              handleTrailSelect(detailModalTrail, true);
+              setLayoutMode('split');
+            }}
+          />
         </div>
       )}
 

@@ -23,6 +23,8 @@ import {
   Sparkles,
   Navigation,
   ExternalLink,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import FloatingMapPanel from '@/components/ui/FloatingMapPanel';
 import { Trail, Landmark } from '@/types';
@@ -84,6 +86,7 @@ export default function ElevationProfileChart({
   const [hoveredDataPoint, setHoveredDataPoint] = useState<ChartDataPoint | null>(null);
   const [fetchedLandmarks, setFetchedLandmarks] = useState<Landmark[]>([]);
   const [selectedLandmarkId, setSelectedLandmarkId] = useState<string | null>(null);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
 
   useEffect(() => {
     setMounted(true);
@@ -291,16 +294,38 @@ export default function ElevationProfileChart({
     <div data-slot="base" className="w-full">
       <FloatingMapPanel
         id="elevation-profile-window"
+        theme={theme}
         title={
-          <span data-slot="header" className="font-bold text-white">
+          <span data-slot="header" className={`font-bold ${theme === 'light' ? 'text-slate-900' : 'text-white'}`}>
             {trail.name}
           </span>
         }
         icon={<TrendingUp className="h-4 w-4" />}
         badge={
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent/20 text-accent border border-accent/40 font-mono font-bold">
-            Interactive 2D/3D Altitude Profile
-          </span>
+          <div className="flex items-center gap-2">
+            <span
+              className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
+                theme === 'light'
+                  ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                  : 'bg-accent/20 text-accent border border-accent/40'
+              }`}
+            >
+              Interactive Altitude Profile
+            </span>
+            <button
+              type="button"
+              onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+              className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 border transition-all ${
+                theme === 'dark'
+                  ? 'bg-slate-800/80 text-amber-300 border-amber-500/40 hover:bg-slate-700'
+                  : 'bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200'
+              }`}
+              title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Theme`}
+            >
+              {theme === 'dark' ? <Sun className="h-3 w-3 text-amber-400" /> : <Moon className="h-3 w-3 text-amber-800" />}
+              <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
+            </button>
+          </div>
         }
         onClose={onClose}
         allowDrag={true}
@@ -308,16 +333,24 @@ export default function ElevationProfileChart({
         allowMaximize={true}
         allowClose={Boolean(onClose)}
         defaultWidth="w-full max-w-5xl mx-auto"
-        className="shadow-2xl border border-accent/40 bg-neutral-950/95"
+        className="shadow-2xl"
       >
       <div data-slot="body" className="space-y-3">
           {/* Active Hover / Landmark Scrubber Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-neutral-900/80 border border-accent/30 rounded-xl text-xs backdrop-blur-md">
+          <div
+            className={`flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs backdrop-blur-md border ${
+              theme === 'light'
+                ? 'bg-white/60 border-slate-200/90 text-slate-800'
+                : 'bg-slate-900/40 border-white/10 text-white'
+            }`}
+          >
             <div className="flex items-center gap-2">
               <MapPin className="h-4 w-4 text-accent animate-pulse" />
               {hoveredDataPoint ? (
                 <div className="flex items-center gap-2">
-                  <span className="font-extrabold text-white">{hoveredDataPoint.label}</span>
+                  <span className={`font-extrabold ${theme === 'light' ? 'text-slate-900' : 'text-white'}`}>
+                    {hoveredDataPoint.label}
+                  </span>
                   {hoveredDataPoint.lat && hoveredDataPoint.lng && (
                     <span className="text-[10px] text-muted-foreground font-mono">
                       ({hoveredDataPoint.lat.toFixed(4)}°N, {hoveredDataPoint.lng.toFixed(4)}°E)
@@ -326,7 +359,7 @@ export default function ElevationProfileChart({
                 </div>
               ) : activeScrubberData ? (
                 <div className="flex items-center gap-2">
-                  <span className="font-extrabold text-amber-300">🚁 3D Drone Flight Path</span>
+                  <span className="font-extrabold text-amber-500">🚁 3D Drone Flight Path</span>
                   <span className="text-[10px] text-muted-foreground font-mono">
                     ({activeScrubberData.distanceKm} km traversed)
                   </span>
@@ -344,7 +377,7 @@ export default function ElevationProfileChart({
                   Distance: <strong className="text-accent">{hoveredDataPoint.distanceKm} km</strong>
                 </span>
                 <span>
-                  Altitude: <strong className="text-amber-400">{hoveredDataPoint.elevation.toLocaleString()}m</strong>
+                  Altitude: <strong className={theme === 'light' ? 'text-emerald-700 font-bold' : 'text-amber-400'}>{hoveredDataPoint.elevation.toLocaleString()}m</strong>
                 </span>
               </div>
             ) : activeScrubberData ? (
@@ -353,7 +386,7 @@ export default function ElevationProfileChart({
                   Flight Progress: <strong className="text-accent">{activeScrubberData.distanceKm} km</strong>
                 </span>
                 <span>
-                  Flight Alt: <strong className="text-amber-400">{activeScrubberData.elevation.toLocaleString()}m</strong>
+                  Flight Alt: <strong className={theme === 'light' ? 'text-emerald-700 font-bold' : 'text-amber-400'}>{activeScrubberData.elevation.toLocaleString()}m</strong>
                 </span>
               </div>
             ) : null}
@@ -377,32 +410,38 @@ export default function ElevationProfileChart({
                 >
                   <defs>
                     <linearGradient id="elevationProfileGoldGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#B68D40" stopOpacity={0.45} />
-                      <stop offset="95%" stopColor="#B68D40" stopOpacity={0.0} />
+                      <stop offset="5%" stopColor={theme === 'light' ? '#059669' : '#B68D40'} stopOpacity={theme === 'light' ? 0.4 : 0.45} />
+                      <stop offset="95%" stopColor={theme === 'light' ? '#059669' : '#B68D40'} stopOpacity={0.0} />
                     </linearGradient>
                   </defs>
 
-                  <CartesianGrid stroke="rgba(255, 255, 255, 0.07)" strokeDasharray="3 3" vertical={false} />
+                  <CartesianGrid
+                    stroke={theme === 'light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)'}
+                    strokeDasharray="3 3"
+                    vertical={false}
+                  />
 
                   <XAxis
                     dataKey="distanceKm"
                     unit=" km"
-                    stroke="#71717a"
+                    stroke={theme === 'light' ? '#94a3b8' : '#71717a'}
                     fontSize={10}
+                    tick={{ fill: theme === 'light' ? '#475569' : '#94a3b8', fontSize: 10 }}
                     tickLine={false}
-                    axisLine={{ stroke: 'rgba(255,255,255,0.12)' }}
+                    axisLine={{ stroke: theme === 'light' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.12)' }}
                   />
                   <YAxis
                     dataKey="elevation"
                     unit="m"
                     domain={[minElevation - 100, maxElevation + 100]}
-                    stroke="#71717a"
+                    stroke={theme === 'light' ? '#94a3b8' : '#71717a'}
                     fontSize={10}
+                    tick={{ fill: theme === 'light' ? '#475569' : '#94a3b8', fontSize: 10 }}
                     tickLine={false}
                     axisLine={false}
                   />
 
-                  <Tooltip content={<CustomRechartsTooltip />} />
+                  <Tooltip content={<CustomRechartsTooltip theme={theme} />} />
 
                   {/* Route Checkpoint Reference Dots for Key Landmarks */}
                   {landmarkMarkers.map((lm) => (
@@ -411,7 +450,7 @@ export default function ElevationProfileChart({
                       x={lm.distanceKm}
                       y={lm.elevation}
                       r={6}
-                      fill="#f59e0b"
+                      fill={theme === 'light' ? '#059669' : '#f59e0b'}
                       stroke="#ffffff"
                       strokeWidth={2}
                       className="cursor-pointer transition-all hover:scale-125"
@@ -424,7 +463,7 @@ export default function ElevationProfileChart({
                     <>
                       <ReferenceLine
                         x={activeScrubberData.distanceKm}
-                        stroke="#fbbf24"
+                        stroke={theme === 'light' ? '#059669' : '#fbbf24'}
                         strokeWidth={2}
                         strokeDasharray="4 2"
                       />
@@ -432,7 +471,7 @@ export default function ElevationProfileChart({
                         x={activeScrubberData.distanceKm}
                         y={activeScrubberData.elevation}
                         r={7}
-                        fill="#fbbf24"
+                        fill={theme === 'light' ? '#059669' : '#fbbf24'}
                         stroke="#ffffff"
                         strokeWidth={2.5}
                       />
@@ -442,11 +481,11 @@ export default function ElevationProfileChart({
                   <Area
                     type="monotone"
                     dataKey="elevation"
-                    stroke="#B68D40"
+                    stroke={theme === 'light' ? '#059669' : '#B68D40'}
                     strokeWidth={2.5}
                     fillOpacity={1}
                     fill="url(#elevationProfileGoldGrad)"
-                    activeDot={{ r: 7, fill: '#f59e0b', stroke: '#ffffff', strokeWidth: 2 }}
+                    activeDot={{ r: 7, fill: theme === 'light' ? '#059669' : '#f59e0b', stroke: '#ffffff', strokeWidth: 2 }}
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -455,7 +494,7 @@ export default function ElevationProfileChart({
 
           {/* 3. ROUTE LANDMARK CHECKPOINTS INTERACTIVE CHIPS */}
           {landmarkMarkers.length > 0 && (
-            <div data-slot="footer" className="pt-2 border-t border-border/30 flex flex-wrap items-center gap-2 text-xs">
+            <div data-slot="footer" className={`pt-2 border-t flex flex-wrap items-center gap-2 text-xs ${theme === 'light' ? 'border-slate-200' : 'border-border/30'}`}>
               <span className="text-[11px] font-semibold text-accent flex items-center gap-1">
                 <Mountain className="h-3.5 w-3.5 text-accent" />
                 <span>Route Landmarks:</span>
@@ -472,7 +511,9 @@ export default function ElevationProfileChart({
                       className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all flex items-center gap-1.5 border ${
                         isSelected
                           ? 'bg-accent text-accent-foreground border-accent shadow-lg shadow-amber-500/20 scale-105'
-                          : 'bg-neutral-900/90 text-gray-300 border-border/40 hover:border-accent/60 hover:text-white'
+                          : theme === 'light'
+                          ? 'bg-white/80 text-slate-800 border-slate-300 hover:border-accent hover:text-slate-950'
+                          : 'bg-slate-900/60 text-gray-300 border-white/10 hover:border-accent/60 hover:text-white'
                       } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent`}
                     >
                       <span>🏔️ {lm.name}</span>
@@ -489,27 +530,34 @@ export default function ElevationProfileChart({
   );
 }
 
-function CustomRechartsTooltip({ active, payload }: any) {
+function CustomRechartsTooltip({ active, payload, theme = 'dark' }: any) {
   if (active && payload && payload.length) {
     const item = payload[0].payload as ChartDataPoint;
+    const isLight = theme === 'light';
     return (
       <div
         data-slot="tooltip"
-        className="backdrop-blur-2xl bg-neutral-950/95 border border-accent/50 shadow-2xl rounded-xl p-3 text-white text-xs space-y-1.5 max-w-xs"
+        className={`backdrop-blur-2xl shadow-2xl rounded-xl p-3 text-xs space-y-1.5 max-w-xs border ${
+          isLight
+            ? 'bg-white/90 text-slate-950 border-amber-600/50 shadow-slate-300/50'
+            : 'bg-slate-950/85 text-white border-accent/50'
+        }`}
       >
-        <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-1">
-          <span className="font-extrabold text-accent">{item.label}</span>
-          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40">
+        <div className={`flex items-center justify-between gap-2 border-b pb-1 ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
+          <span className={`font-extrabold ${isLight ? 'text-amber-800' : 'text-accent'}`}>{item.label}</span>
+          <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-bold border ${
+            isLight ? 'bg-amber-100 text-amber-900 border-amber-300' : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+          }`}>
             {item.distanceKm} km
           </span>
         </div>
-        <p className="text-base font-mono font-extrabold text-amber-300">{item.elevation.toLocaleString()} m</p>
+        <p className={`text-base font-mono font-extrabold ${isLight ? 'text-emerald-700' : 'text-amber-300'}`}>{item.elevation.toLocaleString()} m</p>
         {item.lat && item.lng && (
-          <p className="text-[10px] text-gray-400 font-mono">
+          <p className={`text-[10px] font-mono ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>
             GPS: {item.lat.toFixed(4)}°N, {item.lng.toFixed(4)}°E
           </p>
         )}
-        <div className="pt-1 border-t border-white/10 flex items-center gap-1 text-[10px] text-accent">
+        <div className={`pt-1 border-t flex items-center gap-1 text-[10px] ${isLight ? 'border-slate-200 text-amber-800' : 'border-white/10 text-accent'}`}>
           <Sparkles className="h-3 w-3" />
           <span>Click to focus 2D & 3D map camera</span>
         </div>
