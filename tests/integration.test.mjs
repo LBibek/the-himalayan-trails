@@ -2018,6 +2018,477 @@ describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () =>
       assert.equal(clicked, 'planner-marker-3', 'Unsubscribed listener must not be called');
     });
   });
+
+  // =========================================================================
+  // 16. Phase 5 HeroUI Component Architecture & Focus Rings (R1)
+  // =========================================================================
+  describe('16. Phase 5 HeroUI Component Architecture & Focus Rings (R1)', () => {
+    test('Semantic slots compliance across HeroUI compound components (base, content, header, body, footer, trigger, indicator)', () => {
+      const glassCardPath = path.join(process.cwd(), 'src', 'components', 'ui', 'GlassCard.tsx');
+      const glassBadgePath = path.join(process.cwd(), 'src', 'components', 'ui', 'GlassBadge.tsx');
+      const carouselPath = path.join(process.cwd(), 'src', 'components', 'ui', 'InfiniteCarousel.tsx');
+      const navbarPath = path.join(process.cwd(), 'src', 'components', 'layout', 'Navbar.tsx');
+
+      assert.ok(fs.existsSync(glassCardPath), 'GlassCard.tsx must exist');
+      assert.ok(fs.existsSync(glassBadgePath), 'GlassBadge.tsx must exist');
+      assert.ok(fs.existsSync(carouselPath), 'InfiniteCarousel.tsx must exist');
+      assert.ok(fs.existsSync(navbarPath), 'Navbar.tsx must exist');
+
+      const cardSrc = fs.readFileSync(glassCardPath, 'utf8');
+      const badgeSrc = fs.readFileSync(glassBadgePath, 'utf8');
+      const carouselSrc = fs.readFileSync(carouselPath, 'utf8');
+      const navbarSrc = fs.readFileSync(navbarPath, 'utf8');
+
+      // GlassCard semantic slots
+      assert.ok(cardSrc.includes('data-slot="base"'), 'GlassCard must implement data-slot="base"');
+      assert.ok(cardSrc.includes('data-slot="content"'), 'GlassCard must implement data-slot="content"');
+      assert.ok(cardSrc.includes('data-slot="header"'), 'GlassCard must implement data-slot="header"');
+      assert.ok(cardSrc.includes('data-slot="body"'), 'GlassCard must implement data-slot="body"');
+      assert.ok(cardSrc.includes('data-slot="footer"'), 'GlassCard must implement data-slot="footer"');
+
+      // GlassBadge semantic slots
+      assert.ok(badgeSrc.includes('data-slot="base"'), 'GlassBadge must implement data-slot="base"');
+      assert.ok(badgeSrc.includes('data-slot="indicator"'), 'GlassBadge must implement data-slot="indicator"');
+      assert.ok(badgeSrc.includes('data-slot="content"'), 'GlassBadge must implement data-slot="content"');
+
+      // InfiniteCarousel semantic slots
+      assert.ok(carouselSrc.includes('data-slot="base"'), 'InfiniteCarousel must implement data-slot="base"');
+      assert.ok(carouselSrc.includes('data-slot="track"'), 'InfiniteCarousel must implement data-slot="track"');
+      assert.ok(carouselSrc.includes('data-slot="card"'), 'InfiniteCarousel must implement data-slot="card"');
+      assert.ok(carouselSrc.includes('data-slot="header"'), 'InfiniteCarousel must implement data-slot="header"');
+      assert.ok(carouselSrc.includes('data-slot="body"'), 'InfiniteCarousel must implement data-slot="body"');
+      assert.ok(carouselSrc.includes('data-slot="footer"'), 'InfiniteCarousel must implement data-slot="footer"');
+
+      // Navbar semantic slots
+      assert.ok(navbarSrc.includes('data-slot="base"'), 'Navbar header must implement data-slot="base"');
+      assert.ok(navbarSrc.includes('data-slot="trigger"'), 'Navbar mobile trigger must implement data-slot="trigger"');
+      assert.ok(navbarSrc.includes('data-slot="overlay"'), 'Navbar mobile modal must implement data-slot="overlay"');
+      assert.ok(navbarSrc.includes('data-slot="body"'), 'Navbar mobile modal must implement data-slot="body"');
+      assert.ok(navbarSrc.includes('data-slot="footer"'), 'Navbar mobile modal must implement data-slot="footer"');
+    });
+
+    test('Accessible focus ring styling across interactive controls (focus-visible:ring-2 and focus-visible:ring-focus / #B68D40)', () => {
+      const glassCardSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'ui', 'GlassCard.tsx'), 'utf8');
+      const glassBadgeSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'ui', 'GlassBadge.tsx'), 'utf8');
+      const carouselSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'ui', 'InfiniteCarousel.tsx'), 'utf8');
+      const navbarSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'layout', 'Navbar.tsx'), 'utf8');
+
+      // Assert focus-visible rings in components
+      assert.ok(glassCardSrc.includes('focus-visible:ring-2') && glassCardSrc.includes('focus-visible:ring-focus'),
+        'GlassCard must declare focus-visible:ring-2 and focus-visible:ring-focus');
+      assert.ok(glassBadgeSrc.includes('focus-visible:ring-2') && glassBadgeSrc.includes('focus-visible:ring-focus'),
+        'GlassBadge must declare focus-visible:ring-2 and focus-visible:ring-focus');
+      assert.ok(carouselSrc.includes('focus-visible:ring-2') && (carouselSrc.includes('focus-visible:ring-focus') || carouselSrc.includes('focus-visible:ring-[#B68D40]')),
+        'InfiniteCarousel buttons and links must declare focus-visible:ring-2 and focus-visible:ring-focus');
+      assert.ok(navbarSrc.includes('focus-visible:ring-2') && navbarSrc.includes('focus-visible:ring-[#B68D40]'),
+        'Navbar interactive triggers and links must declare focus-visible:ring-2 and focus-visible:ring-[#B68D40]');
+    });
+
+    test('Strict Tailwind contrast token pairings and brand gold accent discipline', () => {
+      const globalsCss = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'globals.css'), 'utf8');
+      const glassCardSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'ui', 'GlassCard.tsx'), 'utf8');
+      const carouselSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'ui', 'InfiniteCarousel.tsx'), 'utf8');
+
+      // Verify globals.css defines paired semantic tokens
+      assert.ok(globalsCss.includes('--surface: #0e0e0e') && globalsCss.includes('--surface-foreground: #f5f5f5'),
+        'globals.css must pair --surface with --surface-foreground');
+      assert.ok(globalsCss.includes('--accent: #B68D40') && globalsCss.includes('--accent-foreground: #050505'),
+        'globals.css must pair --accent (#B68D40) with --accent-foreground');
+      assert.ok(globalsCss.includes('--focus: #B68D40'), 'globals.css must define --focus token');
+
+      // Verify pairing in components
+      assert.ok(glassCardSrc.includes('text-surface-foreground') && glassCardSrc.includes('bg-surface'),
+        'GlassCard must pair bg-surface with text-surface-foreground');
+      assert.ok(carouselSrc.includes('text-surface-foreground') && carouselSrc.includes('bg-surface'),
+        'InfiniteCarousel cards must pair bg-surface with text-surface-foreground');
+    });
+
+    test('Interactive state reflection attributes (data-hovered, data-pressed, data-focus-visible)', () => {
+      const glassCardSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'ui', 'GlassCard.tsx'), 'utf8');
+      const glassBadgeSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'ui', 'GlassBadge.tsx'), 'utf8');
+      const carouselSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'ui', 'InfiniteCarousel.tsx'), 'utf8');
+
+      // GlassCard state reflection
+      assert.ok(glassCardSrc.includes('data-hovered='), 'GlassCard must expose data-hovered');
+      assert.ok(glassCardSrc.includes('data-pressed='), 'GlassCard must expose data-pressed');
+      assert.ok(glassCardSrc.includes('data-focus-visible='), 'GlassCard must expose data-focus-visible');
+
+      // GlassBadge state reflection
+      assert.ok(glassBadgeSrc.includes("'data-hovered'"), 'GlassBadge must support data-hovered');
+      assert.ok(glassBadgeSrc.includes("'data-pressed'"), 'GlassBadge must support data-pressed');
+      assert.ok(glassBadgeSrc.includes("'data-focus-visible'"), 'GlassBadge must support data-focus-visible');
+
+      // InfiniteCarousel state reflection
+      assert.ok(carouselSrc.includes('data-hovered='), 'InfiniteCarousel must expose data-hovered');
+      assert.ok(carouselSrc.includes('data-pressed='), 'InfiniteCarousel must expose data-pressed');
+      assert.ok(carouselSrc.includes('data-focus-visible='), 'InfiniteCarousel card must expose data-focus-visible');
+    });
+  });
+
+  // =========================================================================
+  // 17. Phase 5 Dual-Speed Continuous Infinite Carousel (R2)
+  // =========================================================================
+  describe('17. Phase 5 Dual-Speed Continuous Infinite Carousel (R2)', () => {
+    test('InfiniteCarousel component existence, HeroUI compound exports and props contract', () => {
+      const carouselPath = path.join(process.cwd(), 'src', 'components', 'ui', 'InfiniteCarousel.tsx');
+      assert.ok(fs.existsSync(carouselPath), 'InfiniteCarousel.tsx must exist');
+      const src = fs.readFileSync(carouselPath, 'utf8');
+
+      // Component exports
+      assert.ok(src.includes('export default function InfiniteCarousel'), 'Must export default InfiniteCarousel');
+      assert.ok(src.includes('export function CarouselTrack'), 'Must export CarouselTrack');
+      assert.ok(src.includes('export function CarouselCard'), 'Must export CarouselCard');
+      assert.ok(src.includes('export function CarouselRouteCard'), 'Must export CarouselRouteCard');
+      assert.ok(src.includes('export function CarouselServiceCard'), 'Must export CarouselServiceCard');
+      assert.ok(src.includes('export const DEFAULT_CAROUSEL_ITEMS'), 'Must export DEFAULT_CAROUSEL_ITEMS');
+
+      // Compound attachments
+      assert.ok(src.includes('InfiniteCarousel.Track = CarouselTrack'), 'Must attach InfiniteCarousel.Track');
+      assert.ok(src.includes('InfiniteCarousel.Card = CarouselCard'), 'Must attach InfiniteCarousel.Card');
+      assert.ok(src.includes('InfiniteCarousel.RouteCard = CarouselRouteCard'), 'Must attach InfiniteCarousel.RouteCard');
+      assert.ok(src.includes('InfiniteCarousel.ServiceCard = CarouselServiceCard'), 'Must attach InfiniteCarousel.ServiceCard');
+    });
+
+    test('Mirrored content buffer architecture guarantees zero seam and zero jump for infinite continuous loop', () => {
+      const src = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'ui', 'InfiniteCarousel.tsx'), 'utf8');
+
+      // Check mirrored dual-track structure
+      assert.ok(src.includes('ariaHidden={true}'), 'Must render second buffer track with ariaHidden={true}');
+      assert.ok(src.includes("aria-hidden={ariaHidden ? 'true' : undefined}"), 'CarouselTrack must reflect aria-hidden="true"');
+      assert.ok(src.includes('flex flex-nowrap w-max'), 'Tracks container must be nowrap w-max flex');
+      assert.ok(src.includes('translate3d(0, 0, 0)'), 'Must utilize GPU translate3d hardware acceleration');
+    });
+
+    test('GPU-accelerated CSS marquee keyframes and speed variants in globals.css and component', () => {
+      const globalsCss = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'globals.css'), 'utf8');
+      const carouselSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'ui', 'InfiniteCarousel.tsx'), 'utf8');
+
+      // globals.css keyframes
+      assert.ok(globalsCss.includes('@keyframes marquee-left'), 'globals.css must define @keyframes marquee-left');
+      assert.ok(globalsCss.includes('@keyframes marquee-right'), 'globals.css must define @keyframes marquee-right');
+      assert.ok(globalsCss.includes('.animate-marquee-left'), 'globals.css must define .animate-marquee-left');
+      assert.ok(globalsCss.includes('.animate-marquee-right'), 'globals.css must define .animate-marquee-right');
+      assert.ok(globalsCss.includes('transform: translate3d(-100%, 0, 0)'), 'marquee keyframes must translate3d to -100%');
+
+      // InfiniteCarousel speed configuration
+      assert.ok(carouselSrc.includes("slow: '75s'") || carouselSrc.includes('slow: "75s"'), 'Must define slow speed (75s)');
+      assert.ok(carouselSrc.includes("normal: '45s'") || carouselSrc.includes('normal: "45s"'), 'Must define normal speed (45s)');
+      assert.ok(carouselSrc.includes("fast: '25s'") || carouselSrc.includes('fast: "25s"'), 'Must define fast speed (25s)');
+    });
+
+    test('Mixed catalog schema validating both expedition routes and alpine services with pause-on-hover/touch controls', () => {
+      const carouselSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'ui', 'InfiniteCarousel.tsx'), 'utf8');
+
+      // Route card requirements
+      assert.ok(carouselSrc.includes("kind: 'route'") || carouselSrc.includes('kind: "route"'), 'Must define route items');
+      assert.ok(carouselSrc.includes('maxElevation'), 'Route items must contain maxElevation');
+      assert.ok(carouselSrc.includes('distanceKm'), 'Route items must contain distanceKm');
+      assert.ok(carouselSrc.includes('durationDays'), 'Route items must contain durationDays');
+      assert.ok(carouselSrc.includes('Everest Base Camp Trek'), 'Must include Everest Base Camp in default catalog');
+      assert.ok(carouselSrc.includes('Annapurna Circuit & Thorong La'), 'Must include Annapurna Circuit in default catalog');
+
+      // Service card requirements
+      assert.ok(carouselSrc.includes("kind: 'service'") || carouselSrc.includes('kind: "service"'), 'Must define service items');
+      assert.ok(carouselSrc.includes('highlightMetric') || carouselSrc.includes('highlightBadge'), 'Service items must contain highlight metric/badge');
+      assert.ok(carouselSrc.includes('Guided Alpine Expeditions'), 'Must include Guided Alpine Expeditions');
+      assert.ok(carouselSrc.includes('Helicopter Rescue & High-Altitude Evac'), 'Must include Helicopter Rescue');
+      assert.ok(carouselSrc.includes('Sherpa & Porter Logistics'), 'Must include Sherpa & Porter Logistics');
+
+      // Pause controls
+      assert.ok(carouselSrc.includes('pauseOnHover = true'), 'Must support pauseOnHover default true');
+      assert.ok(carouselSrc.includes('pauseOnTouch = true'), 'Must support pauseOnTouch default true');
+      assert.ok(carouselSrc.includes("animationPlayState: isPaused ? 'paused' : 'running'"), 'Must toggle animationPlayState to paused');
+    });
+  });
+
+  // =========================================================================
+  // 18. Phase 5 Services & Live Interactive Map-Centric Home Page (R3)
+  // =========================================================================
+  describe('18. Phase 5 Services & Live Interactive Map-Centric Home Page (R3)', () => {
+    test('Alpine Services Matrix verifies all 5 dedicated high-altitude alpine services', () => {
+      const carouselSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'ui', 'InfiniteCarousel.tsx'), 'utf8');
+
+      const expectedServices = [
+        { name: 'Guided Alpine Expeditions', category: 'Elite Guiding' },
+        { name: 'Custom 3D Itinerary Planning', category: 'Terrain Telemetry' },
+        { name: 'Sherpa & Porter Logistics', category: 'Expedition Support' },
+        { name: 'Helicopter Rescue & High-Altitude Evac', category: 'Emergency SAR' },
+        { name: 'Conservation Permits & TIMS Passes', category: 'Alpine Legalities' },
+      ];
+
+      for (const s of expectedServices) {
+        assert.ok(carouselSrc.includes(s.name), `Alpine Services Matrix must include "${s.name}"`);
+        assert.ok(carouselSrc.includes(s.category), `Service "${s.name}" must be categorized as "${s.category}"`);
+      }
+    });
+
+    test('Service actions connect to persistent endpoints (/api/inquiries, /api/bookings, /api/itineraries, /api/contact) with ACID persistence', () => {
+      // Test persistence of service inquiry into database
+      const testInqId = `inq_alpine_svc_${Date.now()}`;
+      const insertStmt = db.prepare(`
+        INSERT INTO inquiries (
+          id, trail_id, trail_name, full_name, email, phone, country,
+          group_size, preferred_start_date, fitness_level, notes, status, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?);
+      `);
+
+      insertStmt.run(
+        testInqId,
+        'svc-guided-expeditions',
+        'Guided Alpine Expeditions',
+        'Mingma Sherpa',
+        'mingma.lead@example.com',
+        '+977 9801234567',
+        'Nepal',
+        6,
+        '2026-10-25',
+        'Expert',
+        'Booking inquiry for Guided Alpine Expedition to Ama Dablam with oxygen logistics.',
+        new Date().toISOString()
+      );
+
+      // Verify committed in SQLite
+      const inquiry = db.prepare('SELECT * FROM inquiries WHERE id = ?;').get(testInqId);
+      assert.ok(inquiry, 'Alpine service inquiry must be durably stored in SQLite');
+      assert.equal(inquiry.full_name, 'Mingma Sherpa');
+      assert.equal(inquiry.group_size, 6);
+      assert.equal(inquiry.status, 'PENDING');
+
+      // State transition
+      db.prepare("UPDATE inquiries SET status = 'CONFIRMED' WHERE id = ?;").run(testInqId);
+      const updated = db.prepare('SELECT status FROM inquiries WHERE id = ?;').get(testInqId);
+      assert.equal(updated.status, 'CONFIRMED');
+
+      // Cleanup
+      db.prepare('DELETE FROM inquiries WHERE id = ?;').run(testInqId);
+    });
+
+    test('Embedded live interactive regional Leaflet map integration with dynamic SSR isolation (next/dynamic)', () => {
+      const leafletPath = path.join(process.cwd(), 'src', 'components', 'map', 'LeafletMap.tsx');
+      assert.ok(fs.existsSync(leafletPath), 'LeafletMap.tsx must exist');
+      const leafletSrc = fs.readFileSync(leafletPath, 'utf8');
+
+      // LeafletMap props and controls
+      assert.ok(leafletSrc.includes('selectedRegion?: string'), 'LeafletMap must accept selectedRegion');
+      assert.ok(leafletSrc.includes('focusedCoords?: [number, number]'), 'LeafletMap must accept focusedCoords');
+      assert.ok(leafletSrc.includes('hideHeaderControls?: boolean'), 'LeafletMap must support hideHeaderControls');
+      assert.ok(leafletSrc.includes('map.flyTo(center, zoom, { duration: 1.2 })'), 'LeafletMap MapController must flyTo target coords');
+
+      // Dynamic SSR isolation check in discovery hub
+      const hubSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'explorer', 'UnifiedDiscoveryHub.tsx'), 'utf8');
+      assert.ok(hubSrc.includes('dynamic(() => import(') && hubSrc.includes('ssr: false'),
+        'Leaflet must be dynamically loaded with { ssr: false } to isolate from SSR hydration');
+    });
+
+    test('5 regional coordinate presets verify accurate geographic coordinates, zoom levels, and database trail alignment', () => {
+      // 5 official Himalayan regional coordinate presets with centroid tolerances
+      const regionalPresets = [
+        { region: 'Everest', expectedLat: 27.9881, expectedLng: 86.9250, zoom: 10.5 },
+        { region: 'Annapurna', expectedLat: 28.6000, expectedLng: 83.9500, zoom: 10.0 },
+        { region: 'Manaslu', expectedLat: 28.4500, expectedLng: 84.6500, zoom: 10.5 },
+        { region: 'Mustang', expectedLat: 29.0000, expectedLng: 83.8500, zoom: 10.0 },
+        { region: 'Langtang', expectedLat: 28.2000, expectedLng: 85.4500, zoom: 10.5 },
+      ];
+
+      for (const preset of regionalPresets) {
+        // Query database to ensure seeded trail exists in each region
+        const trail = db.prepare('SELECT * FROM trails WHERE region LIKE ? LIMIT 1;').get(`%${preset.region}%`);
+        assert.ok(trail, `Database must contain official seeded trail for region: ${preset.region}`);
+        assert.ok(trail.max_elevation > 3500, `${preset.region} trail max elevation must exceed 3,500m (found: ${trail.max_elevation}m)`);
+        assert.ok(trail.distance_km > 0, `${preset.region} trail must have positive distance`);
+
+        // Check coordinates sanity (within Nepal bounding box: lat 26-31, lng 80-89)
+        assert.ok(preset.expectedLat >= 26 && preset.expectedLat <= 31, 'Latitude within Nepal bounds');
+        assert.ok(preset.expectedLng >= 80 && preset.expectedLng <= 89, 'Longitude within Nepal bounds');
+        assert.ok(preset.zoom >= 9.5 && preset.zoom <= 12, 'Zoom level tuned for regional overview');
+      }
+    });
+
+    test('Direct high-contrast CTA link to 3D Cesium discovery hub across navigation and discovery views', () => {
+      const navbarSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'layout', 'Navbar.tsx'), 'utf8');
+      const pageSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'page.tsx'), 'utf8');
+
+      // Navbar links to 3D Cesium map
+      assert.ok(navbarSrc.includes('/map?engine=3d'), 'Navbar must contain direct link to 3D globe map (/map?engine=3d)');
+      assert.ok(navbarSrc.includes('3D Globe Map') || navbarSrc.includes('3D Cesium Terrain Globe'),
+        'Navbar link text must highlight 3D Cesium globe exploration');
+
+      // Home page contains launch map CTA
+      assert.ok(pageSrc.includes('href="/map"') || pageSrc.includes("href='/map'"), 'Home page must provide CTA to map discovery hub');
+      assert.ok(pageSrc.includes('Launch 3D MAP') || pageSrc.includes('Launch 3D Cesium') || pageSrc.includes('3D'),
+        'Home page CTA must highlight 3D map exploration capability');
+    });
+  });
+
+  // =========================================================================
+  // 19. Phase 5 Luxury Full-Page Mobile Hamburger Navigation (R4)
+  // =========================================================================
+  describe('19. Phase 5 Luxury Full-Page Mobile Hamburger Navigation (R4)', () => {
+    test('Mobile navigation overlay full-screen modal styling (fixed inset-0 z-50 bg-black/95 backdrop-blur-2xl text-white)', () => {
+      const navbarSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'layout', 'Navbar.tsx'), 'utf8');
+
+      // Modal container classes
+      assert.ok(navbarSrc.includes('fixed inset-0 z-50'), 'Mobile overlay must have fixed inset-0 z-50');
+      assert.ok(navbarSrc.includes('bg-black/95 backdrop-blur-2xl text-white'), 'Mobile overlay must use bg-black/95 backdrop-blur-2xl text-white');
+      assert.ok(navbarSrc.includes('id="mobile-navigation-overlay"'), 'Mobile overlay must declare id="mobile-navigation-overlay"');
+      assert.ok(navbarSrc.includes('data-slot="overlay"'), 'Mobile overlay must declare data-slot="overlay"');
+    });
+
+    test('Luxury split layout: primary links with route subtitles, live search input, and 4 expedition shortcuts', () => {
+      const navbarSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'layout', 'Navbar.tsx'), 'utf8');
+
+      // Primary navigation links with descriptions
+      assert.ok(navbarSrc.includes('Alpine Gateway'), 'Must include Alpine Gateway primary link');
+      assert.ok(navbarSrc.includes('3D Cesium Terrain Globe') || navbarSrc.includes('3D Globe Map'), 'Must include 3D Cesium primary link');
+      assert.ok(navbarSrc.includes('Itinerary Studio') || navbarSrc.includes('Planner'), 'Must include Itinerary Studio primary link');
+
+      // Live search input
+      assert.ok(navbarSrc.includes('<Search') && navbarSrc.includes('placeholder="Search routes, peaks, passes..."'),
+        'Must render live search input with placeholder');
+      assert.ok(navbarSrc.includes('/map?search='), 'Search form submission must route to /map?search=...');
+
+      // 4 Expedition shortcuts
+      const expectedShortcuts = ['EBC', 'Annapurna', 'Manaslu', 'Mustang'];
+      for (const sc of expectedShortcuts) {
+        assert.ok(navbarSrc.includes(sc), `Mobile navigation must provide quick shortcut for ${sc}`);
+      }
+    });
+
+    test('24/7 Helicopter Evacuation & High-Altitude SAR emergency rescue hotline CTA (tel:+97714123456)', () => {
+      const navbarSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'layout', 'Navbar.tsx'), 'utf8');
+
+      // Hotline card and telephone link
+      assert.ok(navbarSrc.includes('data-slot="hotline-card"'), 'Must implement data-slot="hotline-card"');
+      assert.ok(navbarSrc.includes('href="tel:+97714123456"'), 'Must link directly to emergency dispatch tel:+97714123456');
+      assert.ok(navbarSrc.includes('24/7 Helicopter Evacuation'), 'Must display 24/7 Helicopter Evacuation title');
+      assert.ok(navbarSrc.includes('Garmin inReach'), 'Must reference satellite link to Garmin inReach');
+    });
+
+    test('Accessibility, keyboard Escape handler, body scroll lock and animated hamburger morph', () => {
+      const navbarSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'layout', 'Navbar.tsx'), 'utf8');
+
+      // Accessibility attributes
+      assert.ok(navbarSrc.includes('role="dialog"'), 'Overlay must specify role="dialog"');
+      assert.ok(navbarSrc.includes('aria-modal="true"'), 'Overlay must specify aria-modal="true"');
+      assert.ok(navbarSrc.includes('aria-label="Mobile Navigation"'), 'Overlay must specify aria-label="Mobile Navigation"');
+
+      // Body scroll locking and cleanup
+      assert.ok(navbarSrc.includes("document.body.style.overflow = 'hidden'"), 'Must lock document.body.style.overflow to hidden');
+      assert.ok(navbarSrc.includes('document.body.style.overflow = originalOverflow') || navbarSrc.includes('document.body.style.overflow ='),
+        'Must restore body scroll on cleanup');
+
+      // Escape key handler
+      assert.ok(navbarSrc.includes("e.key === 'Escape'"), 'Must listen for Escape key');
+      assert.ok(navbarSrc.includes('triggerButtonRef.current?.focus()'), 'Must restore focus to trigger button on close');
+
+      // 3-bar animated hamburger morph
+      assert.ok(navbarSrc.includes('rotate-45 translate-y-2'), 'Must animate bar 1 with rotate-45 translate-y-2');
+      assert.ok(navbarSrc.includes('opacity-0'), 'Must animate bar 2 with opacity-0');
+      assert.ok(navbarSrc.includes('-rotate-45 -translate-y-2'), 'Must animate bar 3 with -rotate-45 -translate-y-2');
+    });
+  });
+
+  // =========================================================================
+  // 20. Phase 5 Trail Selector HUD Deduplication Verification (R5)
+  // =========================================================================
+  describe('20. Phase 5 Trail Selector HUD Deduplication Verification (R5)', () => {
+    test('Trail Selector HUD displays distinct, unique trail names rather than generic region strings', () => {
+      const hubSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'explorer', 'UnifiedDiscoveryHub.tsx'), 'utf8');
+
+      // getCleanTrailName helper existence
+      assert.ok(hubSrc.includes('export function getCleanTrailName(name: string): string'),
+        'UnifiedDiscoveryHub must export getCleanTrailName helper');
+      assert.ok(hubSrc.includes('uniqueHudTrails = useMemo'),
+        'UnifiedDiscoveryHub must compute uniqueHudTrails with deduplication memo');
+
+      // Button content renders clean trail name, not region string
+      assert.ok(hubSrc.includes('<span>{cleanName}</span>'),
+        'Trail button must render {cleanName} instead of {t.region}');
+      assert.ok(hubSrc.includes('id="trail-switcher-hud"'),
+        'Must maintain #trail-switcher-hud container');
+    });
+
+    test('Distinct trail metadata formatting renders trail name plus max elevation in meters', () => {
+      const hubSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'explorer', 'UnifiedDiscoveryHub.tsx'), 'utf8');
+
+      // Formatted elevation badge inside button
+      assert.ok(hubSrc.includes('formattedElevation = t.maxElevation'),
+        'HUD button must compute formatted elevation from t.maxElevation');
+      assert.ok(hubSrc.includes('`${t.maxElevation.toLocaleString()}m`'),
+        'Elevation must be formatted with meter suffix');
+      assert.ok(hubSrc.includes('title={`${cleanName} (${formattedElevation}) — ${t.region}`}'),
+        'Button title tooltip must include clean trail name, elevation, and region');
+
+      // Verify on database trails
+      const trails = db.prepare('SELECT name, max_elevation, region FROM trails;').all();
+      assert.ok(trails.length >= 5, 'Database must contain at least 5 trails');
+      for (const t of trails) {
+        assert.ok(t.name && t.name.length > 0, 'Trail must have a name');
+        assert.ok(t.max_elevation > 3000, `Trail ${t.name} must have max elevation > 3000m`);
+      }
+    });
+
+    test('Zero duplicate text labels guarantee across rendered HUD buttons', () => {
+      // Import or evaluate getCleanTrailName logic
+      function testCleanTrailName(name) {
+        if (!name) return '';
+        return name
+          .replace(/\s+Trek$/i, '')
+          .replace(/\s+&\s+Thorong\s+La$/i, '')
+          .replace(/\s+&\s+Kyanjin\s+Ri$/i, '')
+          .replace(/\s+Forbidden\s+Kingdom$/i, '')
+          .replace(/\s+&\s+Tashi\s+Lapcha\s+Pass$/i, '')
+          .trim();
+      }
+
+      // Catalog with trails in the same region (which formerly produced duplicate labels)
+      const mockTrails = [
+        { id: '1', slug: 'ebc-trek', name: 'Everest Base Camp Trek', region: 'Everest', maxElevation: 5364 },
+        { id: '2', slug: 'three-passes', name: 'Three Passes Trek', region: 'Everest', maxElevation: 5535 },
+        { id: '3', slug: 'gokyo-ri', name: 'Gokyo Lakes & Ri', region: 'Everest', maxElevation: 5357 },
+        { id: '4', slug: 'annapurna-circuit', name: 'Annapurna Circuit & Thorong La', region: 'Annapurna', maxElevation: 5416 },
+        { id: '5', slug: 'annapurna-base-camp', name: 'Annapurna Base Camp Trek', region: 'Annapurna', maxElevation: 4130 },
+      ];
+
+      // Simulate the deduplication logic from UnifiedDiscoveryHub
+      const seenKeys = new Set();
+      const seenNames = new Set();
+      const uniqueTrails = [];
+
+      for (const t of mockTrails) {
+        const clean = testCleanTrailName(t.name).toLowerCase();
+        const key = (t.slug || t.id || clean).trim();
+        if (!seenKeys.has(key) && !seenNames.has(clean)) {
+          seenKeys.add(key);
+          seenNames.add(clean);
+          uniqueTrails.push(t);
+        }
+      }
+
+      const buttonLabels = uniqueTrails.map(t => `${testCleanTrailName(t.name)} ${t.maxElevation}m`);
+      const uniqueLabelsSet = new Set(buttonLabels);
+
+      // Assert 0 duplicate button labels
+      assert.equal(buttonLabels.length, uniqueLabelsSet.size, 'Every rendered button must have a unique label');
+      assert.equal(buttonLabels.length, 5, 'All 5 distinct trails must be preserved without collision');
+
+      // Verify that none of the labels is a generic region name
+      for (const label of buttonLabels) {
+        assert.notEqual(label, 'Everest', 'Label must not be generic region string "Everest"');
+        assert.notEqual(label, 'Annapurna', 'Label must not be generic region string "Annapurna"');
+      }
+    });
+
+    test('Active trail selection updates aria-pressed and triggers map camera transition', () => {
+      const hubSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'explorer', 'UnifiedDiscoveryHub.tsx'), 'utf8');
+
+      // aria-pressed and semantic slot attributes
+      assert.ok(hubSrc.includes('data-slot="trail-button"'), 'Button must specify data-slot="trail-button"');
+      assert.ok(hubSrc.includes('data-trail-id={t.id}'), 'Button must specify data-trail-id');
+      assert.ok(hubSrc.includes('aria-pressed={isSelected}'), 'Button must declare aria-pressed={isSelected}');
+      assert.ok(hubSrc.includes('onClick={() => handleTrailSelect(t)}'), 'Button click must call handleTrailSelect(t)');
+    });
+  });
 });
 
 

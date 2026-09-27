@@ -65,3 +65,47 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Continuous Infinite Marquee Animations (GPU-accelerated translate3d) */
+@keyframes marquee-left {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-100%, 0, 0);
+  }
+}
+
+@keyframes marquee-right {
+  0% {
+    transform: translate3d(-100%, 0, 0);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.animate-marquee-left {
+  animation: marquee-left var(--marquee-duration, 40s) linear infinite;
+  will-change: transform;
+  transform: translate3d(0, 0, 0);
+}
+
+.animate-marquee-right {
+  animation: marquee-right var(--marquee-duration, 40s) linear infinite;
+  will-change: transform;
+  transform: translate3d(0, 0, 0);
+}
+
+/* Pause on hover, focus, touch, and data attributes */
+.group:hover .animate-marquee-left,
+.group:hover .animate-marquee-right,
+.group:focus-within .animate-marquee-left,
+.group:focus-within .animate-marquee-right,
+[data-hovered="true"] .animate-marquee-left,
+[data-hovered="true"] .animate-marquee-right,
+[data-pressed="true"] .animate-marquee-left,
+[data-pressed="true"] .animate-marquee-right {
+  animation-play-state: paused;
+}
+

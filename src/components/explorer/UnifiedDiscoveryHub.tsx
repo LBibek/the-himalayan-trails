@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -37,6 +37,18 @@ import { Trail, Landmark } from '@/types';
 import { ROUTE_TRACKS } from '@/data/routeTracks';
 import ElevationProfileChart from '@/components/map/ElevationProfileChart';
 import FloatingMapPanel from '@/components/ui/FloatingMapPanel';
+
+// Clean and standardize trail names for compact HUD presentation
+export function getCleanTrailName(name: string): string {
+  if (!name) return '';
+  return name
+    .replace(/\s+Trek$/i, '')
+    .replace(/\s+&\s+Thorong\s+La$/i, '')
+    .replace(/\s+&\s+Kyanjin\s+Ri$/i, '')
+    .replace(/\s+Forbidden\s+Kingdom$/i, '')
+    .replace(/\s+&\s+Tashi\s+Lapcha\s+Pass$/i, '')
+    .trim();
+}
 
 // Dynamically import Leaflet Map without SSR
 const LeafletMap = dynamic(() => import('@/components/map/LeafletMap'), {
@@ -325,6 +337,23 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
       setFocusedCoords(track.coords[midIdx]);
     }
   };
+
+  // Deduplicate trail entries for floating Trail Selector HUD
+  const uniqueHudTrails = useMemo(() => {
+    const seenKeys = new Set<string>();
+    const seenNames = new Set<string>();
+    const result: Trail[] = [];
+    for (const t of trails) {
+      const clean = getCleanTrailName(t.name).toLowerCase();
+      const key = (t.slug || t.id || clean).trim();
+      if (!seenKeys.has(key) && !seenNames.has(clean)) {
+        seenKeys.add(key);
+        seenNames.add(clean);
+        result.push(t);
+      }
+    }
+    return result;
+  }, [trails]);
 
   const activeTrail = selectedTrail || (hoveredTrailId ? trails.find((t: Trail) => t.id === hoveredTrailId) : trails[0]) || null;
 
@@ -893,19 +922,41 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                       <span className="text-[10px] text-gray-400 uppercase font-semibold px-1">
                         Select Trail:
                       </span>
-                      {trails.map((t: Trail) => (
-                        <button
-                          key={t.id}
-                          onClick={() => handleTrailSelect(t)}
-                          className={`px-3 py-1 rounded-xl text-[11px] font-semibold transition ${
-                            activeTrail?.id === t.id
-                              ? 'bg-[#B68D40] text-black font-bold shadow'
-                              : 'text-gray-300 hover:bg-neutral-800'
-                          }`}
-                        >
-                          {t.region}
-                        </button>
-                      ))}
+                      {uniqueHudTrails.map((t: Trail) => {
+                        const isSelected = activeTrail?.id === t.id;
+                        const cleanName = getCleanTrailName(t.name);
+                        const formattedElevation = t.maxElevation
+                          ? `${t.maxElevation.toLocaleString()}m`
+                          : '';
+                        return (
+                          <button
+                            key={t.id}
+                            data-slot="trail-button"
+                            data-trail-id={t.id}
+                            aria-pressed={isSelected}
+                            onClick={() => handleTrailSelect(t)}
+                            className={`px-3 py-1.5 rounded-xl text-[11px] font-semibold transition flex items-center gap-1.5 focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none ${
+                              isSelected
+                                ? 'bg-[#B68D40] text-black font-bold shadow-md'
+                                : 'text-gray-300 hover:bg-neutral-800 hover:text-white'
+                            }`}
+                            title={`${cleanName} (${formattedElevation}) — ${t.region}`}
+                          >
+                            <span>{cleanName}</span>
+                            {formattedElevation && (
+                              <span
+                                className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${
+                                  isSelected
+                                    ? 'bg-black/20 text-black font-extrabold'
+                                    : 'bg-neutral-800 text-[#B68D40]'
+                                }`}
+                              >
+                                {formattedElevation}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   </FloatingMapPanel>
                 </div>
@@ -915,7 +966,7 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
               {!showTrailSwitcher && (
                 <button
                   onClick={() => setShowTrailSwitcher(true)}
-                  className="absolute top-4 right-4 z-[999] px-3 py-1.5 rounded-xl bg-slate-900/90 border border-[#B68D40]/50 text-[#B68D40] hover:text-white hover:bg-slate-800 font-bold text-xs flex items-center gap-1.5 shadow-xl transition backdrop-blur-md"
+                  className="absolute top-4 right-4 z-[999] px-3 py-1.5 rounded-xl bg-slate-900/90 border border-[#B68D40]/50 text-[#B68D40] hover:text-white hover:bg-slate-800 font-bold text-xs flex items-center gap-1.5 shadow-xl transition backdrop-blur-md focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none"
                 >
                   <TrendingUp className="h-3.5 w-3.5" />
                   <span>Show Trail Selector</span>

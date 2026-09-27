@@ -7,6 +7,10 @@ interface GlassBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
   variant?: 'gold' | 'emerald' | 'blue' | 'neutral';
   pulse?: boolean;
   className?: string;
+  isHovered?: boolean;
+  isPressed?: boolean;
+  isFocusVisible?: boolean;
+  isDisabled?: boolean;
 }
 
 export default function GlassBadge({
@@ -14,6 +18,10 @@ export default function GlassBadge({
   variant = 'gold',
   pulse = false,
   className = '',
+  isHovered,
+  isPressed,
+  isFocusVisible,
+  isDisabled,
   ...props
 }: GlassBadgeProps) {
   const variantStyles = {
@@ -25,9 +33,14 @@ export default function GlassBadge({
 
   return (
     <span
-      data-slot="badge"
+      data-slot="base"
       data-variant={variant}
-      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider backdrop-blur-md border ${variantStyles[variant]} ${className}`}
+      data-pulse={pulse ? 'true' : undefined}
+      {...(isHovered !== undefined ? { 'data-hovered': isHovered ? 'true' : 'false' } : {})}
+      {...(isPressed !== undefined ? { 'data-pressed': isPressed ? 'true' : 'false' } : {})}
+      {...(isFocusVisible !== undefined ? { 'data-focus-visible': isFocusVisible ? 'true' : 'false' } : {})}
+      {...(isDisabled !== undefined ? { 'data-disabled': isDisabled ? 'true' : 'false' } : {})}
+      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider backdrop-blur-md border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-1 focus-visible:ring-offset-background transition-colors ${variantStyles[variant]} ${className}`}
       {...props}
     >
       {pulse && (
@@ -40,3 +53,4 @@ export default function GlassBadge({
     </span>
   );
 }
+
