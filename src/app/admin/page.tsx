@@ -566,13 +566,23 @@ export default function AdminPage() {
                 </h2>
               </div>
               {editingTrailSlug && (
-                <button
-                  type="button"
-                  onClick={handleCancelEdit}
-                  className="text-xs text-neutral-400 hover:text-white px-3 py-1 bg-neutral-800 rounded-lg"
-                >
-                  Cancel Edit Mode
-                </button>
+                <div className="flex items-center gap-2">
+                  <Link
+                    href={`/itinerary/planner?trail=${editingTrailSlug}`}
+                    className="text-xs text-[#B68D40] hover:text-white px-3 py-1 bg-[#B68D40]/20 rounded-lg flex items-center gap-1.5 border border-[#B68D40]/40 transition"
+                    title="Open this expedition in the Itinerary Planner"
+                  >
+                    <Compass className="h-3.5 w-3.5" />
+                    <span>Open in Itinerary Planner Studio</span>
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={handleCancelEdit}
+                    className="text-xs text-neutral-400 hover:text-white px-3 py-1 bg-neutral-800 rounded-lg"
+                  >
+                    Cancel Edit Mode
+                  </button>
+                </div>
               )}
             </div>
 
@@ -828,6 +838,13 @@ export default function AdminPage() {
                         </span>
                       </td>
                       <td className="p-3 text-right space-x-2">
+                        <Link
+                          href={`/itinerary/planner?trail=${exp.slug || exp.id}`}
+                          className="p-1.5 rounded bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 inline-block align-middle"
+                          title="Plan & Customize Route in Itinerary Planner Studio"
+                        >
+                          <Compass className="h-3.5 w-3.5" />
+                        </Link>
                         <button
                           onClick={() => handleEditExpedition(exp)}
                           className="p-1.5 rounded bg-amber-500/20 text-amber-300 hover:bg-amber-500/30"

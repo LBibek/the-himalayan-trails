@@ -1076,14 +1076,27 @@ export function getRangeByName(name: string): HimalayanRange | null {
   };
 }
 
-export function getAllLandmarks(category?: string): Landmark[] {
+export function getAllLandmarks(category?: string, region?: string, trail?: string): Landmark[] {
   const db = getDatabase();
   let query = 'SELECT * FROM landmarks';
   const params: string[] = [];
+  const conditions: string[] = [];
 
   if (category && category !== 'All') {
-    query += ' WHERE category = ?';
+    conditions.push('category = ?');
     params.push(category);
+  }
+  if (region && region !== 'All') {
+    conditions.push('region = ?');
+    params.push(region);
+  }
+  if (trail && trail !== 'All') {
+    conditions.push('(associated_trail LIKE ? OR associated_trail = ?)');
+    params.push(`%${trail}%`, trail);
+  }
+
+  if (conditions.length > 0) {
+    query += ' WHERE ' + conditions.join(' AND ');
   }
 
   query += ' ORDER BY elevation DESC';

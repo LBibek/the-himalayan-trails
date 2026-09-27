@@ -4,8 +4,9 @@ import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Compass, Info, Sparkles, Move, Trash2, Edit3 } from 'lucide-react';
+import { Compass, Info, Sparkles, Move, Trash2, Edit3, MapPin, Route, Plus } from 'lucide-react';
 import { ActivityType, PlannerWaypoint, ACTIVITY_CONFIG } from '@/types/planner';
+import { Landmark } from '@/types';
 
 // Create custom leaflet marker icon for Planner Waypoints with Glassmorphic Badges
 function createPlannerMarkerIcon(activityType: ActivityType, dayNumber: number, isSelected: boolean, isHovered: boolean) {
@@ -34,6 +35,35 @@ function createPlannerMarkerIcon(activityType: ActivityType, dayNumber: number, 
   });
 }
 
+// Create custom leaflet marker icon for Regional Landmarks
+function createLandmarkMarkerIcon(category: string) {
+  let badgeColor = 'bg-[#B68D40] text-black border-amber-300 ring-2 ring-[#B68D40]/50';
+  let iconSymbol = '📍';
+  if (category === 'Base Camp') { badgeColor = 'bg-rose-600 text-white border-rose-300 ring-2 ring-rose-500/50'; iconSymbol = '⛺'; }
+  if (category === 'High Pass') { badgeColor = 'bg-amber-500 text-black border-amber-200 ring-2 ring-amber-400/50'; iconSymbol = '🚩'; }
+  if (category === 'Monastery') { badgeColor = 'bg-purple-600 text-white border-purple-300 ring-2 ring-purple-500/50'; iconSymbol = '🛕'; }
+  if (category === 'Sacred Lake') { badgeColor = 'bg-cyan-500 text-black border-cyan-200 ring-2 ring-cyan-400/50'; iconSymbol = '🏔️'; }
+  if (category === 'Summit') { badgeColor = 'bg-yellow-400 text-black border-yellow-200 ring-2 ring-yellow-400/50'; iconSymbol = '🏔️'; }
+  if (category === 'Village' || category === 'Lodge') { badgeColor = 'bg-emerald-600 text-white border-emerald-200 ring-2 ring-emerald-500/50'; iconSymbol = '🏡'; }
+
+  const html = `
+    <div class="relative group cursor-pointer flex flex-col items-center transition-all transform hover:scale-125 z-40">
+      <div class="w-8 h-8 rounded-full ${badgeColor} border shadow-xl flex items-center justify-center font-bold text-xs">
+        ${iconSymbol}
+      </div>
+      <div class="w-1.5 h-1.5 rounded-full bg-white -mt-0.5 border border-black shadow"></div>
+    </div>
+  `;
+
+  return L.divIcon({
+    html,
+    className: 'custom-landmark-marker',
+    iconSize: [32, 32],
+    iconAnchor: [16, 28],
+    popupAnchor: [0, -28],
+  });
+}
+
 // Map Click Listener to add waypoint on map click
 function MapClickListener({ onMapClick }: { onMapClick: (lat: number, lng: number) => void }) {
   useMapEvents({
@@ -53,6 +83,30 @@ function MapFlyController({ center }: { center: [number, number] }) {
   return null;
 }
 
+// Auto-fit bounds for waypoints and loaded expedition GPX track
+function MapBoundsFitter({
+  waypoints,
+  expeditionPolyline,
+}: {
+  waypoints: PlannerWaypoint[];
+  expeditionPolyline?: [number, number][];
+}) {
+  const map = useMap();
+  useEffect(() => {
+    const allCoords: [number, number][] = [];
+    if (expeditionPolyline && expeditionPolyline.length > 0) {
+      allCoords.push(...expeditionPolyline);
+    } else if (waypoints.length > 0) {
+      waypoints.forEach((w) => allCoords.push([w.coordinates.lat, w.coordinates.lng]));
+    }
+    if (allCoords.length > 1) {
+      const bounds = L.latLngBounds(allCoords);
+      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 13 });
+    }
+  }, [expeditionPolyline, map]);
+  return null;
+}
+
 export interface ItineraryPlannerMapProps {
   waypoints: PlannerWaypoint[];
   activeDayIndex: number | null;
@@ -65,6 +119,11 @@ export interface ItineraryPlannerMapProps {
   selectedActivity: ActivityType;
   onSelectActivity: (activity: ActivityType) => void;
   height?: string;
+  // Connected Expedition & Regional Landmarks
+  landmarks?: Landmark[];
+  expeditionPolyline?: [number, number][];
+  onAddLandmarkToItinerary?: (landmark: Landmark) => void;
+  expeditionName?: string;
 }
 
 export default function ItineraryPlannerMap({
@@ -78,10 +137,16 @@ export default function ItineraryPlannerMap({
   onDeleteWaypoint,
   selectedActivity,
   onSelectActivity,
-  height = 'h-[520px]'
+  height = 'h-[520px]',
+  landmarks = [],
+  expeditionPolyline = [],
+  onAddLandmarkToItinerary,
+  expeditionName
 }: ItineraryPlannerMapProps) {
   const [mounted, setMounted] = useState(false);
   const [tileType, setTileType] = useState<'topo' | 'satellite' | 'street'>('topo');
+  const [showLandmarks, setShowLandmarks] = useState(true);
+  const [showGpxTrack, setShowGpxTrack] = useState(true);
 
   useEffect(() => {
     setMounted(true);
@@ -171,8 +236,44 @@ export default function ItineraryPlannerMap({
           })}
         </div>
 
-        {/* Right Map Tile Layer Selector */}
-        <div className="pointer-events-auto flex items-center gap-1 p-1 rounded-xl bg-black/75 border border-white/15 backdrop-blur-xl shadow-2xl text-xs">
+        {/* Right Map Tile Layer & Layer Toggles */}
+        <div className="pointer-events-auto flex items-center gap-1.5 p-1 rounded-xl bg-black/75 border border-white/15 backdrop-blur-xl shadow-2xl text-xs">
+          {/* Landmarks Toggle */}
+          {landmarks && landmarks.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowLandmarks(!showLandmarks)}
+              className={`px-2.5 py-1 rounded-lg font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                showLandmarks
+                  ? 'bg-amber-500/30 text-amber-300 border border-amber-500/50'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+              title="Toggle regional landmarks in this area"
+            >
+              <MapPin className="h-3.5 w-3.5 text-amber-400" />
+              <span>POIs ({landmarks.length})</span>
+            </button>
+          )}
+
+          {/* GPX Track Toggle */}
+          {expeditionPolyline && expeditionPolyline.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowGpxTrack(!showGpxTrack)}
+              className={`px-2.5 py-1 rounded-lg font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                showGpxTrack
+                  ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/50'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+              title="Toggle official expedition GPX track"
+            >
+              <Route className="h-3.5 w-3.5 text-emerald-400" />
+              <span>GPX Route</span>
+            </button>
+          )}
+
+          <div className="h-4 w-px bg-white/20 mx-0.5" />
+
           <button
             onClick={() => setTileType('topo')}
             className={`px-3 py-1 rounded-lg font-semibold transition-all ${
@@ -202,6 +303,7 @@ export default function ItineraryPlannerMap({
         zoomControl={false}
       >
         <MapFlyController center={mapCenter} />
+        <MapBoundsFitter waypoints={waypoints} expeditionPolyline={expeditionPolyline} />
         
         <MapClickListener onMapClick={(lat, lng) => onAddWaypointOnMapClick(lat, lng, selectedActivity)} />
 
@@ -210,6 +312,86 @@ export default function ItineraryPlannerMap({
           attribution={tileUrls[tileType].attribution}
           maxZoom={18}
         />
+
+        {/* Expedition Official GPX Route Track */}
+        {showGpxTrack && expeditionPolyline && expeditionPolyline.length > 1 && (
+          <>
+            <Polyline
+              positions={expeditionPolyline}
+              pathOptions={{
+                color: '#000000',
+                weight: 7,
+                opacity: 0.6,
+                lineCap: 'round',
+                lineJoin: 'round'
+              }}
+            />
+            <Polyline
+              positions={expeditionPolyline}
+              pathOptions={{
+                color: '#10b981',
+                weight: 4,
+                opacity: 0.9,
+                lineCap: 'round',
+                lineJoin: 'round'
+              }}
+            />
+          </>
+        )}
+
+        {/* Regional Landmarks in this area */}
+        {showLandmarks && landmarks && landmarks.map((lm) => (
+          <Marker
+            key={lm.id}
+            position={[lm.coordinates.lat, lm.coordinates.lng]}
+            icon={createLandmarkMarkerIcon(lm.category)}
+          >
+            <Popup className="custom-leaflet-popup">
+              <div className="p-2 space-y-2 max-w-xs text-neutral-900">
+                <div className="flex items-center justify-between border-b border-neutral-200 pb-1.5">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-black text-[#B68D40] uppercase">
+                    {lm.category}
+                  </span>
+                  <span className="text-xs font-extrabold text-amber-600">{lm.elevation}m</span>
+                </div>
+
+                <div>
+                  <h4 className="font-extrabold text-sm text-neutral-900 leading-snug">{lm.name}</h4>
+                  {lm.nativeName && (
+                    <div className="text-[11px] text-gray-500 font-serif">{lm.nativeName}</div>
+                  )}
+                </div>
+
+                {lm.image && (
+                  <img
+                    src={lm.image}
+                    alt={lm.name}
+                    className="w-full h-24 object-cover rounded-lg border border-neutral-200 shadow-sm"
+                  />
+                )}
+
+                <p className="text-xs text-neutral-600 line-clamp-2">{lm.description}</p>
+
+                {lm.permitRequired && (
+                  <div className="text-[10px] text-amber-800 bg-amber-50 p-1.5 rounded border border-amber-200">
+                    <strong>Permit:</strong> {lm.permitRequired}
+                  </div>
+                )}
+
+                <div className="pt-2 border-t border-neutral-200">
+                  <button
+                    type="button"
+                    onClick={() => onAddLandmarkToItinerary?.(lm)}
+                    className="w-full py-1.5 px-3 rounded-lg bg-[#B68D40] hover:bg-[#c99e4b] text-black font-extrabold text-xs flex items-center justify-center gap-1.5 shadow transition cursor-pointer"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>Add to Itinerary Day</span>
+                  </button>
+                </div>
+              </div>
+            </Popup>
+          </Marker>
+        ))}
 
         {/* Polyline Track Connecting Itinerary Days */}
         {polylineCoords.length > 1 && (
