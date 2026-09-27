@@ -679,6 +679,7 @@ function ItineraryPlannerContent() {
   const [showLandmarksDrawer, setShowLandmarksDrawer] = useState(false);
   const [landmarkFilter, setLandmarkFilter] = useState<string>('All');
   const [gpxUploadSuccess, setGpxUploadSuccess] = useState<string | null>(null);
+  const [uploadedGpxData, setUploadedGpxData] = useState<ParsedRouteResult | null>(null);
   const gpxFileInputRef = useRef<HTMLInputElement>(null);
 
   // Itinerary Waypoints State with stable IDs
@@ -836,6 +837,7 @@ function ItineraryPlannerContent() {
       const content = event.target?.result as string;
       try {
         const result: ParsedRouteResult = parseRouteFile(content, file.name);
+        setUploadedGpxData(result);
         setExpeditionPolyline(result.waypoints);
 
         if (result.landmarks.length > 0) {
@@ -850,13 +852,13 @@ function ItineraryPlannerContent() {
             image: '/steps/trails.jpg',
             description: lm.description,
             permitRequired: 'Standard Region Entry Permit',
-            associatedTrail: selectedTrail?.name || 'Custom Expedition',
+            associatedTrail: selectedTrail?.name || result.name || 'Custom Expedition',
           }));
           setRegionalLandmarks((prev) => [...convertedLandmarks, ...prev]);
         }
 
         setGpxUploadSuccess(
-          `Imported "${result.name}": ${result.trackpoints.length} trackpoints, ${result.totalDistanceKm}km, max alt ${result.maxElevationM}m.`
+          `Imported "${result.name}": ${result.trackpoints.length} trackpoints, ${result.totalDistanceKm}km, apex ${result.maxElevationM}m. GPX High-Resolution Elevation Profile activated!`
         );
         setTimeout(() => setGpxUploadSuccess(null), 6000);
       } catch (err: unknown) {
@@ -866,6 +868,74 @@ function ItineraryPlannerContent() {
     };
     reader.readAsText(file);
     if (gpxFileInputRef.current) gpxFileInputRef.current.value = '';
+  };
+
+  // Auto-generate itinerary stages directly from uploaded GPX route track
+  const handleGenerateDaysFromGpx = () => {
+    if (!uploadedGpxData) return;
+
+    if (uploadedGpxData.landmarks.length >= 2) {
+      const newDays: PlannerWaypoint[] = uploadedGpxData.landmarks.map((lm, idx) => {
+        const prevLm = idx > 0 ? uploadedGpxData.landmarks[idx - 1] : null;
+        const dist = prevLm
+          ? Math.max(3, Math.round(Math.hypot((lm.lat - prevLm.lat) * 111, (lm.lng - prevLm.lng) * 100)))
+          : 8;
+        const prevAlt = prevLm ? prevLm.elevation : 2000;
+        let actType: ActivityType = 'trekking';
+        if (lm.category === 'Base Camp') actType = 'camp';
+        else if (lm.category === 'High Pass' || lm.category === 'Summit') actType = 'pass';
+        else if (lm.category === 'Monastery') actType = 'monastery';
+        else if (lm.category === 'Village' || lm.category === 'Lodge') actType = 'acclimatization';
+
+        return {
+          id: `gpx-day-${idx + 1}-${Date.now()}`,
+          day: idx + 1,
+          title: lm.name,
+          distanceKm: dist,
+          sleepingAltitude: lm.elevation,
+          altitudeGain: lm.elevation - prevAlt,
+          activityType: actType,
+          coordinates: { lat: lm.lat, lng: lm.lng },
+          notes: lm.description || `Stage checkpoint along ${uploadedGpxData.name}.`,
+        };
+      });
+
+      setWaypoints(newDays);
+      setActiveDayIndex(0);
+      setSaveSuccessMessage(`Generated ${newDays.length} itinerary days from GPX waypoints!`);
+      setTimeout(() => setSaveSuccessMessage(null), 4000);
+      return;
+    }
+
+    // Split trackpoints evenly across estimated days
+    const stageCount = uploadedGpxData.estimatedDays || Math.max(2, Math.ceil(uploadedGpxData.totalDistanceKm / 12));
+    const totalPts = uploadedGpxData.trackpoints.length;
+    const newDays: PlannerWaypoint[] = [];
+
+    for (let d = 1; d <= stageCount; d++) {
+      const ptIndex = Math.min(totalPts - 1, Math.round((d / stageCount) * (totalPts - 1)));
+      const tp = uploadedGpxData.trackpoints[ptIndex];
+      const prevTp = d > 1 ? uploadedGpxData.trackpoints[Math.min(totalPts - 1, Math.round(((d - 1) / stageCount) * (totalPts - 1)))] : null;
+      const stageDist = prevTp ? Math.max(2, Math.round(tp.distanceFromStartKm - prevTp.distanceFromStartKm)) : Math.round(tp.distanceFromStartKm || (uploadedGpxData.totalDistanceKm / stageCount));
+      const prevAlt = prevTp ? prevTp.elevation : 2000;
+
+      newDays.push({
+        id: `gpx-stage-${d}-${Date.now()}`,
+        day: d,
+        title: d === stageCount ? `Final Destination (${uploadedGpxData.endPoint})` : `Stage ${d}: ${tp.lat.toFixed(3)}°N, ${tp.lng.toFixed(3)}°E`,
+        distanceKm: stageDist || Math.round(uploadedGpxData.totalDistanceKm / stageCount),
+        sleepingAltitude: Math.round(tp.elevation),
+        altitudeGain: Math.round(tp.elevation - prevAlt),
+        activityType: tp.elevation > 4500 ? 'pass' : 'trekking',
+        coordinates: { lat: tp.lat, lng: tp.lng },
+        notes: `GPS track checkpoint at KM ${Math.round(tp.distanceFromStartKm)} along ${uploadedGpxData.name}.`,
+      });
+    }
+
+    setWaypoints(newDays);
+    setActiveDayIndex(0);
+    setSaveSuccessMessage(`Generated ${newDays.length} itinerary stages from GPX track!`);
+    setTimeout(() => setSaveSuccessMessage(null), 4000);
   };
 
   // DnD Sensors configuration
@@ -1298,6 +1368,36 @@ function ItineraryPlannerContent() {
       ? regionalLandmarks
       : regionalLandmarks.filter((lm) => lm.category === landmarkFilter);
 
+  // Active continuous elevation profile: prefer uploaded GPX data, then connected expedition elevationProfile
+  const activeElevationProfile =
+    uploadedGpxData?.elevationProfile && uploadedGpxData.elevationProfile.length > 1
+      ? uploadedGpxData.elevationProfile
+      : selectedTrail?.elevationProfile && selectedTrail.elevationProfile.length > 1
+      ? selectedTrail.elevationProfile
+      : undefined;
+
+  const activeGpxTelemetry = uploadedGpxData
+    ? {
+        totalDistanceKm: uploadedGpxData.totalDistanceKm,
+        minElevationM: uploadedGpxData.minElevationM,
+        maxElevationM: uploadedGpxData.maxElevationM,
+        elevationGainM: uploadedGpxData.elevationGainM,
+        elevationLossM: uploadedGpxData.elevationLossM,
+        trackpointCount: uploadedGpxData.trackpoints.length,
+        fileName: uploadedGpxData.fileName,
+        routeName: uploadedGpxData.name,
+      }
+    : selectedTrail && selectedTrail.elevationProfile && selectedTrail.elevationProfile.length > 1
+    ? {
+        totalDistanceKm: selectedTrail.distanceKm,
+        minElevationM: Math.min(...selectedTrail.elevationProfile.map((p) => p.elevation)),
+        maxElevationM: selectedTrail.maxElevation,
+        elevationGainM: selectedTrail.elevationGain,
+        trackpointCount: selectedTrail.elevationProfile.length,
+        routeName: selectedTrail.name,
+      }
+    : null;
+
   return (
     <div className="flex-1 py-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full space-y-6 bg-black text-white print:bg-white print:text-black print:p-0">
       
@@ -1681,6 +1781,69 @@ function ItineraryPlannerContent() {
         </div>
       )}
 
+      {/* UPLOADED GPX ROUTE INFO & STAGE GENERATOR PANEL */}
+      {uploadedGpxData && (
+        <div className="p-5 rounded-3xl bg-cyan-950/40 border border-cyan-500/40 backdrop-blur-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-2xl animate-in fade-in duration-200">
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div className="p-2.5 rounded-2xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 shrink-0">
+              <Route className="h-6 w-6" />
+            </div>
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-cyan-400">
+                  Uploaded GPX Data Info Active:
+                </span>
+                <strong className="text-sm font-extrabold text-white">
+                  {uploadedGpxData.name}
+                </strong>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-mono font-bold">
+                  {uploadedGpxData.trackpoints.length} GPS Trackpoints
+                </span>
+              </div>
+              <div className="text-xs text-gray-300 font-mono flex flex-wrap items-center gap-3">
+                <span>Distance: <strong className="text-white">{uploadedGpxData.totalDistanceKm} km</strong></span>
+                <span>•</span>
+                <span>Apex: <strong className="text-amber-400">{uploadedGpxData.maxElevationM}m</strong></span>
+                <span>•</span>
+                <span>Min: <strong className="text-emerald-400">{uploadedGpxData.minElevationM}m</strong></span>
+                <span>•</span>
+                <span>Total Ascent: <strong className="text-cyan-300">+{uploadedGpxData.elevationGainM}m</strong></span>
+                <span>•</span>
+                <span>Total Descent: <strong className="text-cyan-400">-{uploadedGpxData.elevationLossM}m</strong></span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleGenerateDaysFromGpx}
+              className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black text-xs font-extrabold transition shadow-lg flex items-center gap-1.5 cursor-pointer"
+              title="Automatically generate daily itinerary stops from this uploaded GPX track"
+            >
+              <Sparkles className="h-4 w-4" />
+              <span>Generate {uploadedGpxData.estimatedDays} Days from GPX</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setUploadedGpxData(null);
+                if (selectedTrail?.routeCoordinates) {
+                  setExpeditionPolyline(selectedTrail.routeCoordinates.map((pt) => [pt[0], pt[1]]));
+                } else {
+                  setExpeditionPolyline(waypoints.map((w) => [w.coordinates.lat, w.coordinates.lng]));
+                }
+              }}
+              className="p-2 rounded-xl text-gray-400 hover:text-red-400 hover:bg-white/10 transition border border-white/10 cursor-pointer"
+              title="Clear uploaded GPX track and revert"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ACCLIMATIZATION SAFETY ADVISORY WARNING BANNER */}
       {highGainDays.length > 0 && (
         <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/40 text-amber-300 text-xs flex items-start gap-3 shadow-2xl backdrop-blur-md animate-pulse print:border-neutral-300 print:text-black">
@@ -2027,6 +2190,8 @@ function ItineraryPlannerContent() {
             hoveredDayIndex={hoveredDayIndex}
             onSelectDayIndex={setActiveDayIndex}
             onHoverDayIndex={setHoveredDayIndex}
+            gpxElevationProfile={activeElevationProfile}
+            gpxTelemetry={activeGpxTelemetry}
           />
         </div>
       )}
