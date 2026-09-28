@@ -468,6 +468,7 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
   const [sidebarView, setSidebarView] = useState<'card' | 'list'>('card');
   const [sidebarTab, setSidebarTab] = useState<'trails' | 'hud'>('trails');
   const [activeSummit, setActiveSummit] = useState<string | null>(null);
+  const [showElevationProfile, setShowElevationProfile] = useState<boolean>(true);
 
   // Quick Detail Modal / Slide-Over State
   const [detailModalTrail, setDetailModalTrail] = useState<Trail | null>(null);
@@ -1619,18 +1620,18 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
               )}
 
               {/* ─────────────────────────────────────────────────── */}
-              {/* ALTITUDE PROFILE — always visible, mid-bottom glass */}
+              {/* ALTITUDE PROFILE — toggleable mid-bottom glass */}
               {/* ─────────────────────────────────────────────────── */}
-              {activeTrail && (
+              {activeTrail && showElevationProfile && (
                 <div className="absolute bottom-0 left-0 right-0 z-[1000] pointer-events-none flex justify-center px-2 pb-2">
                   <div
                     data-slot="altitude-bar"
-                    className="pointer-events-auto w-full max-w-4xl rounded-2xl overflow-hidden backdrop-blur-xl bg-black/60 border border-white/10 shadow-2xl shadow-black/60"
+                    className="pointer-events-auto w-full max-w-4xl rounded-2xl overflow-hidden backdrop-blur-xl bg-black/75 border border-white/10 shadow-2xl shadow-black/60"
                   >
                     <ElevationProfileChart
                       trail={activeTrail}
                       activeDistanceKm={droneDistanceKm}
-                      onClose={() => {/* no-op — altitude bar is always visible */}}
+                      onClose={() => setShowElevationProfile(false)}
                       onSelectPoint={(pt) => {
                         setDroneDistanceKm(pt.distanceKm);
                         if (pt.lat && pt.lng) {
@@ -1677,6 +1678,21 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                       }}
                     />
                   </div>
+                </div>
+              )}
+
+              {/* Floating trigger button to restore elevation profile if closed */}
+              {activeTrail && !showElevationProfile && (
+                <div className="absolute bottom-4 right-4 z-[1000] pointer-events-auto">
+                  <button
+                    onClick={() => setShowElevationProfile(true)}
+                    data-slot="trigger"
+                    className="px-3.5 py-2 rounded-2xl bg-neutral-950/85 hover:bg-neutral-900 border border-[#B68D40]/40 text-xs font-semibold text-white shadow-2xl backdrop-blur-xl flex items-center gap-2 transition hover:scale-105"
+                    title="Open Elevation Profile"
+                  >
+                    <Activity className="w-3.5 h-3.5 text-[#B68D40]" />
+                    <span>Elevation Profile</span>
+                  </button>
                 </div>
               )}
 

@@ -76,10 +76,14 @@ export class CesiumController implements IMapController {
 
     // Configure Cesium Ion Access Token if provided in env
     const ionToken = process.env.NEXT_PUBLIC_CESIUM_ION_TOKEN;
-    if (ionToken && ionToken.trim().length > 20 && !ionToken.includes('placeholder') && !ionToken.includes('your-token')) {
-      if (this.Cesium.Ion) {
-        this.Cesium.Ion.defaultAccessToken = ionToken.trim();
-      }
+    const hasValidIonToken = Boolean(
+      ionToken &&
+      ionToken.trim().length > 20 &&
+      !ionToken.includes('placeholder') &&
+      !ionToken.includes('your-token')
+    );
+    if (hasValidIonToken && this.Cesium.Ion) {
+      this.Cesium.Ion.defaultAccessToken = ionToken!.trim();
     }
 
     // 2. High-resolution satellite base layer (Esri World Imagery)
@@ -97,10 +101,13 @@ export class CesiumController implements IMapController {
     }
 
     // 3. 3D World Terrain matching Cesium Sandcastle: https://sandcastle.cesium.com/?id=terrain
+    // Priority 1: Cesium Ion World Terrain if token is present
+    // Priority 2: ArcGIS WorldElevation3D 3D Terrain (public global elevation service, 0-token required)
+    // Priority 3: Asynchronous createWorldTerrainAsync fallback
     let terrain: any = undefined;
     let terrainProvider: any = undefined;
 
-    if (this.Cesium.Terrain && typeof this.Cesium.Terrain.fromWorldTerrain === 'function') {
+    if (hasValidIonToken && this.Cesium.Terrain && typeof this.Cesium.Terrain.fromWorldTerrain === 'function') {
       try {
         terrain = this.Cesium.Terrain.fromWorldTerrain({
           requestWaterMask: true,
@@ -111,7 +118,23 @@ export class CesiumController implements IMapController {
       }
     }
 
-    if (!terrain && typeof this.Cesium.createWorldTerrainAsync === 'function') {
+    // If no Cesium Ion token or Ion fromWorldTerrain failed, load ArcGIS WorldElevation3D
+    if (!terrain && this.Cesium.ArcGISTiledElevationTerrainProvider && typeof this.Cesium.ArcGISTiledElevationTerrainProvider.fromUrl === 'function') {
+      try {
+        const arcGisProvider = await this.Cesium.ArcGISTiledElevationTerrainProvider.fromUrl(
+          'https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer'
+        );
+        if (this.Cesium.Terrain) {
+          terrain = new this.Cesium.Terrain(arcGisProvider);
+        } else {
+          terrainProvider = arcGisProvider;
+        }
+      } catch (arcGisErr) {
+        console.warn('ArcGISTiledElevationTerrainProvider notice:', arcGisErr);
+      }
+    }
+
+    if (!terrain && !terrainProvider && typeof this.Cesium.createWorldTerrainAsync === 'function') {
       try {
         terrainProvider = await this.Cesium.createWorldTerrainAsync({
           requestWaterMask: true,
@@ -122,7 +145,7 @@ export class CesiumController implements IMapController {
       }
     }
 
-    const defaultCenter = options?.center || { lat: 27.9881, lng: 86.9250, altitude: 9000 };
+    const defaultCenter = options?.center || { lat: 27.9881, lng: 86.9250, altitude: 22000 };
 
     // 4. Initialize Cesium Viewer with authentic 3D World Terrain
     const viewerOptions: any = {
@@ -175,14 +198,22 @@ export class CesiumController implements IMapController {
       };
     }
 
-    // 5. Himalayan Lighting & Topographic 3D Depth Tuning
+    // 5. Himalayan Daylight Lighting & Topographic 3D Depth Tuning
+    // Fix solar clock to midday over the Himalayas (UTC 06:15) so the mountains are never in pitch darkness
+    if (this.viewer.clock) {
+      this.viewer.clock.currentTime = this.Cesium.JulianDate.fromIso8601('2024-06-21T06:15:00Z');
+      this.viewer.clock.shouldAnimate = false;
+    }
+
     const scene = this.viewer.scene;
     scene.globe.enableLighting = true;
+    // Ambient light prevents unlit slopes from turning black while preserving sharp relief shadows
+    scene.globe.ambientLightColor = new this.Cesium.Color(0.85, 0.85, 0.85, 1.0);
     scene.globe.depthTestAgainstTerrain = true;
     scene.globe.maximumScreenSpaceError = 1.33; // High terrain polygon density for Himalayan summits and ridges
 
     // Initial camera placement over default Himalayan center
-    this.flyTo(defaultCenter, defaultCenter.altitude || 12000, 2);
+    this.flyTo(defaultCenter, defaultCenter.altitude || 22000, 2);
 
     // 6. Interactive Marker Click Handler
     if (this.Cesium.ScreenSpaceEventHandler && this.viewer.scene?.canvas) {
@@ -269,14 +300,14 @@ export class CesiumController implements IMapController {
     let height = currentPos.height;
 
     if (preset === 'topo') {
-      pitch = -85; // Bird's Eye view
-      height = Math.max(height, 25000);
+      pitch = -85; // Bird's Eye topographic view
+      height = 28000;
     } else if (preset === 'ridge') {
-      pitch = -30; // 45-degree dramatic ridge profile
-      height = Math.min(height, 12000);
+      pitch = -32; // Dramatic ridge and valley relief profile
+      height = 16000;
     } else if (preset === 'summit') {
-      pitch = -15; // Low-angle summit horizon view
-      height = Math.min(height, 8500);
+      pitch = -18; // Low-angle summit horizon view above 8,000m peaks
+      height = 12500;
     }
 
     this.viewer.camera.flyTo({
