@@ -23,16 +23,21 @@ function MapController({ center, zoom }: { center: [number, number]; zoom: numbe
 // Create custom divIcon for Leaflet markers
 function createCustomIcon(category: string, isSelected: boolean) {
   let badgeColor = 'bg-[#B68D40] text-black border-[#E2C085]';
-  if (category === 'Base Camp') badgeColor = 'bg-red-600 text-white border-red-400';
-  if (category === 'High Pass') badgeColor = 'bg-amber-500 text-black border-amber-300';
-  if (category === 'Monastery') badgeColor = 'bg-purple-600 text-white border-purple-400';
-  if (category === 'Sacred Lake') badgeColor = 'bg-cyan-500 text-black border-cyan-300';
-  if (category === 'Village') badgeColor = 'bg-emerald-600 text-white border-emerald-300';
+  let iconSymbol = '📍';
+  if (category === 'Base Camp') { badgeColor = 'bg-red-600 text-white border-red-400'; iconSymbol = '⛺'; }
+  if (category === 'High Pass') { badgeColor = 'bg-amber-500 text-black border-amber-300'; iconSymbol = '🚩'; }
+  if (category === 'Monastery') { badgeColor = 'bg-purple-600 text-white border-purple-400'; iconSymbol = '🛕'; }
+  if (category === 'Sacred Lake') { badgeColor = 'bg-cyan-500 text-black border-cyan-300'; iconSymbol = '💧'; }
+  if (category === 'Village') { badgeColor = 'bg-emerald-600 text-white border-emerald-300'; iconSymbol = '🏘️'; }
+  if (category === 'Hotel') { badgeColor = 'bg-indigo-600 text-white border-indigo-300'; iconSymbol = '🏨'; }
+  if (category === 'Community Homestay') { badgeColor = 'bg-emerald-600 text-white border-emerald-300'; iconSymbol = '🏡'; }
+  if (category === 'Airport') { badgeColor = 'bg-sky-500 text-black border-sky-300'; iconSymbol = '🛫'; }
+  if (category === 'Hot Spring') { badgeColor = 'bg-amber-600 text-white border-amber-300'; iconSymbol = '♨️'; }
 
   const html = `
     <div class="relative group cursor-pointer flex flex-col items-center">
       <div class="w-8 h-8 rounded-full ${badgeColor} border-2 shadow-xl flex items-center justify-center font-bold text-xs transform transition-transform ${isSelected ? 'scale-125 ring-4 ring-amber-400/50' : 'hover:scale-110'}">
-        🏔️
+        ${iconSymbol}
       </div>
     </div>
   `;

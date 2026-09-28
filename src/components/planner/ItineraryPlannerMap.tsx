@@ -42,9 +42,13 @@ function createLandmarkMarkerIcon(category: string) {
   if (category === 'Base Camp') { badgeColor = 'bg-rose-600 text-white border-rose-300 ring-2 ring-rose-500/50'; iconSymbol = '⛺'; }
   if (category === 'High Pass') { badgeColor = 'bg-amber-500 text-black border-amber-200 ring-2 ring-amber-400/50'; iconSymbol = '🚩'; }
   if (category === 'Monastery') { badgeColor = 'bg-purple-600 text-white border-purple-300 ring-2 ring-purple-500/50'; iconSymbol = '🛕'; }
-  if (category === 'Sacred Lake') { badgeColor = 'bg-cyan-500 text-black border-cyan-200 ring-2 ring-cyan-400/50'; iconSymbol = '🏔️'; }
+  if (category === 'Sacred Lake') { badgeColor = 'bg-cyan-500 text-black border-cyan-200 ring-2 ring-cyan-400/50'; iconSymbol = '💧'; }
   if (category === 'Summit') { badgeColor = 'bg-yellow-400 text-black border-yellow-200 ring-2 ring-yellow-400/50'; iconSymbol = '🏔️'; }
   if (category === 'Village' || category === 'Lodge') { badgeColor = 'bg-emerald-600 text-white border-emerald-200 ring-2 ring-emerald-500/50'; iconSymbol = '🏡'; }
+  if (category === 'Hotel') { badgeColor = 'bg-indigo-600 text-white border-indigo-200 ring-2 ring-indigo-400/50'; iconSymbol = '🏨'; }
+  if (category === 'Community Homestay') { badgeColor = 'bg-emerald-600 text-white border-emerald-200 ring-2 ring-emerald-400/50'; iconSymbol = '🏡'; }
+  if (category === 'Airport') { badgeColor = 'bg-sky-500 text-black border-sky-200 ring-2 ring-sky-400/50'; iconSymbol = '🛫'; }
+  if (category === 'Hot Spring') { badgeColor = 'bg-amber-600 text-white border-amber-200 ring-2 ring-amber-400/50'; iconSymbol = '♨️'; }
 
   const html = `
     <div class="relative group cursor-pointer flex flex-col items-center transition-all transform hover:scale-125 z-40">

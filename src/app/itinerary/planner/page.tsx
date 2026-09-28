@@ -807,7 +807,15 @@ function ItineraryPlannerContent() {
     else if (lm.category === 'High Pass') actType = 'pass';
     else if (lm.category === 'Monastery') actType = 'monastery';
     else if (lm.category === 'Summit') actType = 'pass';
-    else if (lm.category === 'Village' || lm.category === 'Lodge') actType = 'acclimatization';
+    else if (lm.category === 'Airport') actType = 'flight';
+    else if (
+      lm.category === 'Hotel' ||
+      lm.category === 'Community Homestay' ||
+      lm.category === 'Hot Spring' ||
+      lm.category === 'Village' ||
+      lm.category === 'Lodge'
+    )
+      actType = 'acclimatization';
 
     const prevWp = waypoints[waypoints.length - 1];
     const prevAlt = prevWp ? prevWp.sleepingAltitude : 2500;
@@ -1715,7 +1723,7 @@ function ItineraryPlannerContent() {
                   </button>
                 </div>
 
-                {['All', 'Base Camp', 'High Pass', 'Monastery', 'Sacred Lake', 'Summit', 'Village'].map((cat) => (
+                {['All', 'Hotel', 'Community Homestay', 'Airport', 'Hot Spring', 'Base Camp', 'High Pass', 'Monastery', 'Sacred Lake', 'Summit', 'Village'].map((cat) => (
                   <button
                     key={cat}
                     type="button"

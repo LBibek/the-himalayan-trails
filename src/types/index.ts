@@ -37,7 +37,7 @@ export interface Landmark {
   id: string;
   name: string;
   nativeName?: string;
-  category: 'High Pass' | 'Base Camp' | 'Monastery' | 'Sacred Lake' | 'Village' | string;
+  category: 'High Pass' | 'Base Camp' | 'Monastery' | 'Sacred Lake' | 'Village' | 'Hotel' | 'Community Homestay' | 'Airport' | 'Hot Spring' | 'Summit' | 'Lodge' | 'Viewpoint' | 'Checkpost' | string;
   elevation: number;
   region: string;
   coordinates: { lat: number; lng: number };

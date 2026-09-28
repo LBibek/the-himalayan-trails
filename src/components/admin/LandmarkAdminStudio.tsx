@@ -8,6 +8,7 @@ import {
   MapPin,
   Plus,
   Trash2,
+  Edit,
   Mountain,
   Compass,
   Search,
@@ -21,11 +22,14 @@ import {
   RefreshCw,
   Loader2,
   Eye,
-  Info
+  Info,
+  X,
+  Save,
+  Navigation
 } from 'lucide-react';
 import { Landmark, Trail } from '@/types';
 
-// Category color and icon map
+// Category color and icon map including Hotel, Community Homestay, Airport, Hot Spring
 const CATEGORY_STYLES: Record<string, { bg: string; border: string; text: string; icon: string }> = {
   'High Pass': { bg: 'bg-amber-500', border: 'border-amber-300', text: 'text-black', icon: '🚩' },
   'Base Camp': { bg: 'bg-rose-600', border: 'border-rose-300', text: 'text-white', icon: '⛺' },
@@ -36,6 +40,11 @@ const CATEGORY_STYLES: Record<string, { bg: string; border: string; text: string
   'Lodge': { bg: 'bg-teal-600', border: 'border-teal-300', text: 'text-white', icon: '🛖' },
   'Viewpoint': { bg: 'bg-indigo-600', border: 'border-indigo-300', text: 'text-white', icon: '🔭' },
   'Checkpost': { bg: 'bg-blue-600', border: 'border-blue-300', text: 'text-white', icon: '🛡️' },
+  // Requested Categories:
+  'Hotel': { bg: 'bg-indigo-600', border: 'border-indigo-300', text: 'text-white', icon: '🏨' },
+  'Community Homestay': { bg: 'bg-emerald-600', border: 'border-emerald-300', text: 'text-white', icon: '🏡' },
+  'Airport': { bg: 'bg-sky-500', border: 'border-sky-200', text: 'text-black', icon: '🛫' },
+  'Hot Spring': { bg: 'bg-amber-600', border: 'border-amber-200', text: 'text-white', icon: '♨️' },
 };
 
 function getCategoryStyle(category: string) {
@@ -86,19 +95,30 @@ function MapFlyController({ center }: { center: [number, number] | null }) {
   return null;
 }
 
-// Pre-packaged Himalayan Quick Presets for high efficiency
+// Pre-packaged Himalayan Quick Presets with Hotel, Airport, Hot Spring, Community Homestay
 const HIMALAYAN_PRESETS = [
-  { name: 'Lukla Tenzing-Hillary Airstrip', nativeName: 'लुक्ला', category: 'Village', elevation: 2846, region: 'Everest', lat: 27.6869, lng: 86.7314, permit: 'Khumbu Pasang Lhamu Entry Fee', trail: 'Everest Base Camp Trek', image: 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?w=800&fit=crop&q=80', desc: 'Gateway settlement with mountain runway airport to Sagarmatha National Park.' },
+  // Airports
+  { name: 'Lukla Tenzing-Hillary Airport', nativeName: 'तेन्जिङ-हिलारी विमानस्थल', category: 'Airport', elevation: 2846, region: 'Everest', lat: 27.6869, lng: 86.7314, permit: 'Khumbu Pasang Lhamu Entry Fee', trail: 'Everest Base Camp Trek', image: 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?w=800&fit=crop&q=80', desc: 'World-famous high-altitude mountain airport serving as the gateway to Mount Everest.' },
+  { name: 'Jomsom Mountain Airport', nativeName: 'जोमसोम विमानस्थल', category: 'Airport', elevation: 2720, region: 'Annapurna', lat: 28.7844, lng: 83.7225, permit: 'ACAP & TIMS Card', trail: 'Annapurna Circuit & Thorong La', image: 'https://images.unsplash.com/photo-1486911278844-a81c5267e227?w=800&fit=crop&q=80', desc: 'Crucial mountain STOL runway connecting Pokhara to Mustang and the Kali Gandaki river canyon.' },
+  
+  // Hot Springs
+  { name: 'Tatopani Natural Hot Springs', nativeName: 'तातोपानी कुण्ड', category: 'Hot Spring', elevation: 1190, region: 'Annapurna', lat: 28.4947, lng: 83.6542, permit: 'ACAP & TIMS Card', trail: 'Annapurna Circuit & Thorong La', image: 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?w=800&fit=crop&q=80', desc: 'Geothermal natural mineral hot springs on the banks of the Kali Gandaki River, prized by trekkers.' },
+  { name: 'Jhinu Danda Hot Springs', nativeName: 'झिनु डाँडा तातोपानी', category: 'Hot Spring', elevation: 1780, region: 'Annapurna', lat: 28.4069, lng: 83.8236, permit: 'ACAP & TIMS Card', trail: 'Annapurna Circuit & Thorong La', image: 'https://images.unsplash.com/photo-1486911278844-a81c5267e227?w=800&fit=crop&q=80', desc: 'Therapeutic riverside hot springs in Modi Khola valley, popular post-Annapurna Base Camp descent.' },
+  
+  // Luxury Alpine Hotels
+  { name: 'Hotel Everest View Syangboche', nativeName: 'होटेल एभरेष्ट भ्यू', category: 'Hotel', elevation: 3880, region: 'Everest', lat: 27.8189, lng: 86.7225, permit: 'Sagarmatha National Park Permit', trail: 'Everest Base Camp Trek', image: 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?w=800&fit=crop&q=80', desc: 'Guinness World Record highest placed luxury hotel offering panoramic balconies overlooking Mount Everest.' },
+  { name: 'Yeti Mountain Home Kongde', nativeName: 'यति माउन्टेन होम कोङ्दे', category: 'Hotel', elevation: 4250, region: 'Everest', lat: 27.7981, lng: 86.6894, permit: 'Sagarmatha National Park Permit', trail: 'Everest Base Camp Trek', image: 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?w=800&fit=crop&q=80', desc: 'Luxury cliffside alpine retreat perched directly opposite the Everest, Lhotse, and Ama Dablam summits.' },
+  
+  // Community Homestays
+  { name: 'Ghandruk Gurung Community Homestay', nativeName: 'घान्द्रुक होमस्टे', category: 'Community Homestay', elevation: 1940, region: 'Annapurna', lat: 28.3758, lng: 83.8067, permit: 'ACAP & TIMS Card', trail: 'Annapurna Circuit & Thorong La', image: 'https://images.unsplash.com/photo-1486911278844-a81c5267e227?w=800&fit=crop&q=80', desc: 'Authentic stone Gurung village offering genuine community homestay culture and Annapurna South views.' },
+  { name: 'Sirubari Model Community Homestay', nativeName: 'सिरुबारी सामुदायिक होमस्टे', category: 'Community Homestay', elevation: 1700, region: 'Annapurna', lat: 28.0500, lng: 83.7500, permit: 'None', trail: 'All Trails', image: 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?w=800&fit=crop&q=80', desc: 'Pioneering award-winning village homestay showcasing traditional Nepalese music, food, and hospitality.' },
+  
+  // Iconic Passes, Monasteries & Bases
   { name: 'Namche Bazaar Sherpa Capital', nativeName: 'नाम्चे बजार', category: 'Village', elevation: 3440, region: 'Everest', lat: 27.8069, lng: 86.7142, permit: 'Sagarmatha National Park Permit', trail: 'Everest Base Camp Trek', image: 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?w=800&fit=crop&q=80', desc: 'Historic trading hub and amphitheater town with acclimatization bakeries and Sherpa culture.' },
   { name: 'Tengboche Monastery', nativeName: 'तेङ्बोचे गुम्बा', category: 'Monastery', elevation: 3867, region: 'Everest', lat: 27.8361, lng: 86.7644, permit: 'Sagarmatha National Park Permit', trail: 'Everest Base Camp Trek', image: 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?w=800&fit=crop&q=80', desc: 'The spiritual heart of Khumbu surrounded by towering rhododendron forests and views of Ama Dablam.' },
-  { name: 'Dingboche Valley', nativeName: 'दिङबोचे', category: 'Village', elevation: 4410, region: 'Everest', lat: 27.8936, lng: 86.8322, permit: 'Sagarmatha National Park Permit', trail: 'Everest Base Camp Trek', image: 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?w=800&fit=crop&q=80', desc: 'Acclimatization farming settlement sheltered beneath Lhotse and Island Peak ridges.' },
-  { name: 'Kala Patthar Viewpoint', nativeName: 'कालापत्थर', category: 'Viewpoint', elevation: 5644, region: 'Everest', lat: 27.9972, lng: 86.8286, permit: 'Sagarmatha National Park Permit', trail: 'Everest Base Camp Trek', image: 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?w=800&fit=crop&q=80', desc: 'Famous dark peak overlooking Mount Everest summit, Pumori, and the Khumbu Glacier.' },
   { name: 'Everest Base Camp (South)', nativeName: 'सगरमाथा आधार शिविर', category: 'Base Camp', elevation: 5364, region: 'Everest', lat: 28.0044, lng: 86.8528, permit: 'Sagarmatha National Park Permit', trail: 'Everest Base Camp Trek', image: 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?w=800&fit=crop&q=80', desc: 'Expedition staging ground beneath the dramatic ice pinnacles of Khumbu Icefall.' },
-  { name: 'Thorong Phedi', nativeName: 'थोरङ फेदी', category: 'Lodge', elevation: 4450, region: 'Annapurna', lat: 28.7905, lng: 83.9555, permit: 'ACAP & TIMS Card', trail: 'Annapurna Circuit & Thorong La', image: 'https://images.unsplash.com/photo-1486911278844-a81c5267e227?w=800&fit=crop&q=80', desc: 'Base camp settlement at foot of the massive scree ascent toward Thorong La Pass.' },
   { name: 'Thorong La Pass Summit', nativeName: 'थोरङ ला भञ्ज्याङ', category: 'High Pass', elevation: 5416, region: 'Annapurna', lat: 28.7936, lng: 83.9358, permit: 'ACAP & TIMS Card', trail: 'Annapurna Circuit & Thorong La', image: 'https://images.unsplash.com/photo-1486911278844-a81c5267e227?w=800&fit=crop&q=80', desc: 'The highest navigable pass on the Annapurna Circuit adorned with thousands of prayer flags.' },
-  { name: 'Muktinath Sacred Temple', nativeName: 'मुक्तिनाथ', category: 'Monastery', elevation: 3760, region: 'Annapurna', lat: 28.8172, lng: 83.8711, permit: 'ACAP & TIMS Card', trail: 'Annapurna Circuit & Thorong La', image: 'https://images.unsplash.com/photo-1486911278844-a81c5267e227?w=800&fit=crop&q=80', desc: 'Venerated pilgrimage temple with 108 stone waterspouts and eternal natural gas flame.' },
   { name: 'Kyanjin Gompa', nativeName: 'क्यान्जिङ गुम्बा', category: 'Monastery', elevation: 3870, region: 'Langtang', lat: 28.2125, lng: 85.5683, permit: 'Langtang National Park Permit', trail: 'Langtang Valley & Kyanjin Ri', image: 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?w=800&fit=crop&q=80', desc: 'Ancient monastery village famed for yak cheese factories, fluted ice peaks, and glacier hikes.' },
-  { name: 'Kyanjin Ri Peak', nativeName: 'क्यान्जिङ री', category: 'Summit', elevation: 4773, region: 'Langtang', lat: 28.2250, lng: 85.5720, permit: 'Langtang National Park Permit', trail: 'Langtang Valley & Kyanjin Ri', image: 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?w=800&fit=crop&q=80', desc: 'Panoramic summit ridge offering 360-degree views of Langtang Lirung and Yala Peak.' },
   { name: 'Larke Pass (Larkya La)', nativeName: 'लार्के ला', category: 'High Pass', elevation: 5106, region: 'Manaslu', lat: 28.6500, lng: 84.6167, permit: 'Manaslu Special Restricted Permit & MCAP', trail: 'Manaslu Circuit Trek', image: 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?w=800&fit=crop&q=80', desc: 'High alpine col connecting the Budhi Gandaki river gorge with the Marsyangdi valley.' },
   { name: 'Lo Manthang Walled Capital', nativeName: 'लो मान्थाङ', category: 'Village', elevation: 3840, region: 'Mustang', lat: 29.1822, lng: 83.9572, permit: 'Upper Mustang Restricted Area Permit ($500)', trail: 'Upper Mustang Forbidden Kingdom', image: 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?w=800&fit=crop&q=80', desc: 'Medieval walled fortress city of the ancient Kingdom of Lo in the rain shadow Himalayas.' },
 ];
@@ -107,7 +127,11 @@ export default function LandmarkAdminStudio({ trails = [] }: { trails?: Trail[] 
   const [landmarks, setLandmarks] = useState<Landmark[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [loadingElevation, setLoadingElevation] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Edit Mode state
+  const [editingLandmarkId, setEditingLandmarkId] = useState<string | null>(null);
 
   // Form Fields
   const [name, setName] = useState('');
@@ -150,8 +174,8 @@ export default function LandmarkAdminStudio({ trails = [] }: { trails?: Trail[] 
     loadLandmarks();
   }, []);
 
-  // Handle map click to pin coordinates
-  const handleMapCoordPicked = (lat: number, lng: number) => {
+  // Real-time Coordinate & Altitude Query Handler
+  const updateCoordsAndElevation = async (lat: number, lng: number) => {
     setLatitude(lat.toFixed(6));
     setLongitude(lng.toFixed(6));
 
@@ -178,10 +202,36 @@ export default function LandmarkAdminStudio({ trails = [] }: { trails?: Trail[] 
       setPermitRequired('Upper Mustang Restricted Permit');
     }
 
+    // Query real-time DEM altitude for these coordinates
+    setLoadingElevation(true);
+    try {
+      const res = await fetch(`/api/elevation?lat=${lat}&lng=${lng}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (typeof data.elevation === 'number') {
+          setElevation(data.elevation);
+          setStatusMessage({
+            type: 'success',
+            text: `Target pinned at Lat ${lat.toFixed(5)}, Lng ${lng.toFixed(5)}. Altitude auto-updated to ${data.elevation.toLocaleString()}m!`,
+          });
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('Elevation auto-update notice:', err);
+    } finally {
+      setLoadingElevation(false);
+    }
+
     setStatusMessage({
       type: 'success',
-      text: `Coordinates captured: Lat ${lat.toFixed(5)}, Lng ${lng.toFixed(5)}! Fill in details below to persist.`,
+      text: `Coordinates captured: Lat ${lat.toFixed(5)}, Lng ${lng.toFixed(5)}. Fill in details below to persist.`,
     });
+  };
+
+  // Handle map click to pin coordinates
+  const handleMapCoordPicked = (lat: number, lng: number) => {
+    updateCoordsAndElevation(lat, lng);
   };
 
   // Populate from Himalayan quick preset
@@ -204,8 +254,42 @@ export default function LandmarkAdminStudio({ trails = [] }: { trails?: Trail[] 
     });
   };
 
-  // Submit new landmark to DB
-  const handleCreateLandmark = async (e: React.FormEvent) => {
+  // Start Editing an Existing Landmark
+  const handleStartEdit = (lm: Landmark) => {
+    setEditingLandmarkId(lm.id);
+    setName(lm.name);
+    setNativeName(lm.nativeName || '');
+    setCategory(lm.category);
+    setElevation(lm.elevation);
+    setRegion(lm.region);
+    setLatitude(lm.coordinates.lat.toString());
+    setLongitude(lm.coordinates.lng.toString());
+    setAssociatedTrail(lm.associatedTrail || 'All Trails');
+    setPermitRequired(lm.permitRequired || 'None');
+    setDescription(lm.description || '');
+    setImage(lm.image || '');
+    setFlyCenter([lm.coordinates.lat, lm.coordinates.lng]);
+
+    setStatusMessage({
+      type: 'success',
+      text: `Now editing landmark "${lm.name}". Adjust coordinates, altitude, or category, then click "Save Changes".`,
+    });
+
+    // Scroll up to form/map
+    window.scrollTo({ top: 350, behavior: 'smooth' });
+  };
+
+  // Cancel Editing
+  const handleCancelEdit = () => {
+    setEditingLandmarkId(null);
+    setName('');
+    setNativeName('');
+    setDescription('');
+    setStatusMessage(null);
+  };
+
+  // Submit create or update landmark to DB
+  const handleSaveLandmark = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
       setStatusMessage({ type: 'error', text: 'Landmark name is required.' });
@@ -236,33 +320,57 @@ export default function LandmarkAdminStudio({ trails = [] }: { trails?: Trail[] 
         image: image.trim() || 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?w=800&fit=crop&q=80',
       };
 
-      const res = await fetch('/api/landmarks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      if (editingLandmarkId) {
+        // UPDATE EXISTING LANDMARK (PUT)
+        const res = await fetch('/api/landmarks', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: editingLandmarkId, ...payload }),
+        });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to create landmark');
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to update landmark');
+        }
+
+        setStatusMessage({
+          type: 'success',
+          text: `✓ Landmark "${data.landmark.name}" successfully updated! Changes are live on the map and itinerary planner.`,
+        });
+
+        setEditingLandmarkId(null);
+      } else {
+        // CREATE NEW LANDMARK (POST)
+        const res = await fetch('/api/landmarks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to create landmark');
+        }
+
+        setStatusMessage({
+          type: 'success',
+          text: `✓ Landmark "${data.landmark.name}" successfully created and saved to database! It is now instantly live on the map and itinerary planner.`,
+        });
       }
 
-      setStatusMessage({
-        type: 'success',
-        text: `✓ Landmark "${data.landmark.name}" successfully created and saved to database! It is now instantly live on the map and itinerary planner.`,
-      });
-
-      // Reset form slightly, keep map focus
+      // Reset form fields
       setName('');
       setNativeName('');
       setDescription('');
       loadLandmarks();
     } catch (err: any) {
-      setStatusMessage({ type: 'error', text: err.message || 'Error creating landmark' });
+      setStatusMessage({ type: 'error', text: err.message || 'Error saving landmark' });
     } finally {
       setSubmitting(false);
     }
   };
+
+  const handleCreateLandmark = handleSaveLandmark;
 
   // Delete landmark
   const handleDeleteLandmark = async (id: string, lmName: string) => {
@@ -283,6 +391,9 @@ export default function LandmarkAdminStudio({ trails = [] }: { trails?: Trail[] 
         type: 'success',
         text: `✓ Landmark "${lmName}" deleted successfully.`,
       });
+      if (editingLandmarkId === id) {
+        setEditingLandmarkId(null);
+      }
       loadLandmarks();
     } catch (err: any) {
       setStatusMessage({ type: 'error', text: err.message || 'Error deleting landmark' });
@@ -321,7 +432,7 @@ export default function LandmarkAdminStudio({ trails = [] }: { trails?: Trail[] 
             </span>
           </div>
           <p className="text-xs text-gray-400">
-            Click directly on the map or apply alpine presets to add authentic passes, base camps, monasteries, and villages. All changes persist to SQLite and sync directly to the 2D/3D map and Itinerary Planner.
+            Click or drag pins on the map to automatically query real terrain altitude. Add and edit luxury alpine hotels, community homestays, mountain airstrips, hot springs, high passes, and monasteries with persistent database synchronization.
           </p>
         </div>
 
@@ -360,7 +471,7 @@ export default function LandmarkAdminStudio({ trails = [] }: { trails?: Trail[] 
             <Sparkles className="h-3.5 w-3.5" />
             <span>1-Click Popular Alpine Presets:</span>
           </span>
-          <span className="text-[11px] text-gray-400">Click to instantly populate coordinates &amp; metadata</span>
+          <span className="text-[11px] text-gray-400">Airports, Hot Springs, Luxury Hotels, Homestays &amp; Passes</span>
         </div>
         <div className="flex flex-wrap gap-2">
           {HIMALAYAN_PRESETS.map((p) => {
@@ -389,11 +500,19 @@ export default function LandmarkAdminStudio({ trails = [] }: { trails?: Trail[] 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs font-bold text-gray-300">
               <MapPin className="h-4 w-4 text-[#B68D40]" />
-              <span>Interactive Coordinate Picker: Click map to pin target location</span>
+              <span>Interactive Map: Click anywhere or drag the draft pin to update altitude in real-time</span>
             </div>
-            <span className="text-[11px] text-[#B68D40] font-mono font-bold">
-              {landmarks.length} Markers on Map
-            </span>
+            <div className="flex items-center gap-2">
+              {loadingElevation && (
+                <span className="text-[11px] text-amber-400 font-mono flex items-center gap-1">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>Querying DEM Altitude...</span>
+                </span>
+              )}
+              <span className="text-[11px] text-[#B68D40] font-mono font-bold">
+                {landmarks.length} Markers
+              </span>
+            </div>
           </div>
 
           <div className="w-full h-[520px] rounded-3xl overflow-hidden border border-neutral-800 shadow-2xl relative">
@@ -433,48 +552,89 @@ export default function LandmarkAdminStudio({ trails = [] }: { trails?: Trail[] 
                       <div className="text-[10px] text-neutral-500 font-mono">
                         Lat: {lm.coordinates.lat.toFixed(4)}, Lng: {lm.coordinates.lng.toFixed(4)}
                       </div>
+                      <div className="pt-1.5 border-t border-neutral-200 flex items-center justify-between gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleStartEdit(lm)}
+                          className="px-2 py-1 rounded bg-[#B68D40] text-black font-extrabold text-[10px] flex items-center gap-1 cursor-pointer"
+                        >
+                          <Edit className="h-3 w-3" />
+                          <span>Edit</span>
+                        </button>
+                      </div>
                     </div>
                   </Popup>
                 </Marker>
               ))}
 
-              {/* Draft Marker for the one currently being added */}
+              {/* Draft Marker for the one currently being added or edited */}
               {hasValidDraftCoords && (
                 <Marker
                   position={[draftLat, draftLng]}
+                  draggable={true}
+                  eventHandlers={{
+                    dragend(e) {
+                      const marker = e.target;
+                      const pos = marker.getLatLng();
+                      updateCoordsAndElevation(pos.lat, pos.lng);
+                    },
+                  }}
                   icon={createLandmarkMarkerIcon(category, true)}
                 >
                   <Popup>
-                    <div className="p-2 text-neutral-900 font-sans text-xs">
-                      <strong>✨ New Target Pin:</strong> {name || 'Untitled Landmark'}
-                      <br />
-                      Elevation: {elevation}m ({region})
+                    <div className="p-2 text-neutral-900 font-sans text-xs space-y-1">
+                      <div className="font-bold flex items-center gap-1">
+                        <span>✨ {editingLandmarkId ? 'Editing Position' : 'Target Pin'}</span>
+                        {loadingElevation && <Loader2 className="h-3 w-3 animate-spin text-amber-600" />}
+                      </div>
+                      <div><strong>{name || 'Untitled Landmark'}</strong></div>
+                      <div className="text-amber-700 font-mono font-bold">
+                        Altitude: {loadingElevation ? 'Calculating DEM...' : `${elevation}m`}
+                      </div>
+                      <div className="text-[10px] text-gray-500">
+                        Drag pin anywhere on mountain terrain to auto-update elevation!
+                      </div>
                     </div>
                   </Popup>
                 </Marker>
               )}
             </MapContainer>
 
-            {/* Float badge explaining click-to-pin */}
+            {/* Float badge explaining click-to-pin & drag */}
             <div className="absolute top-3 right-3 z-10 pointer-events-none px-3 py-1.5 rounded-xl bg-black/80 backdrop-blur-md border border-white/20 text-white text-[11px] font-bold shadow-lg flex items-center gap-1.5">
               <span>📍</span>
-              <span>Click anywhere on map to capture Lat &amp; Lng</span>
+              <span>Click map or drag pin to auto-update Altitude</span>
             </div>
           </div>
         </div>
 
-        {/* RIGHT: Quick Add Form (5 Cols) */}
+        {/* RIGHT: Add / Edit Form Studio (5 Cols) */}
         <div className="lg:col-span-5 space-y-4">
           <form
-            onSubmit={handleCreateLandmark}
+            onSubmit={handleSaveLandmark}
             className="p-5 rounded-3xl backdrop-blur-xl bg-neutral-900/90 border border-neutral-800 shadow-2xl space-y-4 text-xs"
           >
             <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
-              <h3 className="text-sm font-extrabold text-white flex items-center gap-2">
-                <Plus className="h-4 w-4 text-[#B68D40]" />
-                <span>Create &amp; Persist Landmark</span>
-              </h3>
-              <span className="text-[10px] font-mono text-gray-400">Writes to SQLite</span>
+              <div className="flex items-center gap-2">
+                {editingLandmarkId ? (
+                  <Edit className="h-4 w-4 text-amber-400" />
+                ) : (
+                  <Plus className="h-4 w-4 text-[#B68D40]" />
+                )}
+                <h3 className="text-sm font-extrabold text-white">
+                  {editingLandmarkId ? `Edit Landmark: ${name || 'Selected'}` : 'Create & Persist Landmark'}
+                </h3>
+              </div>
+              {editingLandmarkId && (
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  className="px-2 py-0.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-gray-300 text-[10px] font-bold flex items-center gap-1 transition"
+                >
+                  <X className="h-3 w-3" />
+                  <span>Cancel Edit</span>
+                </button>
+              )}
             </div>
 
             {/* Name & Native Name */}
@@ -485,7 +645,7 @@ export default function LandmarkAdminStudio({ trails = [] }: { trails?: Trail[] 
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Dingboche Valley"
+                placeholder="e.g. Hotel Everest View Syangboche"
                 className="w-full px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-700 text-white focus:outline-none focus:ring-2 focus:ring-[#B68D40]"
               />
             </div>
@@ -497,11 +657,12 @@ export default function LandmarkAdminStudio({ trails = [] }: { trails?: Trail[] 
                   type="text"
                   value={nativeName}
                   onChange={(e) => setNativeName(e.target.value)}
-                  placeholder="e.g. दिङबोचे"
+                  placeholder="e.g. होटेल एभरेष्ट भ्यू"
                   className="w-full px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-700 text-white focus:outline-none focus:ring-2 focus:ring-[#B68D40]"
                 />
               </div>
 
+              {/* Category Dropdown with Hotel, Community Homestay, Airport, Hot Spring */}
               <div className="space-y-1">
                 <label className="font-bold text-gray-300">Category *</label>
                 <select
@@ -511,29 +672,41 @@ export default function LandmarkAdminStudio({ trails = [] }: { trails?: Trail[] 
                 >
                   <option value="High Pass">🚩 High Pass</option>
                   <option value="Base Camp">⛺ Base Camp</option>
+                  <option value="Hotel">🏨 Hotel / Luxury Lodge</option>
+                  <option value="Community Homestay">🏡 Community Homestay</option>
+                  <option value="Airport">🛫 Airport / Airstrip</option>
+                  <option value="Hot Spring">♨️ Natural Hot Spring</option>
                   <option value="Monastery">🛕 Monastery</option>
                   <option value="Sacred Lake">💧 Sacred Lake</option>
-                  <option value="Village">🏡 Village</option>
+                  <option value="Village">🏘️ Village</option>
                   <option value="Summit">🏔️ Summit</option>
-                  <option value="Lodge">🛖 Lodge</option>
+                  <option value="Lodge">🛖 Teahouse Lodge</option>
                   <option value="Viewpoint">🔭 Viewpoint</option>
                   <option value="Checkpost">🛡️ Checkpost</option>
                 </select>
               </div>
             </div>
 
-            {/* Elevation & Region */}
+            {/* Elevation (Auto-updated from Map Marker) & Region */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="font-bold text-gray-300">Elevation (Meters) *</label>
-                <input
-                  type="number"
-                  required
-                  value={elevation}
-                  onChange={(e) => setElevation(Number(e.target.value))}
-                  placeholder="4410"
-                  className="w-full px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-700 text-amber-400 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-[#B68D40]"
-                />
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-gray-300">Elevation (Meters) *</label>
+                  {loadingElevation && (
+                    <span className="text-[10px] text-amber-400 font-mono animate-pulse">Syncing DEM...</span>
+                  )}
+                </div>
+                <div className="relative">
+                  <input
+                    type="number"
+                    required
+                    value={elevation}
+                    onChange={(e) => setElevation(Number(e.target.value))}
+                    placeholder="3880"
+                    className="w-full px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-700 text-amber-400 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-[#B68D40]"
+                  />
+                  <span className="absolute right-3 top-2 text-[10px] text-gray-500 font-mono font-bold">m</span>
+                </div>
               </div>
 
               <div className="space-y-1">
@@ -554,28 +727,28 @@ export default function LandmarkAdminStudio({ trails = [] }: { trails?: Trail[] 
               </div>
             </div>
 
-            {/* Latitude & Longitude (Auto-filled on map click) */}
+            {/* Latitude & Longitude (Auto-filled on map click or marker drag) */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="font-bold text-gray-300">Latitude *</label>
+                <label className="font-bold text-gray-300">Latitude (Auto-filled) *</label>
                 <input
                   type="text"
                   required
                   value={latitude}
                   onChange={(e) => setLatitude(e.target.value)}
-                  placeholder="27.8936"
+                  placeholder="27.8189"
                   className="w-full px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-700 text-white font-mono focus:outline-none focus:ring-2 focus:ring-[#B68D40]"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="font-bold text-gray-300">Longitude *</label>
+                <label className="font-bold text-gray-300">Longitude (Auto-filled) *</label>
                 <input
                   type="text"
                   required
                   value={longitude}
                   onChange={(e) => setLongitude(e.target.value)}
-                  placeholder="86.8322"
+                  placeholder="86.7225"
                   className="w-full px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-700 text-white font-mono focus:outline-none focus:ring-2 focus:ring-[#B68D40]"
                 />
               </div>
@@ -617,7 +790,7 @@ export default function LandmarkAdminStudio({ trails = [] }: { trails?: Trail[] 
                 rows={2}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Key highlights, teahouse amenities, terrain description..."
+                placeholder="Key amenities, runway specs, water temperature, cultural history..."
                 className="w-full px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-700 text-white focus:outline-none focus:ring-2 focus:ring-[#B68D40] resize-none"
               />
             </div>
@@ -634,24 +807,40 @@ export default function LandmarkAdminStudio({ trails = [] }: { trails?: Trail[] 
               />
             </div>
 
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full py-3 rounded-xl bg-[#B68D40] hover:bg-[#c99e4b] disabled:opacity-50 text-black font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg transition cursor-pointer"
-            >
-              {submitting ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Persisting to Database...</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-4 w-4" />
-                  <span>Persist Landmark to Map &amp; Planner</span>
-                </>
+            {/* Submit / Update Button */}
+            <div className="flex items-center gap-2 pt-1">
+              {editingLandmarkId && (
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  className="px-4 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-gray-300 font-bold text-xs transition"
+                >
+                  Cancel
+                </button>
               )}
-            </button>
+              <button
+                type="submit"
+                disabled={submitting}
+                className="flex-1 py-3 rounded-xl bg-[#B68D40] hover:bg-[#c99e4b] disabled:opacity-50 text-black font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg transition cursor-pointer"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Persisting to Database...</span>
+                  </>
+                ) : editingLandmarkId ? (
+                  <>
+                    <Save className="h-4 w-4" />
+                    <span>Save Changes to Landmark</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4" />
+                    <span>Persist Landmark to Map &amp; Planner</span>
+                  </>
+                )}
+              </button>
+            </div>
           </form>
         </div>
       </div>
@@ -664,7 +853,7 @@ export default function LandmarkAdminStudio({ trails = [] }: { trails?: Trail[] 
               <Layers className="h-4 w-4 text-[#B68D40]" />
               <span>Database Landmarks Directory ({filteredLandmarks.length} of {landmarks.length})</span>
             </h3>
-            <p className="text-xs text-gray-400">Search, filter, focus on map, or remove existing landmarks.</p>
+            <p className="text-xs text-gray-400">Search, filter, focus on map, edit properties, or remove landmarks.</p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
@@ -695,13 +884,17 @@ export default function LandmarkAdminStudio({ trails = [] }: { trails?: Trail[] 
               <option value="Rolwaling">Rolwaling</option>
             </select>
 
-            {/* Category Filter */}
+            {/* Category Filter with Hotel, Homestay, Airport, Hot Spring */}
             <select
               value={filterCategory}
               onChange={(e) => setFilterCategory(e.target.value)}
               className="px-3 py-1.5 rounded-xl bg-neutral-900 border border-neutral-700 text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#B68D40]"
             >
               <option value="All">All Categories</option>
+              <option value="Hotel">Hotel</option>
+              <option value="Community Homestay">Community Homestay</option>
+              <option value="Airport">Airport</option>
+              <option value="Hot Spring">Hot Spring</option>
               <option value="High Pass">High Pass</option>
               <option value="Base Camp">Base Camp</option>
               <option value="Monastery">Monastery</option>
@@ -718,10 +911,16 @@ export default function LandmarkAdminStudio({ trails = [] }: { trails?: Trail[] 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredLandmarks.map((lm) => {
             const style = getCategoryStyle(lm.category);
+            const isBeingEdited = editingLandmarkId === lm.id;
+
             return (
               <div
                 key={lm.id}
-                className="p-4 rounded-2xl bg-neutral-900/80 border border-neutral-800 hover:border-neutral-700 transition space-y-3 flex flex-col justify-between shadow-lg"
+                className={`p-4 rounded-2xl bg-neutral-900/80 border transition space-y-3 flex flex-col justify-between shadow-lg ${
+                  isBeingEdited
+                    ? 'border-amber-400 ring-2 ring-amber-400/40 bg-neutral-900'
+                    : 'border-neutral-800 hover:border-neutral-700'
+                }`}
               >
                 <div className="space-y-2">
                   <div className="flex items-start justify-between gap-2">
@@ -763,6 +962,7 @@ export default function LandmarkAdminStudio({ trails = [] }: { trails?: Trail[] 
                   </div>
                 </div>
 
+                {/* Card Actions: Focus Map, Edit, Delete */}
                 <div className="flex items-center justify-between pt-2 border-t border-neutral-800 gap-2">
                   <button
                     type="button"
@@ -770,16 +970,28 @@ export default function LandmarkAdminStudio({ trails = [] }: { trails?: Trail[] 
                       setFlyCenter([lm.coordinates.lat, lm.coordinates.lng]);
                       window.scrollTo({ top: 400, behavior: 'smooth' });
                     }}
-                    className="px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-[#B68D40] font-bold text-xs flex items-center gap-1.5 transition"
+                    className="px-2.5 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-[#B68D40] font-bold text-xs flex items-center gap-1 transition"
+                    title="Focus on map"
                   >
                     <Eye className="h-3.5 w-3.5" />
-                    <span>Focus Map</span>
+                    <span>Focus</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleStartEdit(lm)}
+                    className="px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-300 font-bold text-xs flex items-center gap-1 transition cursor-pointer"
+                    title="Edit landmark attributes & coordinates"
+                  >
+                    <Edit className="h-3.5 w-3.5" />
+                    <span>Edit</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => handleDeleteLandmark(lm.id, lm.name)}
-                    className="px-3 py-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/40 text-rose-300 font-bold text-xs flex items-center gap-1.5 transition"
+                    className="px-2.5 py-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/40 text-rose-300 font-bold text-xs flex items-center gap-1 transition"
+                    title="Delete landmark"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     <span>Delete</span>

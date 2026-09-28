@@ -2727,6 +2727,30 @@ describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () =>
       assert.ok(plannerMapSrc.includes('createLandmarkMarkerIcon'), 'ItineraryPlannerMap must render category marker icons for landmarks');
       assert.ok(plannerMapSrc.includes('onAddLandmarkToItinerary'), 'ItineraryPlannerMap popup must render Add to Itinerary Day action');
     });
+
+    test('Elevation API and LandmarkAdminStudio support auto-updating altitude, editing, and Hotel/Homestay/Airport/Hot Spring categories', () => {
+      const elevRouteSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'api', 'elevation', 'route.ts'), 'utf8');
+      const studioSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'admin', 'LandmarkAdminStudio.tsx'), 'utf8');
+      const plannerMapSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'planner', 'ItineraryPlannerMap.tsx'), 'utf8');
+
+      // Elevation route checks
+      assert.ok(elevRouteSrc.includes('export async function GET'), 'Elevation route must implement GET');
+      assert.ok(elevRouteSrc.includes('open-meteo.com/v1/elevation'), 'Elevation route must query real DEM elevation');
+
+      // Studio editing and auto-elevation
+      assert.ok(studioSrc.includes('updateCoordsAndElevation'), 'Must implement updateCoordsAndElevation handler');
+      assert.ok(studioSrc.includes('editingLandmarkId'), 'Must manage editingLandmarkId state');
+      assert.ok(studioSrc.includes('handleStartEdit'), 'Must provide handleStartEdit function');
+      assert.ok(studioSrc.includes('handleCancelEdit'), 'Must provide handleCancelEdit function');
+      assert.ok(studioSrc.includes('draggable={true}'), 'Draft pin marker must be draggable');
+
+      // Requested categories in studio and planner
+      const requiredCategories = ['Hotel', 'Community Homestay', 'Airport', 'Hot Spring'];
+      for (const cat of requiredCategories) {
+        assert.ok(studioSrc.includes(cat), `LandmarkAdminStudio must support category "${cat}"`);
+        assert.ok(plannerMapSrc.includes(cat), `ItineraryPlannerMap must support category "${cat}"`);
+      }
+    });
   });
 });
 
