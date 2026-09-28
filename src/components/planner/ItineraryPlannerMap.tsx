@@ -124,6 +124,7 @@ export interface ItineraryPlannerMapProps {
   expeditionPolyline?: [number, number][];
   onAddLandmarkToItinerary?: (landmark: Landmark) => void;
   expeditionName?: string;
+  focusedCoords?: [number, number] | null;
 }
 
 export default function ItineraryPlannerMap({
@@ -141,7 +142,8 @@ export default function ItineraryPlannerMap({
   landmarks = [],
   expeditionPolyline = [],
   onAddLandmarkToItinerary,
-  expeditionName
+  expeditionName,
+  focusedCoords
 }: ItineraryPlannerMapProps) {
   const [mounted, setMounted] = useState(false);
   const [tileType, setTileType] = useState<'topo' | 'satellite' | 'street'>('topo');
@@ -163,9 +165,11 @@ export default function ItineraryPlannerMap({
   // Calculate Polyline route coordinates
   const polylineCoords: [number, number][] = waypoints.map(w => [w.coordinates.lat, w.coordinates.lng]);
 
-  // Center map on active day or default to Khumbu / Everest region
+  // Center map on focusedCoords, active day or default to Khumbu / Everest region
   const activeWp = activeDayIndex !== null ? waypoints[activeDayIndex] : (hoveredDayIndex !== null ? waypoints[hoveredDayIndex] : waypoints[0]);
-  const mapCenter: [number, number] = activeWp?.coordinates
+  const mapCenter: [number, number] = focusedCoords
+    ? focusedCoords
+    : activeWp?.coordinates
     ? [activeWp.coordinates.lat, activeWp.coordinates.lng]
     : [27.8500, 86.7500];
 

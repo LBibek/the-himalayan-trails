@@ -2628,6 +2628,106 @@ describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () =>
       assert.ok(hubSrc.includes('setDroneDistanceKm(pt.distanceKm)'), 'ElevationProfileChart scrubbing must seek drone flight distance');
     });
   });
+
+  /* ─────────────────────────────────────────────────────────────
+   * 23. Admin Landmark Studio, POI Creation & Itinerary Planner Map Integration
+   * ───────────────────────────────────────────────────────────── */
+  describe('23. Admin Landmark Studio, POI Creation & Itinerary Planner Map Integration', () => {
+    test('Database landmark CRUD: createLandmark, getLandmarkById, updateLandmark, deleteLandmark persist atomically', () => {
+      const dbSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'lib', 'db.ts'), 'utf8');
+      const routeSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'api', 'landmarks', 'route.ts'), 'utf8');
+
+      // Verify source contracts
+      assert.ok(dbSrc.includes('export function createLandmark'), 'db.ts must export createLandmark');
+      assert.ok(dbSrc.includes('export function getLandmarkById'), 'db.ts must export getLandmarkById');
+      assert.ok(dbSrc.includes('export function updateLandmark'), 'db.ts must export updateLandmark');
+      assert.ok(dbSrc.includes('export function deleteLandmark'), 'db.ts must export deleteLandmark');
+
+      // Verify route handlers
+      assert.ok(routeSrc.includes('export async function POST'), 'landmarks route must implement POST');
+      assert.ok(routeSrc.includes('export async function DELETE'), 'landmarks route must implement DELETE');
+      assert.ok(routeSrc.includes('export async function PUT'), 'landmarks route must implement PUT');
+
+      // Perform live atomic CRUD in SQLite
+      const testId = `test-lm-${Date.now()}`;
+      const insertStmt = db.prepare(`
+        INSERT INTO landmarks (
+          id, name, native_name, category, elevation, region,
+          latitude, longitude, image, description, permit_required,
+          associated_trail, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      insertStmt.run(
+        testId,
+        'Gokyo Ri Summit Landmark',
+        'गोक्यो री',
+        'Summit',
+        5357,
+        'Everest',
+        27.9610,
+        86.6833,
+        'https://images.unsplash.com/photo-1544735716-392fe2489ffa',
+        'Spectacular viewpoint above turquoise glacial lakes with views of Everest, Lhotse, Makalu, and Cho Oyu.',
+        'Sagarmatha National Park Permit',
+        'Everest Base Camp Trek',
+        new Date().toISOString()
+      );
+
+      // Verify retrieval
+      const fetched = db.prepare('SELECT * FROM landmarks WHERE id = ?').get(testId);
+      assert.ok(fetched, 'Must fetch created landmark by ID');
+      assert.equal(fetched.category, 'Summit');
+      assert.equal(fetched.elevation, 5357);
+      assert.equal(fetched.region, 'Everest');
+
+      // Verify update
+      db.prepare('UPDATE landmarks SET elevation = ?, native_name = ? WHERE id = ?').run(5360, 'गोक्यो शिखर', testId);
+      const updated = db.prepare('SELECT * FROM landmarks WHERE id = ?').get(testId);
+      assert.equal(updated.elevation, 5360);
+      assert.equal(updated.native_name, 'गोक्यो शिखर');
+
+      // Verify deletion
+      db.prepare('DELETE FROM landmarks WHERE id = ?').run(testId);
+      const afterDelete = db.prepare('SELECT * FROM landmarks WHERE id = ?').get(testId);
+      assert.equal(afterDelete, undefined, 'Deleted landmark must not exist');
+    });
+
+    test('LandmarkAdminStudio component provides map click-to-pin, quick presets, and directory filter', () => {
+      const studioSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'admin', 'LandmarkAdminStudio.tsx'), 'utf8');
+
+      assert.ok(studioSrc.includes('HIMALAYAN_PRESETS'), 'Must define quick Himalayan presets');
+      assert.ok(studioSrc.includes('handleMapCoordPicked'), 'Must provide map coordinate picker callback');
+      assert.ok(studioSrc.includes('handleCreateLandmark'), 'Must implement handleCreateLandmark form submission');
+      assert.ok(studioSrc.includes('handleDeleteLandmark'), 'Must implement handleDeleteLandmark');
+      assert.ok(studioSrc.includes('createLandmarkMarkerIcon'), 'Must render custom Leaflet category pins');
+      assert.ok(studioSrc.includes('TileLayer'), 'Must mount Leaflet TileLayer on admin map');
+      assert.ok(studioSrc.includes('MapClickCapture'), 'Must listen to click events to capture lat/lng');
+      assert.ok(studioSrc.includes('filteredLandmarks'), 'Must filter landmarks by search, region, and category');
+    });
+
+    test('Admin page renders Landmarks Studio tab and dynamic LandmarkAdminStudio component', () => {
+      const adminSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'admin', 'page.tsx'), 'utf8');
+
+      assert.ok(adminSrc.includes("activeTab === 'landmarks'"), 'Admin page must manage activeTab landmarks');
+      assert.ok(adminSrc.includes('LandmarkAdminStudio'), 'Must dynamically import and render LandmarkAdminStudio');
+      assert.ok(adminSrc.includes('Landmarks Studio'), 'Tab button must render Landmarks Studio label');
+    });
+
+    test('Itinerary Planner Map and page wire landmarks, scope switcher, and click-to-add-day', () => {
+      const plannerSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'itinerary', 'planner', 'page.tsx'), 'utf8');
+      const plannerMapSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'planner', 'ItineraryPlannerMap.tsx'), 'utf8');
+
+      assert.ok(plannerSrc.includes('landmarkScope'), 'Planner must support landmarkScope state');
+      assert.ok(plannerSrc.includes('focusedLandmarkCoords'), 'Planner must manage focusedLandmarkCoords for map centering');
+      assert.ok(plannerSrc.includes('handleAddLandmarkToItinerary'), 'Planner must implement handleAddLandmarkToItinerary');
+      assert.ok(plannerSrc.includes('focusedCoords={focusedLandmarkCoords}'), 'Planner must pass focusedCoords to ItineraryPlannerMap');
+
+      assert.ok(plannerMapSrc.includes('focusedCoords'), 'ItineraryPlannerMapProps must define focusedCoords');
+      assert.ok(plannerMapSrc.includes('createLandmarkMarkerIcon'), 'ItineraryPlannerMap must render category marker icons for landmarks');
+      assert.ok(plannerMapSrc.includes('onAddLandmarkToItinerary'), 'ItineraryPlannerMap popup must render Add to Itinerary Day action');
+    });
+  });
 });
 
 

@@ -41,8 +41,18 @@ const ExpeditionMapEditor = dynamic(() => import('@/components/admin/ExpeditionM
   )
 });
 
+// Dynamically import LandmarkAdminStudio with SSR disabled
+const LandmarkAdminStudio = dynamic(() => import('@/components/admin/LandmarkAdminStudio'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-[520px] bg-neutral-900 animate-pulse flex items-center justify-center text-[#B68D40] text-sm font-semibold rounded-2xl border border-neutral-800">
+      Loading Himalayan Landmarks & POI Studio...
+    </div>
+  )
+});
+
 export default function AdminPage() {
-  const [activeTab, setActiveTab] = useState<'create' | 'list' | 'bookings' | 'inquiries' | 'contact'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'landmarks' | 'list' | 'bookings' | 'inquiries' | 'contact'>('create');
   const [expeditions, setExpeditions] = useState<Trail[]>([]);
   const [loadingExpeditions, setLoadingExpeditions] = useState(true);
   const [bookings, setBookings] = useState<any[]>([]);
@@ -467,6 +477,18 @@ export default function AdminPage() {
             <Plus className="h-4 w-4" />
             <span>{editingTrailSlug ? 'Edit Expedition' : 'Create Expedition'}</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('landmarks')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
+              activeTab === 'landmarks'
+                ? 'bg-[#B68D40] text-black shadow-lg'
+                : 'text-gray-300 hover:text-white hover:bg-neutral-800'
+            }`}
+          >
+            <Compass className="h-4 w-4" />
+            <span>Landmarks Studio ({landmarksCount})</span>
+          </button>
           
           <button
             onClick={() => setActiveTab('list')}
@@ -778,6 +800,11 @@ export default function AdminPage() {
           </div>
 
         </form>
+      )}
+
+      {/* TAB: HIMALAYAN LANDMARKS & POI STUDIO */}
+      {activeTab === 'landmarks' && (
+        <LandmarkAdminStudio trails={expeditions} />
       )}
 
       {/* TAB 2: EXPEDITION DIRECTORY & MANAGEMENT TABLE */}

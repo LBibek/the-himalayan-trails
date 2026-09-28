@@ -678,6 +678,8 @@ function ItineraryPlannerContent() {
   const [loadingLandmarks, setLoadingLandmarks] = useState(false);
   const [showLandmarksDrawer, setShowLandmarksDrawer] = useState(false);
   const [landmarkFilter, setLandmarkFilter] = useState<string>('All');
+  const [landmarkScope, setLandmarkScope] = useState<'regional' | 'all'>('regional');
+  const [focusedLandmarkCoords, setFocusedLandmarkCoords] = useState<[number, number] | null>(null);
   const [gpxUploadSuccess, setGpxUploadSuccess] = useState<string | null>(null);
   const [uploadedGpxData, setUploadedGpxData] = useState<ParsedRouteResult | null>(null);
   const gpxFileInputRef = useRef<HTMLInputElement>(null);
@@ -724,21 +726,25 @@ function ItineraryPlannerContent() {
       .catch((err) => console.error('Failed to load expeditions:', err));
   }, [trailParam]);
 
-  // When selected expedition changes, sync its GPX polyline track and regional landmarks
+  // When selected expedition changes, sync its GPX polyline track
   useEffect(() => {
     if (!selectedTrail) return;
 
-    // 1. Sync official GPX route coordinates
     if (selectedTrail.routeCoordinates && Array.isArray(selectedTrail.routeCoordinates) && selectedTrail.routeCoordinates.length > 0) {
       setExpeditionPolyline(selectedTrail.routeCoordinates.map((pt) => [pt[0], pt[1]]));
     } else {
-      // Derive default polyline from waypoints
       setExpeditionPolyline(waypoints.map((w) => [w.coordinates.lat, w.coordinates.lng]));
     }
+  }, [selectedTrail]);
 
-    // 2. Fetch landmarks for this expedition's area / region
+  // Fetch landmarks based on active expedition region and selected scope
+  useEffect(() => {
     setLoadingLandmarks(true);
-    fetch(`/api/landmarks?region=${encodeURIComponent(selectedTrail.region)}`)
+    const url = (landmarkScope === 'all' || !selectedTrail)
+      ? '/api/landmarks'
+      : `/api/landmarks?region=${encodeURIComponent(selectedTrail.region)}`;
+
+    fetch(url)
       .then((res) => (res.ok ? res.json() : []))
       .then((data: Landmark[]) => {
         if (Array.isArray(data)) {
@@ -747,7 +753,7 @@ function ItineraryPlannerContent() {
       })
       .catch((err) => console.error('Failed to fetch regional landmarks:', err))
       .finally(() => setLoadingLandmarks(false));
-  }, [selectedTrail]);
+  }, [selectedTrail, landmarkScope]);
 
   // Switch active expedition
   const handleSelectExpedition = (slug: string) => {
@@ -1685,8 +1691,30 @@ function ItineraryPlannerContent() {
                 </p>
               </div>
 
-              {/* Category Filter Pills */}
-              <div className="flex flex-wrap items-center gap-1 text-[11px]">
+              {/* Scope & Category Filter Pills */}
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                {/* Scope selector */}
+                <div className="flex items-center rounded-lg bg-neutral-900 border border-neutral-800 p-0.5 mr-1">
+                  <button
+                    type="button"
+                    onClick={() => setLandmarkScope('regional')}
+                    className={`px-2 py-0.5 rounded-md font-semibold transition ${
+                      landmarkScope === 'regional' ? 'bg-[#B68D40] text-black' : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {selectedTrail?.region || 'Region'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLandmarkScope('all')}
+                    className={`px-2 py-0.5 rounded-md font-semibold transition ${
+                      landmarkScope === 'all' ? 'bg-[#B68D40] text-black' : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    All Himalayas
+                  </button>
+                </div>
+
                 {['All', 'Base Camp', 'High Pass', 'Monastery', 'Sacred Lake', 'Summit', 'Village'].map((cat) => (
                   <button
                     key={cat}
@@ -1707,11 +1735,11 @@ function ItineraryPlannerContent() {
             {loadingLandmarks ? (
               <div className="py-6 text-center text-xs text-gray-400 flex items-center justify-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin text-[#B68D40]" />
-                <span>Loading regional landmarks for {selectedTrail?.region}...</span>
+                <span>Loading landmarks...</span>
               </div>
             ) : filteredLandmarks.length === 0 ? (
               <div className="py-6 text-center text-xs text-gray-400 bg-black/40 rounded-2xl border border-white/10">
-                No landmarks found matching filter in this region.
+                No landmarks found matching filter.
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-h-72 overflow-y-auto pr-1">
@@ -1741,8 +1769,7 @@ function ItineraryPlannerContent() {
                       <button
                         type="button"
                         onClick={() => {
-                          // Center map and select
-                          handleAddWaypointOnMapClick(lm.coordinates.lat, lm.coordinates.lng, 'trekking');
+                          setFocusedLandmarkCoords([lm.coordinates.lat, lm.coordinates.lng]);
                         }}
                         className="flex-1 py-1 px-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-gray-200 text-[10px] font-semibold transition text-center cursor-pointer"
                       >
@@ -1956,6 +1983,7 @@ function ItineraryPlannerContent() {
                 expeditionPolyline={expeditionPolyline}
                 onAddLandmarkToItinerary={handleAddLandmarkToItinerary}
                 expeditionName={selectedTrail?.name}
+                focusedCoords={focusedLandmarkCoords}
               />
             ) : (
               <CesiumGlobeMap
@@ -1978,7 +2006,13 @@ function ItineraryPlannerContent() {
                   }
                 }}
                 scrubberPoint={
-                  activeWp
+                  focusedLandmarkCoords
+                    ? {
+                        lat: focusedLandmarkCoords[0],
+                        lng: focusedLandmarkCoords[1],
+                        altitude: 5500,
+                      }
+                    : activeWp
                     ? {
                         lat: activeWp.coordinates.lat,
                         lng: activeWp.coordinates.lng,
@@ -1987,7 +2021,13 @@ function ItineraryPlannerContent() {
                     : null
                 }
                 initialCenter={
-                  activeWp
+                  focusedLandmarkCoords
+                    ? {
+                        lat: focusedLandmarkCoords[0],
+                        lng: focusedLandmarkCoords[1],
+                        altitude: 7000,
+                      }
+                    : activeWp
                     ? {
                         lat: activeWp.coordinates.lat,
                         lng: activeWp.coordinates.lng,

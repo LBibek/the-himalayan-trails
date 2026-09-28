@@ -1268,6 +1268,131 @@ export function getAllLandmarks(category?: string, region?: string, trail?: stri
   }));
 }
 
+export function getLandmarkById(id: string): Landmark | null {
+  const db = getDatabase();
+  const row = db.prepare('SELECT * FROM landmarks WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    nativeName: (row.native_name as string) || undefined,
+    category: row.category as string,
+    elevation: Number(row.elevation),
+    region: row.region as string,
+    coordinates: {
+      lat: Number(row.latitude),
+      lng: Number(row.longitude)
+    },
+    image: row.image as string,
+    description: row.description as string,
+    permitRequired: row.permit_required as string,
+    associatedTrail: row.associated_trail as string
+  };
+}
+
+export function createLandmark(data: {
+  name: string;
+  nativeName?: string;
+  category: string;
+  elevation: number;
+  region: string;
+  coordinates: { lat: number; lng: number };
+  image?: string;
+  description: string;
+  permitRequired?: string;
+  associatedTrail?: string;
+  id?: string;
+}): Landmark {
+  const db = getDatabase();
+  const id = data.id || `lm-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const now = new Date().toISOString();
+
+  const stmt = db.prepare(`
+    INSERT INTO landmarks (
+      id, name, native_name, category, elevation, region,
+      latitude, longitude, image, description, permit_required,
+      associated_trail, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  stmt.run(
+    id,
+    data.name,
+    data.nativeName || null,
+    data.category,
+    Math.round(data.elevation),
+    data.region,
+    data.coordinates.lat,
+    data.coordinates.lng,
+    data.image || 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?w=800&fit=crop&q=80',
+    data.description || `${data.name} landmark situated in the ${data.region} region.`,
+    data.permitRequired || 'None',
+    data.associatedTrail || 'All Trails',
+    now
+  );
+
+  return {
+    id,
+    name: data.name,
+    nativeName: data.nativeName,
+    category: data.category,
+    elevation: Math.round(data.elevation),
+    region: data.region,
+    coordinates: data.coordinates,
+    image: data.image || 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?w=800&fit=crop&q=80',
+    description: data.description || `${data.name} landmark situated in the ${data.region} region.`,
+    permitRequired: data.permitRequired || 'None',
+    associatedTrail: data.associatedTrail || 'All Trails'
+  };
+}
+
+export function deleteLandmark(id: string): boolean {
+  const db = getDatabase();
+  const res = db.prepare('DELETE FROM landmarks WHERE id = ?').run(id);
+  return res.changes > 0;
+}
+
+export function updateLandmark(id: string, updates: Partial<Landmark>): Landmark | null {
+  const db = getDatabase();
+  const existing = getLandmarkById(id);
+  if (!existing) return null;
+
+  const updatedName = updates.name ?? existing.name;
+  const updatedNativeName = updates.nativeName !== undefined ? updates.nativeName : existing.nativeName;
+  const updatedCategory = updates.category ?? existing.category;
+  const updatedElevation = updates.elevation ?? existing.elevation;
+  const updatedRegion = updates.region ?? existing.region;
+  const updatedLat = updates.coordinates?.lat ?? existing.coordinates.lat;
+  const updatedLng = updates.coordinates?.lng ?? existing.coordinates.lng;
+  const updatedImage = updates.image ?? existing.image;
+  const updatedDescription = updates.description ?? existing.description;
+  const updatedPermit = updates.permitRequired ?? existing.permitRequired;
+  const updatedTrail = updates.associatedTrail ?? existing.associatedTrail;
+
+  db.prepare(`
+    UPDATE landmarks
+    SET name = ?, native_name = ?, category = ?, elevation = ?, region = ?,
+        latitude = ?, longitude = ?, image = ?, description = ?,
+        permit_required = ?, associated_trail = ?
+    WHERE id = ?
+  `).run(
+    updatedName,
+    updatedNativeName || null,
+    updatedCategory,
+    Math.round(updatedElevation),
+    updatedRegion,
+    updatedLat,
+    updatedLng,
+    updatedImage,
+    updatedDescription,
+    updatedPermit,
+    updatedTrail,
+    id
+  );
+
+  return getLandmarkById(id);
+}
+
 export function getAllItineraries(): Itinerary[] {
   const db = getDatabase();
   const rows = db.prepare('SELECT * FROM itineraries ORDER BY likes DESC').all() as Record<string, unknown>[];
