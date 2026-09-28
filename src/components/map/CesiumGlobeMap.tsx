@@ -52,6 +52,10 @@ interface CesiumGlobeMapProps {
   activeDistanceKm?: number | null;
   cameraMode?: 'chase' | 'cockpit';
   hideHUD?: boolean;
+  weatherOverlay?: 'none' | 'radar' | 'clouds';
+  onWeatherOverlayChange?: (mode: 'none' | 'radar' | 'clouds') => void;
+  radarTileUrl?: string;
+  cloudsTileUrl?: string;
 }
 
 export default function CesiumGlobeMap({
@@ -76,6 +80,10 @@ export default function CesiumGlobeMap({
   activeDistanceKm,
   cameraMode = 'chase',
   hideHUD = false,
+  weatherOverlay = 'none',
+  onWeatherOverlayChange,
+  radarTileUrl,
+  cloudsTileUrl,
 }: CesiumGlobeMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const hudRef = useRef<HTMLDivElement>(null);
@@ -91,6 +99,20 @@ export default function CesiumGlobeMap({
   const [perspective, setPerspective] = useState<'topo' | 'ridge' | 'summit'>('ridge');
   const [selectedLandmarkId, setSelectedLandmarkId] = useState<string | null>(null);
   const [fetchedLandmarks, setFetchedLandmarks] = useState<Landmark[]>([]);
+  const [currentWeatherOverlay, setCurrentWeatherOverlay] = useState<'none' | 'radar' | 'clouds'>(weatherOverlay);
+
+  useEffect(() => {
+    if (weatherOverlay !== undefined) {
+      setCurrentWeatherOverlay(weatherOverlay);
+    }
+  }, [weatherOverlay]);
+
+  useEffect(() => {
+    if (controllerRef.current?.isInitialized) {
+      const customUrl = currentWeatherOverlay === 'radar' ? radarTileUrl : currentWeatherOverlay === 'clouds' ? cloudsTileUrl : undefined;
+      controllerRef.current.setWeatherOverlay(currentWeatherOverlay, customUrl);
+    }
+  }, [currentWeatherOverlay, radarTileUrl, cloudsTileUrl]);
 
   useEffect(() => {
     setCurrentMode(mode);
@@ -258,6 +280,11 @@ export default function CesiumGlobeMap({
 
         // Render all route tracks in 3D
         controller.setAllRouteTracks(ROUTE_TRACKS, activeTrail?.id);
+
+        // Apply real-time weather radar overlay if active
+        if (currentWeatherOverlay && currentWeatherOverlay !== 'none') {
+          controller.setWeatherOverlay(currentWeatherOverlay);
+        }
 
         // Kinetic GSAP entrance for HUD (slide from left)
         if (hudRef.current) {
@@ -524,6 +551,66 @@ export default function CesiumGlobeMap({
                 <span>{currentMode === 'drone-flight' ? 'Exit Drone Flight' : 'Start Drone Fly-Through'}</span>
               </button>
             )}
+
+            {/* Live Weather Radar Overlay Toggles */}
+            <div data-slot="control" className="space-y-1 bg-black/60 border border-white/10 rounded-xl p-2 backdrop-blur-md">
+              <div className="flex items-center justify-between text-[10px] text-gray-400 font-bold px-0.5">
+                <span>Weather Radar Layer:</span>
+                <span className="text-amber-400 uppercase font-mono text-[9px]">
+                  {currentWeatherOverlay === 'radar' ? 'Rain Radar' : currentWeatherOverlay === 'clouds' ? 'Wind & Clouds' : 'Off'}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-1">
+                <button
+                  type="button"
+                  data-slot="trigger"
+                  data-pressed={currentWeatherOverlay === 'none'}
+                  onClick={() => {
+                    setCurrentWeatherOverlay('none');
+                    onWeatherOverlayChange?.('none');
+                  }}
+                  className={`py-1 px-1.5 rounded-lg text-[10px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B68D40] ${
+                    currentWeatherOverlay === 'none'
+                      ? 'bg-[#B68D40] text-black shadow font-black'
+                      : 'bg-neutral-900/80 text-gray-400 hover:text-white'
+                  }`}
+                >
+                  None
+                </button>
+                <button
+                  type="button"
+                  data-slot="trigger"
+                  data-pressed={currentWeatherOverlay === 'radar'}
+                  onClick={() => {
+                    setCurrentWeatherOverlay('radar');
+                    onWeatherOverlayChange?.('radar');
+                  }}
+                  className={`py-1 px-1.5 rounded-lg text-[10px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B68D40] ${
+                    currentWeatherOverlay === 'radar'
+                      ? 'bg-[#B68D40] text-black shadow font-black'
+                      : 'bg-neutral-900/80 text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Rain Radar
+                </button>
+                <button
+                  type="button"
+                  data-slot="trigger"
+                  data-pressed={currentWeatherOverlay === 'clouds'}
+                  onClick={() => {
+                    setCurrentWeatherOverlay('clouds');
+                    onWeatherOverlayChange?.('clouds');
+                  }}
+                  className={`py-1 px-1.5 rounded-lg text-[10px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B68D40] ${
+                    currentWeatherOverlay === 'clouds'
+                      ? 'bg-[#B68D40] text-black shadow font-black'
+                      : 'bg-neutral-900/80 text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Wind & Clouds
+                </button>
+              </div>
+            </div>
 
             {/* Perspective Preset Buttons & Full Route Overview */}
             <div className="flex items-center justify-between gap-1 bg-black/50 border border-border/30 rounded-xl p-1">

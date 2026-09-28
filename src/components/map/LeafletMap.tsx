@@ -105,6 +105,10 @@ export interface LeafletMapProps {
   onSelectRegion?: (region: string) => void;
   height?: string;
   hideHeaderControls?: boolean;
+  weatherOverlay?: 'none' | 'radar' | 'clouds';
+  onWeatherOverlayChange?: (mode: 'none' | 'radar' | 'clouds') => void;
+  radarTileUrl?: string;
+  cloudsTileUrl?: string;
 }
 
 export default function LeafletMap({
@@ -119,7 +123,11 @@ export default function LeafletMap({
   onSelectTrail,
   onSelectRegion,
   height = 'h-[75vh]',
-  hideHeaderControls = false
+  hideHeaderControls = false,
+  weatherOverlay = 'none',
+  onWeatherOverlayChange,
+  radarTileUrl,
+  cloudsTileUrl,
 }: LeafletMapProps) {
   const [tileLayerType, setTileLayerType] = useState<'topo' | 'satellite' | 'street'>('topo');
   const [mapCenter, setMapCenter] = useState<[number, number]>([28.1500, 85.5000]);
@@ -133,6 +141,13 @@ export default function LeafletMap({
   const [showSummits, setShowSummits] = useState(true);
   const [showItinerary, setShowItinerary] = useState(true);
   const [showControls, setShowControls] = useState(true);
+  const [currentWeatherOverlay, setCurrentWeatherOverlay] = useState<'none' | 'radar' | 'clouds'>(weatherOverlay);
+
+  useEffect(() => {
+    if (weatherOverlay !== undefined) {
+      setCurrentWeatherOverlay(weatherOverlay);
+    }
+  }, [weatherOverlay]);
 
   // Compute waypoint coordinates along active trail for each itinerary day
   const mappedItineraryWaypoints = useMemo(() => {
@@ -334,6 +349,37 @@ export default function LeafletMap({
                   </div>
                 </div>
 
+                {/* Weather Radar Layer Segmented Control */}
+                <div data-slot="control" className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-400 text-[11px] font-bold">Weather Radar:</span>
+                    <span className="text-amber-400 font-mono text-[10px] uppercase font-bold">
+                      {currentWeatherOverlay === 'radar' ? 'Rain Radar' : currentWeatherOverlay === 'clouds' ? 'Wind & Clouds' : 'Off'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 p-0.5 rounded-lg bg-neutral-900/90 border border-neutral-800">
+                    {(['none', 'radar', 'clouds'] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        data-slot="trigger"
+                        data-pressed={currentWeatherOverlay === mode}
+                        onClick={() => {
+                          setCurrentWeatherOverlay(mode);
+                          onWeatherOverlayChange?.(mode);
+                        }}
+                        className={`flex-1 px-2 py-0.5 rounded text-[10px] font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B68D40] ${
+                          currentWeatherOverlay === mode
+                            ? 'bg-[#B68D40] text-black font-black shadow'
+                            : 'text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        {mode === 'none' ? 'None' : mode === 'radar' ? 'Rain' : 'Wind/Clouds'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="flex flex-wrap items-center gap-3 text-xs">
                   <label className="flex items-center gap-1.5 cursor-pointer text-gray-300 hover:text-white text-[11px]">
                     <input
@@ -395,6 +441,26 @@ export default function LeafletMap({
           attribution={tileUrls[tileLayerType].attribution}
           maxZoom={18}
         />
+
+        {/* Real-Time Live Weather Radar & Cloud Overlay TileLayers */}
+        {currentWeatherOverlay === 'radar' && (
+          <TileLayer
+            key="leaflet-radar-tile"
+            url={radarTileUrl || "https://tilecache.rainviewer.com/v2/radar/5f8646ca4f2d/256/{z}/{x}/{y}/2/1_1.png"}
+            attribution="RainViewer Live Radar"
+            opacity={0.7}
+            zIndex={400}
+          />
+        )}
+        {currentWeatherOverlay === 'clouds' && (
+          <TileLayer
+            key="leaflet-clouds-tile"
+            url={cloudsTileUrl || "https://tilecache.rainviewer.com/v2/coverage/0/256/{z}/{x}/{y}/0/0_0.png"}
+            attribution="RainViewer Atmospheric Coverage"
+            opacity={0.65}
+            zIndex={400}
+          />
+        )}
 
         {/* Himalayan Range Massif Boundary Polygons */}
         {showRanges && ranges.map((range) => {

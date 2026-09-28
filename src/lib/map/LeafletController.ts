@@ -140,7 +140,46 @@ export class LeafletController implements IMapController {
     }
   }
 
+  private weatherLayer: any = null;
+
+  setWeatherOverlay(mode: 'none' | 'radar' | 'clouds', customUrl?: string): void {
+    if (!this.map || !this.L) return;
+
+    if (this.weatherLayer) {
+      this.map.removeLayer(this.weatherLayer);
+      this.weatherLayer = null;
+    }
+
+    if (mode === 'none') return;
+
+    let url = customUrl || '';
+    let attribution = '';
+    if (mode === 'radar') {
+      if (!url) url = 'https://tilecache.rainviewer.com/v2/radar/5f8646ca4f2d/256/{z}/{x}/{y}/2/1_1.png';
+      attribution = 'RainViewer Live Radar';
+    } else if (mode === 'clouds') {
+      if (!url) url = 'https://tilecache.rainviewer.com/v2/coverage/0/256/{z}/{x}/{y}/0/0_0.png';
+      attribution = 'RainViewer Atmospheric Coverage';
+    }
+
+    try {
+      this.weatherLayer = this.L.tileLayer(url, {
+        opacity: mode === 'radar' ? 0.7 : 0.65,
+        zIndex: 400,
+        attribution
+      }).addTo(this.map);
+    } catch (err) {
+      console.warn('Failed to set Leaflet weather layer:', err);
+    }
+  }
+
   destroy(): void {
+    if (this.weatherLayer && this.map) {
+      try {
+        this.map.removeLayer(this.weatherLayer);
+      } catch {}
+      this.weatherLayer = null;
+    }
     if (this.map) {
       this.map.remove();
       this.map = null;

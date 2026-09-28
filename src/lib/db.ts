@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import fs from 'node:fs';
-import { Trail, Landmark, Itinerary, ItineraryDay, Story, WeatherReport, Booking, ContactMessage, Inquiry, SharedTrail, User, HimalayanRange } from '@/types';
+import type { Trail, Landmark, Itinerary, ItineraryDay, Story, WeatherReport, Booking, ContactMessage, Inquiry, SharedTrail, User, HimalayanRange } from '../types';
 import { hashPassword } from './auth';
 
 // Ensure data directory exists with Vercel serverless support
@@ -43,7 +43,7 @@ export function getDatabase(): DatabaseSync {
   return _db;
 }
 
-function initializeSchema(db: DatabaseSync) {
+export function initializeSchema(db: DatabaseSync) {
   // Users table
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -157,6 +157,30 @@ function initializeSchema(db: DatabaseSync) {
     );
   `);
 
+  // Ensure baseline weather telemetry exists for all 4 key Himalayan regions
+  try {
+    const insertReport = db.prepare(`
+      INSERT OR IGNORE INTO weather_reports (
+        id, location, region, elevation, temp_c, feels_like_c, wind_km,
+        condition, avalanche_risk, hazards_json, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    `);
+    const now = new Date().toISOString();
+    insertReport.run('wr-everest', 'Gorak Shep & EBC Base', 'Everest', 5364, -9, -16, 34, 'Severe Frost & Clear Skies', 'Moderate (2/5)', JSON.stringify([
+      { id: 'hz-1', type: 'Icy Ridges', severity: 'Moderate', location: 'Lobuche to Gorak Shep lateral moraine', description: 'Black ice under dusting of snow. Microspikes advised between km 56 and 59.', updatedAt: '2 hours ago' },
+      { id: 'hz-2', type: 'Blizzard Warning', severity: 'High', location: 'South Col (7,900m+)', description: 'Gale force jetstream depression arriving over Khumbu summit ridges late afternoon.', updatedAt: '35 mins ago' }
+    ]), now);
+    insertReport.run('wr-annapurna', 'Thorong Phedi & High Camp', 'Annapurna', 4850, -6, -12, 28, 'Partly Cloudy', 'Moderate (2/5)', JSON.stringify([
+      { id: 'hz-3', type: 'Landslide', severity: 'High', location: 'Thorong Phedi Scree Gully', description: 'Active scree movement reported by morning porters. Wear helmets and do not stop in gully.', updatedAt: '1 hour ago' }
+    ]), now);
+    insertReport.run('wr-manaslu', 'Dharmasala & Larkya Base', 'Manaslu', 4460, -11, -19, 34, 'Clear & Cold', 'Moderate (2/5)', JSON.stringify([
+      { id: 'hz-manaslu-1', type: 'Freeze Alert', severity: 'Moderate', location: 'Larkya Glacier Moraine', description: 'Sub-zero verglas over glacial stones before dawn. Early crossing mandatory.', updatedAt: '1 hour ago' }
+    ]), now);
+    insertReport.run('wr-langtang', 'Kyanjin Gompa & Langshisha', 'Langtang', 3870, -4, -8, 22, 'Partly Sunny', 'Low (1/5)', JSON.stringify([
+      { id: 'hz-langtang-1', type: 'Rockfall', severity: 'Low', location: 'Langtang Valley Upper Gorge', description: 'Minor loose rocks on switchbacks above Rimche. Standard caution advised.', updatedAt: '3 hours ago' }
+    ]), now);
+  } catch {}
+
   // Bookings table
   db.exec(`
     CREATE TABLE IF NOT EXISTS bookings (
@@ -171,8 +195,138 @@ function initializeSchema(db: DatabaseSync) {
       special_requests TEXT,
       total_price REAL NOT NULL,
       status TEXT NOT NULL DEFAULT 'CONFIRMED',
+      payment_option TEXT DEFAULT 'FULL',
+      deposit_amount REAL DEFAULT 0,
+      remaining_balance REAL DEFAULT 0,
+      base_price REAL DEFAULT 0,
+      permit_fee REAL DEFAULT 0,
+      tax_amount REAL DEFAULT 0,
+      receipt_number TEXT,
+      invoice_breakdown TEXT,
       created_at TEXT NOT NULL,
       FOREIGN KEY (trail_id) REFERENCES trails(id) ON DELETE CASCADE
+    );
+  `);
+
+  // Migration for bookings columns if missing in existing database
+  const bookingCols = [
+    "ALTER TABLE bookings ADD COLUMN payment_option TEXT DEFAULT 'FULL';",
+    "ALTER TABLE bookings ADD COLUMN deposit_amount REAL DEFAULT 0;",
+    "ALTER TABLE bookings ADD COLUMN remaining_balance REAL DEFAULT 0;",
+    "ALTER TABLE bookings ADD COLUMN base_price REAL DEFAULT 0;",
+    "ALTER TABLE bookings ADD COLUMN permit_fee REAL DEFAULT 0;",
+    "ALTER TABLE bookings ADD COLUMN tax_amount REAL DEFAULT 0;",
+    "ALTER TABLE bookings ADD COLUMN receipt_number TEXT;",
+    "ALTER TABLE bookings ADD COLUMN invoice_breakdown TEXT;"
+  ];
+  for (const colSql of bookingCols) {
+    try {
+      db.exec(colSql);
+    } catch {
+      // Column already exists
+    }
+  }
+
+  // Reviews table - supports authenticated users as well as public explorer reviews
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS reviews (
+      id TEXT PRIMARY KEY,
+      trail_id TEXT NOT NULL,
+      user_id TEXT,
+      user_name TEXT,
+      user_email TEXT,
+      user_avatar TEXT,
+      overall_rating REAL NOT NULL,
+      difficulty_rating INTEGER NOT NULL,
+      scenic_rating INTEGER,
+      safety_rating INTEGER NOT NULL,
+      comment TEXT NOT NULL,
+      photos_json TEXT,
+      is_verified INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      reviewer_name TEXT,
+      scenery_rating INTEGER,
+      condition_tags TEXT,
+      FOREIGN KEY (trail_id) REFERENCES trails(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+
+  // Migration for reviews columns if missing in existing database
+  const reviewCols = [
+    "ALTER TABLE reviews ADD COLUMN reviewer_name TEXT;",
+    "ALTER TABLE reviews ADD COLUMN scenery_rating INTEGER;",
+    "ALTER TABLE reviews ADD COLUMN condition_tags TEXT;"
+  ];
+  for (const colSql of reviewCols) {
+    try {
+      db.exec(colSql);
+    } catch {
+      // Column already exists
+    }
+  }
+
+  // Ensure reviews table user_id is nullable for guest submissions
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(reviews);").all() as { name: string; notnull: number }[];
+    const userIdCol = tableInfo.find((c) => c.name === 'user_id');
+    if (userIdCol && userIdCol.notnull === 1) {
+      db.exec(`
+        PRAGMA foreign_keys = OFF;
+        CREATE TABLE reviews_migration_temp (
+          id TEXT PRIMARY KEY,
+          trail_id TEXT NOT NULL,
+          user_id TEXT,
+          user_name TEXT,
+          user_email TEXT,
+          user_avatar TEXT,
+          overall_rating REAL NOT NULL,
+          difficulty_rating INTEGER NOT NULL,
+          scenic_rating INTEGER,
+          safety_rating INTEGER NOT NULL,
+          comment TEXT NOT NULL,
+          photos_json TEXT,
+          is_verified INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          reviewer_name TEXT,
+          scenery_rating INTEGER,
+          condition_tags TEXT,
+          FOREIGN KEY (trail_id) REFERENCES trails(id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        INSERT INTO reviews_migration_temp (
+          id, trail_id, user_id, user_name, user_email, user_avatar,
+          overall_rating, difficulty_rating, scenic_rating, safety_rating,
+          comment, photos_json, is_verified, created_at, reviewer_name,
+          scenery_rating, condition_tags
+        )
+        SELECT
+          id, trail_id, user_id, user_name, user_email, user_avatar,
+          overall_rating, difficulty_rating, scenic_rating, safety_rating,
+          comment, photos_json, is_verified, created_at,
+          COALESCE(reviewer_name, user_name),
+          COALESCE(scenery_rating, scenic_rating),
+          condition_tags
+        FROM reviews;
+        DROP TABLE reviews;
+        ALTER TABLE reviews_migration_temp RENAME TO reviews;
+        PRAGMA foreign_keys = ON;
+      `);
+    }
+  } catch {}
+
+  // User badges table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_badges (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      badge_id TEXT NOT NULL,
+      badge_name TEXT NOT NULL,
+      badge_description TEXT NOT NULL,
+      badge_icon TEXT NOT NULL,
+      unlocked_at TEXT NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(user_id, badge_id)
     );
   `);
 
@@ -910,6 +1064,48 @@ function seedInitialDataIfEmpty(db: DatabaseSync) {
           updatedAt: '1 hour ago'
         }
       ]
+    },
+    {
+      id: 'wr-manaslu',
+      location: 'Dharmasala & Larkya Base',
+      region: 'Manaslu',
+      elevation: 4460,
+      tempC: -11,
+      feelsLikeC: -19,
+      windKm: 34,
+      condition: 'Clear & Cold',
+      avalancheRisk: 'Moderate (2/5)',
+      hazards: [
+        {
+          id: 'hz-manaslu-1',
+          type: 'Freeze Alert',
+          severity: 'Moderate',
+          location: 'Larkya Glacier Moraine',
+          description: 'Sub-zero verglas over glacial stones before dawn. Early crossing mandatory.',
+          updatedAt: '1 hour ago'
+        }
+      ]
+    },
+    {
+      id: 'wr-langtang',
+      location: 'Kyanjin Gompa & Langshisha',
+      region: 'Langtang',
+      elevation: 3870,
+      tempC: -4,
+      feelsLikeC: -8,
+      windKm: 22,
+      condition: 'Partly Sunny',
+      avalancheRisk: 'Low (1/5)',
+      hazards: [
+        {
+          id: 'hz-langtang-1',
+          type: 'Rockfall',
+          severity: 'Low',
+          location: 'Langtang Valley Upper Gorge',
+          description: 'Minor loose rocks on switchbacks above Rimche. Standard caution advised.',
+          updatedAt: '3 hours ago'
+        }
+      ]
     }
   ];
 
@@ -1505,7 +1701,7 @@ export function getWeatherReport(region?: string): WeatherReport {
   const db = getDatabase();
   let row: Record<string, unknown> | undefined;
 
-  if (region) {
+  if (region && region.toLowerCase() !== 'all') {
     row = db.prepare('SELECT * FROM weather_reports WHERE region = ?').get(region) as Record<string, unknown> | undefined;
   }
   if (!row) {
@@ -1539,6 +1735,22 @@ export function getWeatherReport(region?: string): WeatherReport {
   };
 }
 
+export function getWeatherReports(): WeatherReport[] {
+  const db = getDatabase();
+  const rows = db.prepare('SELECT * FROM weather_reports ORDER BY region ASC').all() as Record<string, unknown>[];
+  return rows.map((row) => ({
+    location: row.location as string,
+    region: row.region as string,
+    elevation: Number(row.elevation),
+    tempC: Number(row.temp_c),
+    feelsLikeC: Number(row.feels_like_c),
+    windKm: Number(row.wind_km),
+    condition: row.condition as string,
+    avalancheRisk: row.avalanche_risk as string,
+    hazards: JSON.parse((row.hazards_json as string) || '[]')
+  }));
+}
+
 export function createBooking(data: {
   trailId: string;
   userId?: string;
@@ -1549,16 +1761,34 @@ export function createBooking(data: {
   travelers: number;
   specialRequests?: string;
   totalPrice: number;
+  paymentOption?: 'FULL' | 'DEPOSIT';
+  depositAmount?: number;
+  remainingBalance?: number;
+  basePrice?: number;
+  permitFee?: number;
+  taxAmount?: number;
+  receiptNumber?: string;
+  invoiceBreakdown?: string;
 }): Booking {
   const db = getDatabase();
   const id = `bkg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const now = new Date().toISOString();
+  const paymentOption = data.paymentOption || 'FULL';
+  const depositAmount = data.depositAmount ?? (paymentOption === 'DEPOSIT' ? Math.round(data.totalPrice * 0.25 * 100) / 100 : data.totalPrice);
+  const remainingBalance = data.remainingBalance ?? (paymentOption === 'DEPOSIT' ? Math.round((data.totalPrice - depositAmount) * 100) / 100 : 0);
+  const basePrice = data.basePrice ?? data.totalPrice;
+  const permitFee = data.permitFee ?? 0;
+  const taxAmount = data.taxAmount ?? 0;
+  const receiptNumber = data.receiptNumber || `REC-${Date.now().toString().slice(-6)}`;
+  const invoiceBreakdown = data.invoiceBreakdown || null;
 
   db.prepare(`
     INSERT INTO bookings (
       id, trail_id, user_id, full_name, email, phone, start_date, travelers,
-      special_requests, total_price, status, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMED', ?)
+      special_requests, total_price, status, payment_option, deposit_amount,
+      remaining_balance, base_price, permit_fee, tax_amount, receipt_number,
+      invoice_breakdown, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMED', ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     data.trailId,
@@ -1570,6 +1800,14 @@ export function createBooking(data: {
     data.travelers,
     data.specialRequests || null,
     data.totalPrice,
+    paymentOption,
+    depositAmount,
+    remainingBalance,
+    basePrice,
+    permitFee,
+    taxAmount,
+    receiptNumber,
+    invoiceBreakdown,
     now
   );
 
@@ -1584,6 +1822,14 @@ export function createBooking(data: {
     travelers: data.travelers,
     specialRequests: data.specialRequests,
     totalPrice: data.totalPrice,
+    paymentOption,
+    depositAmount,
+    remainingBalance,
+    basePrice,
+    permitFee,
+    taxAmount,
+    receiptNumber,
+    invoiceBreakdown: invoiceBreakdown || undefined,
     status: 'CONFIRMED',
     createdAt: now
   };
@@ -1603,6 +1849,14 @@ export function getBookings(): Booking[] {
     travelers: Number(r.travelers),
     specialRequests: (r.special_requests as string) || undefined,
     totalPrice: Number(r.total_price),
+    paymentOption: (r.payment_option as 'FULL' | 'DEPOSIT') || 'FULL',
+    depositAmount: Number(r.deposit_amount || 0),
+    remainingBalance: Number(r.remaining_balance || 0),
+    basePrice: Number(r.base_price || 0),
+    permitFee: Number(r.permit_fee || 0),
+    taxAmount: Number(r.tax_amount || 0),
+    receiptNumber: (r.receipt_number as string) || undefined,
+    invoiceBreakdown: (r.invoice_breakdown as string) || undefined,
     status: r.status as 'CONFIRMED' | 'PENDING' | 'CANCELLED',
     createdAt: r.created_at as string
   }));

@@ -9,15 +9,23 @@ export async function GET(
     const { slug } = await params;
     const db = getDatabase();
 
+    // Resolve trail by id or slug
+    const trail = db.prepare('SELECT id, slug FROM trails WHERE id = ? OR slug = ?').get(slug, slug) as { id: string; slug: string } | undefined;
+    const trailId = trail ? trail.id : slug;
+    const trailSlug = trail ? trail.slug : slug;
+
     const reviews = db
       .prepare(
-        `SELECT r.*, u.name as user_name FROM reviews r
+        `SELECT r.*,
+                COALESCE(r.reviewer_name, u.name, r.user_name, 'Adventurer') as reviewer_name,
+                COALESCE(u.name, r.user_name, r.reviewer_name, 'Adventurer') as user_name
+         FROM reviews r
          LEFT JOIN users u ON r.user_id = u.id
-         WHERE r.trail_id = ?
+         WHERE (r.trail_id = ? OR r.trail_id = ?)
          ORDER BY r.created_at DESC
          LIMIT 20`
       )
-      .all(slug);
+      .all(trailId, trailSlug);
 
     // Compute aggregate stats
     const stats = db
@@ -25,12 +33,12 @@ export async function GET(
         `SELECT
            COUNT(*) as total,
            ROUND(AVG(r.overall_rating), 1) as avg_rating,
-           ROUND(AVG(r.difficulty_rating), 1) as avg_difficulty,
-           ROUND(AVG(r.scenery_rating), 1) as avg_scenery,
-           ROUND(AVG(r.safety_rating), 1) as avg_safety
-         FROM reviews r WHERE r.trail_id = ?`
+           ROUND(AVG(COALESCE(r.difficulty_rating, r.overall_rating)), 1) as avg_difficulty,
+           ROUND(AVG(COALESCE(r.scenery_rating, r.scenic_rating, r.overall_rating)), 1) as avg_scenery,
+           ROUND(AVG(COALESCE(r.safety_rating, r.overall_rating)), 1) as avg_safety
+         FROM reviews r WHERE (r.trail_id = ? OR r.trail_id = ?)`
       )
-      .get(slug) as { total: number; avg_rating: number; avg_difficulty: number; avg_scenery: number; avg_safety: number } | undefined;
+      .get(trailId, trailSlug) as { total: number; avg_rating: number; avg_difficulty: number; avg_scenery: number; avg_safety: number } | undefined;
 
     return NextResponse.json({
       reviews,
@@ -50,7 +58,7 @@ export async function POST(
     const { slug } = await params;
     const body = await request.json();
 
-    const { reviewer_name, overall_rating, difficulty_rating, scenery_rating, safety_rating, comment, condition_tags } = body;
+    const { reviewer_name, overall_rating, difficulty_rating, scenery_rating, safety_rating, comment, condition_tags, user_id, user_email, photos } = body;
 
     if (!reviewer_name || typeof reviewer_name !== 'string' || reviewer_name.trim().length < 2) {
       return NextResponse.json({ error: 'Name is required (min 2 characters)' }, { status: 400 });
@@ -65,29 +73,48 @@ export async function POST(
     const db = getDatabase();
     const id = `rev-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+    // Resolve trail by id or slug to ensure strict foreign key compliance
+    const trail = db.prepare('SELECT id, slug FROM trails WHERE id = ? OR slug = ?').get(slug, slug) as { id: string; slug: string } | undefined;
+    const targetTrailId = trail ? trail.id : slug;
+    const targetTrailSlug = trail ? trail.slug : slug;
+
+    const trimmedName = reviewer_name.trim();
+    const diffVal = Math.round(difficulty_rating || overall_rating);
+    const scenVal = Math.round(scenery_rating || overall_rating);
+    const safeVal = Math.round(safety_rating || overall_rating);
+    const photosJson = photos && Array.isArray(photos) ? JSON.stringify(photos) : null;
+
     db.prepare(
-      `INSERT INTO reviews (id, trail_id, reviewer_name, overall_rating, difficulty_rating, scenery_rating, safety_rating, comment, condition_tags, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+      `INSERT INTO reviews (
+        id, trail_id, user_id, user_name, user_email, reviewer_name,
+        overall_rating, difficulty_rating, scenic_rating, scenery_rating,
+        safety_rating, comment, condition_tags, photos_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
     ).run(
       id,
-      slug,
-      reviewer_name.trim(),
+      targetTrailId,
+      user_id || null,
+      trimmedName,
+      user_email || null,
+      trimmedName,
       Math.round(overall_rating),
-      Math.round(difficulty_rating || overall_rating),
-      Math.round(scenery_rating || overall_rating),
-      Math.round(safety_rating || overall_rating),
+      diffVal,
+      scenVal,
+      scenVal,
+      safeVal,
       comment.trim(),
-      condition_tags || ''
+      condition_tags || '',
+      photosJson
     );
 
     // Update trail aggregate rating
     const agg = db.prepare(
-      `SELECT COUNT(*) as cnt, ROUND(AVG(overall_rating), 1) as avg FROM reviews WHERE trail_id = ?`
-    ).get(slug) as { cnt: number; avg: number } | undefined;
+      `SELECT COUNT(*) as cnt, ROUND(AVG(overall_rating), 1) as avg FROM reviews WHERE (trail_id = ? OR trail_id = ?)`
+    ).get(targetTrailId, targetTrailSlug) as { cnt: number; avg: number } | undefined;
 
     if (agg) {
       db.prepare(`UPDATE trails SET rating = ?, reviews_count = ? WHERE id = ? OR slug = ?`).run(
-        agg.avg, agg.cnt, slug, slug
+        agg.avg, agg.cnt, targetTrailId, targetTrailSlug
       );
     }
 

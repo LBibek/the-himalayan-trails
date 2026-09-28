@@ -713,8 +713,10 @@ export default function TrailDetailPage() {
                     <div key={rev.id} className="p-3.5 rounded-2xl bg-slate-800/40 border border-slate-700/40 space-y-2">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full bg-[#B68D40]/20 border border-[#B68D40]/40 flex items-center justify-center text-[10px] font-bold text-[#B68D40]">{rev.reviewer_name.charAt(0).toUpperCase()}</div>
-                          <span className="text-xs font-bold text-white">{rev.reviewer_name}</span>
+                          <div className="w-7 h-7 rounded-full bg-[#B68D40]/20 border border-[#B68D40]/40 flex items-center justify-center text-[10px] font-bold text-[#B68D40]">
+                            {(rev.reviewer_name || (rev as any).user_name || 'A').charAt(0).toUpperCase()}
+                          </div>
+                          <span className="text-xs font-bold text-white">{rev.reviewer_name || (rev as any).user_name || 'Adventurer'}</span>
                         </div>
                         <span className="text-[10px] text-slate-400">{relativeTime(rev.created_at)}</span>
                       </div>

@@ -471,6 +471,7 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
   const [sidebarTab, setSidebarTab] = useState<'trails' | 'hud'>('trails');
   const [activeSummit, setActiveSummit] = useState<string | null>(null);
   const [showElevationProfile, setShowElevationProfile] = useState<boolean>(true);
+  const [weatherOverlay, setWeatherOverlay] = useState<'none' | 'radar' | 'clouds'>('none');
 
   // Quick Detail Modal / Slide-Over State
   const [detailModalTrail, setDetailModalTrail] = useState<Trail | null>(null);
@@ -777,6 +778,46 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
               >
                 <Mountain className="h-3.5 w-3.5 text-amber-400" />
                 <span>Summit Tours</span>
+              </button>
+            </div>
+
+            {/* Real-time Weather Radar Layer Toggle */}
+            <div data-slot="weather-toggle" className="hidden sm:flex items-center p-0.5 rounded-full bg-neutral-900 border border-white/10 text-xs font-semibold shadow-lg">
+              <span className="px-2 text-[10px] uppercase font-mono font-bold text-gray-400">Radar:</span>
+              <button
+                type="button"
+                data-slot="trigger"
+                data-pressed={weatherOverlay === 'none'}
+                onClick={() => setWeatherOverlay('none')}
+                className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B68D40] ${
+                  weatherOverlay === 'none' ? 'bg-[#B68D40] text-black shadow' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                None
+              </button>
+              <button
+                type="button"
+                data-slot="trigger"
+                data-pressed={weatherOverlay === 'radar'}
+                onClick={() => setWeatherOverlay('radar')}
+                className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition flex items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B68D40] ${
+                  weatherOverlay === 'radar' ? 'bg-[#B68D40] text-black shadow' : 'text-gray-400 hover:text-white'
+                }`}
+                title="Real-Time Rain & Precipitation Radar"
+              >
+                <span>Rain Radar</span>
+              </button>
+              <button
+                type="button"
+                data-slot="trigger"
+                data-pressed={weatherOverlay === 'clouds'}
+                onClick={() => setWeatherOverlay('clouds')}
+                className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition flex items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B68D40] ${
+                  weatherOverlay === 'clouds' ? 'bg-[#B68D40] text-black shadow' : 'text-gray-400 hover:text-white'
+                }`}
+                title="Satellite Atmospheric Coverage & Clouds"
+              >
+                <span>Wind & Clouds</span>
               </button>
             </div>
           </div>
@@ -1634,6 +1675,8 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                   onSelectItineraryDay={handleSelectItineraryDay}
                   height="h-full"
                   hideHeaderControls={true}
+                  weatherOverlay={weatherOverlay}
+                  onWeatherOverlayChange={setWeatherOverlay}
                 />
               ) : (
                 <CesiumGlobeMap
@@ -1642,6 +1685,8 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                   itineraryDays={activeItinerary?.days}
                   activeItineraryDay={activeItineraryDay}
                   onSelectItineraryDay={handleSelectItineraryDay}
+                  weatherOverlay={weatherOverlay}
+                  onWeatherOverlayChange={setWeatherOverlay}
                   mode={
                     mapEngine === '3d-drone-flight'
                       ? 'drone-flight'

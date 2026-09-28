@@ -24,6 +24,7 @@ export class CesiumController implements IMapController {
   private markersEntities: any[] = [];
   private rangeEntities: any[] = [];
   private scrubberEntity: any = null;
+  private weatherImageryLayer: any = null;
   private _isInitialized = false;
 
   // Drone flight simulator state
@@ -1211,6 +1212,53 @@ export class CesiumController implements IMapController {
     };
   }
 
+  setWeatherOverlay(mode: 'none' | 'radar' | 'clouds', customUrl?: string): void {
+    if (!this.viewer || !this.Cesium) return;
+
+    if (this.weatherImageryLayer) {
+      try {
+        if (this.viewer.imageryLayers.contains(this.weatherImageryLayer)) {
+          this.viewer.imageryLayers.remove(this.weatherImageryLayer, true);
+        }
+      } catch {}
+      this.weatherImageryLayer = null;
+    }
+
+    if (mode === 'none') {
+      this.viewer.scene?.requestRender?.();
+      return;
+    }
+
+    let url = customUrl || '';
+    let credit = '';
+    if (mode === 'radar') {
+      if (!url) {
+        url = 'https://tilecache.rainviewer.com/v2/radar/5f8646ca4f2d/256/{z}/{x}/{y}/2/1_1.png';
+      }
+      credit = 'RainViewer Real-Time Weather Radar';
+    } else if (mode === 'clouds') {
+      if (!url) {
+        url = 'https://tilecache.rainviewer.com/v2/coverage/0/256/{z}/{x}/{y}/0/0_0.png';
+      }
+      credit = 'RainViewer Atmospheric Coverage';
+    }
+
+    try {
+      const provider = new this.Cesium.UrlTemplateImageryProvider({
+        url,
+        maximumLevel: 12,
+        credit,
+      });
+      this.weatherImageryLayer = new this.Cesium.ImageryLayer(provider, {
+        alpha: 0.75,
+      });
+      this.viewer.imageryLayers.add(this.weatherImageryLayer);
+      this.viewer.scene?.requestRender?.();
+    } catch (err) {
+      console.warn('Failed to set Cesium weather overlay:', err);
+    }
+  }
+
   destroy(): void {
     this.stopTour();
     this.stopDroneFlight();
@@ -1222,6 +1270,12 @@ export class CesiumController implements IMapController {
       this.clickHandler = null;
     }
     this.markerClickListeners.clear();
+    if (this.weatherImageryLayer && this.viewer && !this.viewer.isDestroyed()) {
+      try {
+        this.viewer.imageryLayers.remove(this.weatherImageryLayer, true);
+      } catch {}
+      this.weatherImageryLayer = null;
+    }
     if (this.viewer && !this.viewer.isDestroyed()) {
       this.viewer.destroy();
       this.viewer = null;

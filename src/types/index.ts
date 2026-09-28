@@ -123,7 +123,77 @@ export interface Booking {
   specialRequests?: string;
   totalPrice: number;
   status: 'CONFIRMED' | 'PENDING' | 'CANCELLED';
+  paymentOption?: 'FULL' | 'DEPOSIT';
+  depositAmount?: number;
+  remainingBalance?: number;
+  basePrice?: number;
+  permitFee?: number;
+  taxAmount?: number;
+  receiptNumber?: string;
+  invoiceBreakdown?: string;
   createdAt: string;
+}
+
+export interface Review {
+  id: string;
+  trailId: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  userAvatar?: string;
+  reviewerName?: string;
+  overallRating: number;
+  difficultyRating: number;
+  scenicRating: number;
+  sceneryRating?: number;
+  safetyRating: number;
+  comment: string;
+  conditionTags?: string;
+  photos?: string[];
+  isVerified: boolean;
+  createdAt: string;
+}
+
+export interface UserBadge {
+  id: string;
+  userId: string;
+  badgeId: string;
+  badgeName: string;
+  badgeDescription: string;
+  badgeIcon: string;
+  unlockedAt: string;
+}
+
+export interface HighPassHazardTelemetry {
+  id: 'thorong-la' | 'cho-la' | 'larkya-la' | 'kongma-la' | string;
+  name: string;
+  nativeName?: string;
+  elevation: number;
+  region: string;
+  coordinates: { lat: number; lng: number };
+  tempC: number;
+  windKm: number;
+  windChillC: number;
+  freezingLevelAltitudeMeters: number;
+  avalancheRisk: 'Low (1/5)' | 'Moderate (2/5)' | 'Considerable (3/5)' | 'High (4/5)' | 'Very High (5/5)';
+  avalancheRiskLevel: number;
+  status: 'OPEN_CAUTION' | 'STRENUOUS' | 'EQUIPMENT_MANDATORY' | 'ADVISORY';
+  safetyWarning: string;
+  recommendedGear: string[];
+  traversalWindow: string;
+  updatedAt: string;
+}
+
+export interface WeatherTelemetryResponse extends WeatherReport {
+  freezingLevelAltitudeMeters: number;
+  windChillC: number;
+  highPasses: HighPassHazardTelemetry[];
+  radar: {
+    radarTileUrl: string;
+    cloudsTileUrl: string;
+    attribution: string;
+    timestamp: number;
+  };
 }
 
 export interface User {

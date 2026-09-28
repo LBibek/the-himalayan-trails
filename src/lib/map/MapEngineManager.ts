@@ -11,6 +11,7 @@ export class MapEngineManager {
   private lastPolyline: MapPolyline | null = null;
   private lastMarkers: MapMarker[] = [];
   private lastScrubberPoint: GeoPoint | null = null;
+  private lastWeatherOverlay: { mode: 'none' | 'radar' | 'clouds'; customUrl?: string } | null = null;
 
   get currentController(): IMapController | null {
     return this.activeController;
@@ -52,8 +53,16 @@ export class MapEngineManager {
     if (this.lastScrubberPoint) {
       this.activeController.setScrubberPosition(this.lastScrubberPoint);
     }
+    if (this.lastWeatherOverlay) {
+      this.activeController.setWeatherOverlay?.(this.lastWeatherOverlay.mode, this.lastWeatherOverlay.customUrl);
+    }
 
     return this.activeController;
+  }
+
+  setWeatherOverlay(mode: 'none' | 'radar' | 'clouds', customUrl?: string): void {
+    this.lastWeatherOverlay = { mode, customUrl };
+    this.activeController?.setWeatherOverlay?.(mode, customUrl);
   }
 
   flyTo(point: GeoPoint, altitudeOrZoom?: number, durationSeconds?: number): void {
