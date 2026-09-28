@@ -22,8 +22,10 @@ import {
   Compass,
   Sparkles,
   Navigation,
+  Calendar,
+  Route,
 } from 'lucide-react';
-import { Trail, Landmark } from '@/types';
+import { Trail, Landmark, Itinerary, ItineraryDay } from '@/types';
 import { ROUTE_TRACKS } from '@/data/routeTracks';
 
 export interface ElevationPoint {
@@ -38,13 +40,17 @@ export interface ElevationPoint {
 
 export interface ElevationProfileChartProps {
   trail: Trail;
+  itinerary?: Itinerary | null;
+  itineraryDays?: ItineraryDay[];
   landmarks?: Landmark[];
   onClose?: () => void;
   onHoverPoint?: (point: ElevationPoint | null) => void;
   onSelectPoint?: (point: ElevationPoint) => void;
   onSelectLandmark?: (landmark: Landmark) => void;
+  onSelectItineraryDay?: (day: ItineraryDay, coords?: [number, number]) => void;
   activePointIndex?: number | null;
   activeDistanceKm?: number | null;
+  activeDayNumber?: number | null;
 }
 
 interface ChartDataPoint {
@@ -55,6 +61,20 @@ interface ChartDataPoint {
   lng?: number;
   landmarkName?: string;
   isLandmark?: boolean;
+}
+
+export interface ItineraryMarkerPoint {
+  day: number;
+  title: string;
+  route: string;
+  distanceKm: number;
+  cumDist: number;
+  hours: number;
+  sleepingAltitude: number;
+  altitudeGain: number;
+  highlights: string;
+  lat?: number;
+  lng?: number;
 }
 
 interface LandmarkMarkerPoint {
@@ -69,23 +89,49 @@ interface LandmarkMarkerPoint {
 
 export default function ElevationProfileChart({
   trail,
+  itinerary: propItinerary,
+  itineraryDays: propItineraryDays,
   landmarks: propLandmarks,
   onClose,
   onHoverPoint,
   onSelectPoint,
   onSelectLandmark,
+  onSelectItineraryDay,
   activePointIndex,
   activeDistanceKm,
+  activeDayNumber,
 }: ElevationProfileChartProps) {
   const [isExpanded, setIsExpanded] = useState<boolean>(true);
   const [mounted, setMounted] = useState<boolean>(false);
   const [hoveredDataPoint, setHoveredDataPoint] = useState<ChartDataPoint | null>(null);
   const [fetchedLandmarks, setFetchedLandmarks] = useState<Landmark[]>([]);
+  const [fetchedItineraries, setFetchedItineraries] = useState<Itinerary[]>([]);
   const [selectedLandmarkId, setSelectedLandmarkId] = useState<string | null>(null);
+  const [selectedDayNumber, setSelectedDayNumber] = useState<number | null>(activeDayNumber || null);
+
+  useEffect(() => {
+    if (activeDayNumber !== undefined) {
+      setSelectedDayNumber(activeDayNumber);
+    }
+  }, [activeDayNumber]);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Fetch itineraries if not passed via props
+  useEffect(() => {
+    if (!propItinerary && (!propItineraryDays || propItineraryDays.length === 0)) {
+      fetch('/api/itineraries')
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data: Itinerary[]) => {
+          if (Array.isArray(data)) {
+            setFetchedItineraries(data);
+          }
+        })
+        .catch((err) => console.warn('Failed to load itineraries for elevation chart:', err));
+    }
+  }, [propItinerary, propItineraryDays]);
 
   // Fetch landmarks if not passed via props
   useEffect(() => {
@@ -198,11 +244,89 @@ export default function ElevationProfileChart({
     });
   }, [relevantLandmarks, chartData, trail.distanceKm, trail.id, trail.routeCoordinates]);
 
+  // Match itinerary for this trail
+  const effectiveItinerary = useMemo(() => {
+    if (propItinerary) return propItinerary;
+    if (!fetchedItineraries.length) return null;
+    const tName = trail.name.toLowerCase();
+    const tSlug = (trail.slug || trail.id).toLowerCase();
+    return (
+      fetchedItineraries.find((it) => {
+        const itTrail = it.trailName.toLowerCase();
+        const itTitle = it.title.toLowerCase();
+        return (
+          itTrail.includes(tName) ||
+          tName.includes(itTrail) ||
+          itTrail.includes(tSlug) ||
+          itTitle.includes(tName)
+        );
+      }) || null
+    );
+  }, [propItinerary, fetchedItineraries, trail]);
+
+  const rawItineraryDays: ItineraryDay[] = useMemo(() => {
+    if (propItineraryDays && propItineraryDays.length > 0) return propItineraryDays;
+    return effectiveItinerary?.days || [];
+  }, [propItineraryDays, effectiveItinerary]);
+
+  // Calculate cumulative distance and GPS coordinates along the trail for each itinerary day
+  const itineraryMarkers: ItineraryMarkerPoint[] = useMemo(() => {
+    if (!rawItineraryDays.length) return [];
+
+    const track = ROUTE_TRACKS[trail.id];
+    const trackCoords = track?.coords || (trail.routeCoordinates?.map((c) => [c[0], c[1]] as [number, number]) || []);
+
+    let runningKm = 0;
+    return rawItineraryDays.map((d, idx) => {
+      if (idx === 0) {
+        runningKm = Math.min(
+          trail.distanceKm,
+          d.distanceKm > 0 ? d.distanceKm : Math.round(trail.distanceKm / rawItineraryDays.length)
+        );
+      } else {
+        const dayDist = d.distanceKm > 0
+          ? d.distanceKm
+          : Math.round((trail.distanceKm / rawItineraryDays.length) * 10) / 10;
+        runningKm = Math.min(trail.distanceKm, runningKm + dayDist);
+      }
+      const cumDist = Math.round(runningKm * 10) / 10;
+
+      let lat: number | undefined;
+      let lng: number | undefined;
+      if (trackCoords.length > 1) {
+        const ratio = Math.max(0, Math.min(1, cumDist / (trail.distanceKm || 1)));
+        const coordIdx = Math.min(trackCoords.length - 1, Math.floor(ratio * (trackCoords.length - 1)));
+        lat = trackCoords[coordIdx][0];
+        lng = trackCoords[coordIdx][1];
+      }
+
+      return {
+        day: d.day,
+        title: d.title,
+        route: d.route,
+        distanceKm: d.distanceKm,
+        cumDist,
+        hours: d.hours,
+        sleepingAltitude: d.sleepingAltitude,
+        altitudeGain: d.altitudeGain,
+        highlights: d.highlights,
+        lat,
+        lng,
+      };
+    });
+  }, [rawItineraryDays, trail.distanceKm, trail.id, trail.routeCoordinates]);
+
+  const selectedDay = useMemo(() => {
+    if (!selectedDayNumber) return null;
+    return itineraryMarkers.find((d) => d.day === selectedDayNumber) || null;
+  }, [selectedDayNumber, itineraryMarkers]);
+
   const allElevations = useMemo(() => {
     const dataElevs = chartData.map((d) => d.elevation);
+    const itinElevs = itineraryMarkers.map((d) => d.sleepingAltitude);
     const lmElevs = landmarkMarkers.map((lm) => lm.elevation);
-    return [...dataElevs, ...lmElevs];
-  }, [chartData, landmarkMarkers]);
+    return [...dataElevs, ...itinElevs, ...lmElevs];
+  }, [chartData, itineraryMarkers, landmarkMarkers]);
 
   // Synchronized flight scrubber position and elevation
   const activeScrubberData = useMemo(() => {
@@ -286,6 +410,22 @@ export default function ElevationProfileChart({
     });
   };
 
+  const handleItineraryDayClick = (dayMarker: ItineraryMarkerPoint) => {
+    setSelectedDayNumber(dayMarker.day);
+    const originalDay = rawItineraryDays.find((d) => d.day === dayMarker.day);
+    if (originalDay && onSelectItineraryDay) {
+      onSelectItineraryDay(originalDay, dayMarker.lat && dayMarker.lng ? [dayMarker.lat, dayMarker.lng] : undefined);
+    }
+    onSelectPoint?.({
+      distanceKm: dayMarker.cumDist,
+      elevation: dayMarker.sleepingAltitude,
+      label: `Day ${dayMarker.day}: ${dayMarker.title}`,
+      lat: dayMarker.lat,
+      lng: dayMarker.lng,
+      landmarkName: dayMarker.title,
+    });
+  };
+
   const selectedLandmark = useMemo(() => {
     if (!selectedLandmarkId) return null;
     return landmarkMarkers.find((lm) => lm.id === selectedLandmarkId) || null;
@@ -296,6 +436,10 @@ export default function ElevationProfileChart({
     label: '🚁 Drone Position',
     distanceKm: activeScrubberData.distanceKm,
     elevation: activeScrubberData.elevation,
+  } : selectedDay ? {
+    label: `Day ${selectedDay.day}`,
+    distanceKm: selectedDay.cumDist,
+    elevation: selectedDay.sleepingAltitude,
   } : null);
 
   return (
@@ -359,36 +503,40 @@ export default function ElevationProfileChart({
         </div>
       </div>
 
-      {/* 2. KEYPOINTS TOP NAVIGATION STRIP (Directly above line chart for seamless trail navigation) */}
-      {isExpanded && landmarkMarkers.length > 0 && (
+      {/* 2. ITINERARY TOP NAVIGATION STRIP (Replaces keypoints with authentic day-by-day trail stages) */}
+      {isExpanded && itineraryMarkers.length > 0 && (
         <div
-          data-slot="keypoints-nav"
+          data-slot="itinerary-nav"
           className="px-2.5 pt-1.5 pb-1 border-b border-white/5 bg-neutral-950/60 flex items-center gap-1.5 overflow-x-auto scrollbar-none"
         >
           <span className="text-[9px] uppercase font-bold tracking-wider text-[#B68D40] shrink-0 flex items-center gap-1 pr-1 border-r border-white/10">
-            <Mountain className="h-2.5 w-2.5 text-[#B68D40]" />
-            <span>Keypoints</span>
+            <Calendar className="h-2.5 w-2.5 text-[#B68D40]" />
+            <span>Itinerary</span>
           </span>
           <div className="flex items-center gap-1.5 shrink-0">
-            {landmarkMarkers.map((lm) => {
-              const isSelected = selectedLandmarkId === lm.id;
+            {itineraryMarkers.map((dayMarker) => {
+              const isSelected = selectedDayNumber === dayMarker.day;
               return (
                 <button
-                  key={lm.id}
-                  onClick={() => handleLandmarkBadgeClick(lm)}
-                  data-slot="keypoint-chip"
+                  key={dayMarker.day}
+                  onClick={() => handleItineraryDayClick(dayMarker)}
+                  data-slot="itinerary-chip"
                   data-selected={isSelected}
                   className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-all flex items-center gap-1 shrink-0 border cursor-pointer ${
                     isSelected
                       ? 'bg-[#B68D40] text-black border-amber-300 shadow-sm shadow-amber-500/20 font-bold scale-105'
                       : 'bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border-white/10 hover:border-[#B68D40]/40'
                   } focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#B68D40]`}
-                  title={`Navigate to ${lm.name} (${lm.elevation}m at KM ${lm.distanceKm})`}
+                  title={`Day ${dayMarker.day}: ${dayMarker.title} (${dayMarker.sleepingAltitude}m, ${dayMarker.cumDist}km)`}
                 >
-                  <span className="text-[10px]">{getCategoryIcon(lm.category)}</span>
-                  <span className="truncate max-w-[100px]">{lm.name}</span>
-                  <span className={`text-[9px] font-mono ${isSelected ? 'text-black/80' : 'text-gray-400'}`}>
-                    {lm.elevation}m
+                  <span className={`text-[9px] font-mono font-bold px-1 py-0.2 rounded ${isSelected ? 'bg-black/25 text-black' : 'bg-white/10 text-amber-300'}`}>
+                    D{dayMarker.day}
+                  </span>
+                  <span className="truncate max-w-[110px]">
+                    {dayMarker.title.replace(/^Flight to /i, '').replace(/^Trek to /i, '').replace(/^Drive to /i, '').replace(/^Climb to /i, '')}
+                  </span>
+                  <span className={`text-[9px] font-mono ${isSelected ? 'text-black/80 font-bold' : 'text-gray-400'}`}>
+                    {dayMarker.sleepingAltitude}m
                   </span>
                 </button>
               );
@@ -443,28 +591,38 @@ export default function ElevationProfileChart({
                     tickCount={3}
                   />
 
-                  <Tooltip content={<CustomRechartsTooltip />} />
+                  <Tooltip content={<CustomRechartsTooltip itineraryMarkers={itineraryMarkers} />} />
 
-                  {/* Route Checkpoint Reference Dots for Key Landmarks */}
-                  {landmarkMarkers.map((lm) => {
-                    const isSelected = selectedLandmarkId === lm.id;
+                  {/* Route Checkpoint Reference Dots for Itinerary Days */}
+                  {itineraryMarkers.map((dayMarker) => {
+                    const isSelected = selectedDayNumber === dayMarker.day;
                     return (
                       <ReferenceDot
-                        key={lm.id}
-                        x={lm.distanceKm}
-                        y={lm.elevation}
+                        key={`itin-day-${dayMarker.day}`}
+                        x={dayMarker.cumDist}
+                        y={dayMarker.sleepingAltitude}
                         r={isSelected ? 6 : 4}
                         fill={isSelected ? '#fbbf24' : '#B68D40'}
                         stroke="#ffffff"
                         strokeWidth={isSelected ? 2 : 1}
                         className="cursor-pointer transition-all hover:scale-125"
-                        onClick={() => handleLandmarkBadgeClick(lm)}
+                        onClick={() => handleItineraryDayClick(dayMarker)}
                       />
                     );
                   })}
 
-                  {/* Active Selected Landmark Vertical Guideline */}
-                  {selectedLandmark && (
+                  {/* Active Selected Itinerary Day Vertical Guideline */}
+                  {selectedDay && (
+                    <ReferenceLine
+                      x={selectedDay.cumDist}
+                      stroke="#fbbf24"
+                      strokeWidth={1.5}
+                      strokeDasharray="3 3"
+                    />
+                  )}
+
+                  {/* Optional Landmark Guideline if selected from 2D/3D map */}
+                  {selectedLandmark && !selectedDay && (
                     <ReferenceLine
                       x={selectedLandmark.distanceKm}
                       stroke="#fbbf24"
@@ -524,17 +682,22 @@ function getCategoryIcon(category?: string): string {
   return '📍';
 }
 
-function CustomRechartsTooltip({ active, payload }: any) {
+function CustomRechartsTooltip({ active, payload, itineraryMarkers }: any) {
   if (active && payload && payload.length) {
     const item = payload[0].payload as ChartDataPoint;
+    const nearbyDay = itineraryMarkers?.find(
+      (d: ItineraryMarkerPoint) => Math.abs(d.cumDist - item.distanceKm) <= 1.5
+    );
 
     return (
       <div
         data-slot="tooltip"
-        className="backdrop-blur-xl bg-neutral-950/95 border border-[#B68D40]/50 shadow-2xl rounded-xl px-2.5 py-1.5 text-white text-xs space-y-1 max-w-[200px]"
+        className="backdrop-blur-xl bg-neutral-950/95 border border-[#B68D40]/50 shadow-2xl rounded-xl px-2.5 py-1.5 text-white text-xs space-y-1 max-w-[220px]"
       >
         <div className="flex items-center justify-between gap-1.5 border-b border-white/10 pb-1">
-          <span className="font-extrabold text-[#B68D40] text-[11px] truncate max-w-[120px]">{item.label}</span>
+          <span className="font-extrabold text-[#B68D40] text-[11px] truncate max-w-[130px]">
+            {nearbyDay ? `D${nearbyDay.day}: ${nearbyDay.title}` : item.label}
+          </span>
           <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0">
             {item.distanceKm} km
           </span>
@@ -542,8 +705,16 @@ function CustomRechartsTooltip({ active, payload }: any) {
 
         <div className="flex items-baseline justify-between">
           <p className="text-sm font-mono font-extrabold text-amber-400">{item.elevation.toLocaleString()} m</p>
-          <span className="text-emerald-400 font-mono text-[10px]">Elevation</span>
+          <span className="text-emerald-400 font-mono text-[10px]">
+            {nearbyDay ? `Camp ${nearbyDay.sleepingAltitude}m` : 'Elevation'}
+          </span>
         </div>
+
+        {nearbyDay?.highlights && (
+          <p className="text-[9px] text-gray-300 line-clamp-1 italic border-t border-white/5 pt-0.5">
+            ✨ {nearbyDay.highlights}
+          </p>
+        )}
       </div>
     );
   }

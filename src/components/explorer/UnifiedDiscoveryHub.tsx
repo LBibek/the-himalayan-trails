@@ -42,7 +42,7 @@ import {
   AlertCircle,
   Plane,
 } from 'lucide-react';
-import { Trail, Landmark } from '@/types';
+import { Trail, Landmark, Itinerary, ItineraryDay } from '@/types';
 import { ROUTE_TRACKS } from '@/data/routeTracks';
 import ElevationProfileChart from '@/components/map/ElevationProfileChart';
 import FloatingMapPanel from '@/components/ui/FloatingMapPanel';
@@ -463,6 +463,8 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
   const [hoveredTrailId, setHoveredTrailId] = useState<string | null>(null);
   const [focusedCoords, setFocusedCoords] = useState<[number, number] | undefined>(undefined);
   const [savedTrails, setSavedTrails] = useState<string[]>([]);
+  const [itineraries, setItineraries] = useState<Itinerary[]>([]);
+  const [activeItineraryDay, setActiveItineraryDay] = useState<number | null>(null);
   const [showTrailSwitcher, setShowTrailSwitcher] = useState<boolean>(true);
   const [leftPanelOpen, setLeftPanelOpen] = useState<boolean>(true);
   const [sidebarView, setSidebarView] = useState<'card' | 'list'>('card');
@@ -546,6 +548,53 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
       .catch(() => setLoading(false));
   }, [urlTrail]);
 
+  // Fetch authentic expedition itineraries from API
+  useEffect(() => {
+    fetch('/api/itineraries')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: Itinerary[]) => {
+        if (Array.isArray(data)) {
+          setItineraries(data);
+        }
+      })
+      .catch((err) => console.warn('Failed to load itineraries in Discovery Hub:', err));
+  }, []);
+
+  // Compute matching itinerary for current active expedition
+  const activeItinerary = useMemo(() => {
+    const current = selectedTrail || (trails.length > 0 ? trails[0] : null);
+    if (!current || !itineraries.length) return null;
+    const tName = current.name.toLowerCase();
+    const tSlug = (current.slug || current.id).toLowerCase();
+    return (
+      itineraries.find((it) => {
+        const itTrail = it.trailName.toLowerCase();
+        const itTitle = it.title.toLowerCase();
+        return (
+          itTrail.includes(tName) ||
+          tName.includes(itTrail) ||
+          itTrail.includes(tSlug) ||
+          itTitle.includes(tName)
+        );
+      }) || null
+    );
+  }, [selectedTrail, trails, itineraries]);
+
+  const handleSelectItineraryDay = (day: ItineraryDay, coords?: [number, number]) => {
+    setActiveItineraryDay(day.day);
+    if (coords) {
+      setFocusedCoords(coords);
+    }
+    if (activeItinerary?.days) {
+      let cumDist = 0;
+      for (const d of activeItinerary.days) {
+        cumDist += d.distanceKm || 10;
+        if (d.day === day.day) break;
+      }
+      setDroneDistanceKm(cumDist);
+    }
+  };
+
   // Filter Trails
   const filteredTrails = trails.filter((trail) => {
     const matchesSearch = trail.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -566,6 +615,7 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
   const handleTrailSelect = (trail: Trail, switchMode = false) => {
     setSelectedTrail(trail);
     setHoveredTrailId(trail.id);
+    setActiveItineraryDay(1);
     const track = ROUTE_TRACKS[trail.id];
     if (track && track.coords.length) {
       const midIdx = Math.floor(track.coords.length / 2);
@@ -1579,6 +1629,9 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                   onSelectLandmark={(lm) => {
                     setFocusedCoords([lm.coordinates.lat, lm.coordinates.lng]);
                   }}
+                  itineraryDays={activeItinerary?.days}
+                  activeItineraryDay={activeItineraryDay}
+                  onSelectItineraryDay={handleSelectItineraryDay}
                   height="h-full"
                   hideHeaderControls={true}
                 />
@@ -1586,6 +1639,9 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                 <CesiumGlobeMap
                   height="h-full"
                   activeTrail={activeTrail}
+                  itineraryDays={activeItinerary?.days}
+                  activeItineraryDay={activeItineraryDay}
+                  onSelectItineraryDay={handleSelectItineraryDay}
                   mode={
                     mapEngine === '3d-drone-flight'
                       ? 'drone-flight'
@@ -1630,6 +1686,10 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                   >
                     <ElevationProfileChart
                       trail={activeTrail}
+                      itinerary={activeItinerary}
+                      itineraryDays={activeItinerary?.days}
+                      activeDayNumber={activeItineraryDay}
+                      onSelectItineraryDay={handleSelectItineraryDay}
                       activeDistanceKm={droneDistanceKm}
                       onClose={() => setShowElevationProfile(false)}
                       onSelectPoint={(pt) => {

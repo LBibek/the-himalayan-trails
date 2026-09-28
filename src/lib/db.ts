@@ -259,6 +259,14 @@ function initializeSchema(db: DatabaseSync) {
 function seedInitialDataIfEmpty(db: DatabaseSync) {
   const countRow = db.prepare('SELECT COUNT(*) as count FROM trails').get() as { count: number };
   if (countRow && countRow.count > 0) {
+    try {
+      const itinCount = db.prepare('SELECT COUNT(*) as count FROM itineraries').get() as { count: number };
+      if (!itinCount || itinCount.count < 6) {
+        seedOfficialItineraries(db);
+      }
+    } catch {
+      // ignore
+    }
     return; // Already seeded
   }
 
@@ -634,7 +642,10 @@ function seedInitialDataIfEmpty(db: DatabaseSync) {
   }
 
   // Seed Itineraries
-  const itineraries = [
+  seedOfficialItineraries(db);
+
+  function seedOfficialItineraries(db: DatabaseSync) {
+    const itineraries = [
     {
       id: 'itin-ebc-express',
       title: 'Everest Base Camp & Kala Patthar High Route',
@@ -684,11 +695,146 @@ function seedInitialDataIfEmpty(db: DatabaseSync) {
         { day: 7, title: 'Cross Thorong La Pass to Muktinath', route: 'High Camp (4,850m) -> Thorong La (5,416m) -> Muktinath (3,760m)', distanceKm: 16, hours: 8, sleepingAltitude: 3760, altitudeGain: 566, highlights: 'Pass summit prayer flags, eternal flame at Muktinath' },
         { day: 8, title: 'Muktinath to Marpha', route: 'Muktinath (3,760m) -> Kagbeni -> Marpha (2,670m)', distanceKm: 20, hours: 6, sleepingAltitude: 2670, altitudeGain: -1090, highlights: 'World famous apple orchards & cider in Marpha' }
       ]
+    },
+    {
+      id: 'itin-annapurna-circuit',
+      title: 'Full Annapurna Circuit via Thorong La & Poon Hill',
+      trailName: 'Annapurna Circuit & Thorong La',
+      author: 'Maya Gurung',
+      authorAvatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=200&q=80',
+      totalDays: 14,
+      maxAltitude: 5416,
+      difficulty: 'Challenging',
+      estimatedCostUSD: 1100,
+      likes: 94,
+      clones: 21,
+      days: [
+        { day: 1, title: 'Drive Besisahar to Chame', route: 'Besisahar (820m) -> Chame (2,670m)', distanceKm: 35, hours: 5, sleepingAltitude: 2670, altitudeGain: 1850, highlights: 'Cascading waterfalls, deep Marsyangdi Gorge' },
+        { day: 2, title: 'Chame to Upper Pisang', route: 'Chame (2,670m) -> Upper Pisang (3,300m)', distanceKm: 14, hours: 5, sleepingAltitude: 3300, altitudeGain: 630, highlights: 'Paungda Danda curved rock face, pine forest' },
+        { day: 3, title: 'Upper Pisang to Manang via Ghyaru', route: 'Upper Pisang (3,300m) -> Manang (3,540m)', distanceKm: 19, hours: 6.5, sleepingAltitude: 3540, altitudeGain: 240, highlights: 'Stunning high route vistas of Annapurna II and IV' },
+        { day: 4, title: 'Acclimatization Day in Manang', route: 'Manang -> Gangapurna Lake / Ice Lake', distanceKm: 8, hours: 4, sleepingAltitude: 3540, altitudeGain: 600, highlights: 'Himalayan Rescue Association high altitude talk' },
+        { day: 5, title: 'Manang to Yak Kharka', route: 'Manang (3,540m) -> Yak Kharka (4,050m)', distanceKm: 10, hours: 4, sleepingAltitude: 4050, altitudeGain: 510, highlights: 'Alpine meadows, spotting Himalayan blue sheep' },
+        { day: 6, title: 'Yak Kharka to Thorong High Camp', route: 'Yak Kharka (4,050m) -> Thorong High Camp (4,850m)', distanceKm: 8, hours: 4.5, sleepingAltitude: 4850, altitudeGain: 800, highlights: 'Dramatic rock slopes, preparing for pass crossing' },
+        { day: 7, title: 'Cross Thorong La Pass to Muktinath', route: 'High Camp (4,850m) -> Thorong La (5,416m) -> Muktinath (3,760m)', distanceKm: 16, hours: 8, sleepingAltitude: 3760, altitudeGain: 566, highlights: 'Pass summit prayer flags, eternal flame at Muktinath' },
+        { day: 8, title: 'Muktinath to Marpha', route: 'Muktinath (3,760m) -> Kagbeni -> Marpha (2,670m)', distanceKm: 20, hours: 6, sleepingAltitude: 2670, altitudeGain: -1090, highlights: 'World famous apple orchards & cider in Marpha' },
+        { day: 9, title: 'Marpha to Ghasa', route: 'Marpha (2,670m) -> Kalopani -> Ghasa (2,010m)', distanceKm: 18, hours: 5.5, sleepingAltitude: 2010, altitudeGain: -660, highlights: 'Deepest river gorge in the world (Kali Gandaki), views of Dhaulagiri' },
+        { day: 10, title: 'Ghasa to Tatopani Hot Springs', route: 'Ghasa (2,010m) -> Tatopani (1,190m)', distanceKm: 14, hours: 4.5, sleepingAltitude: 1190, altitudeGain: -820, highlights: 'Rupse Chhahara waterfall, relaxing in natural riverside hot springs' },
+        { day: 11, title: 'Tatopani to Ghorepani', route: 'Tatopani (1,190m) -> Shikha -> Ghorepani (2,860m)', distanceKm: 17, hours: 7, sleepingAltitude: 2860, altitudeGain: 1670, highlights: 'Ascent through ancient rhododendron and magnolia forests' },
+        { day: 12, title: 'Poon Hill Sunrise & Trek to Tadapani', route: 'Ghorepani -> Poon Hill (3,210m) -> Tadapani (2,630m)', distanceKm: 12, hours: 5.5, sleepingAltitude: 2630, altitudeGain: 350, highlights: 'Golden sunrise across 32 Himalayan peaks including Machapuchare' },
+        { day: 13, title: 'Tadapani to Ghandruk & Naya Pul', route: 'Tadapani (2,630m) -> Ghandruk (1,940m) -> Naya Pul (1,070m)', distanceKm: 14, hours: 5, sleepingAltitude: 1070, altitudeGain: -1560, highlights: 'Picturesque stone-paved Gurung village and terraced farmlands' },
+        { day: 14, title: 'Drive Naya Pul to Pokhara', route: 'Naya Pul (1,070m) -> Pokhara (820m)', distanceKm: 42, hours: 1.5, sleepingAltitude: 820, altitudeGain: -250, highlights: 'Relaxation beside Phewa Lake, celebratory dinner' }
+      ]
+    },
+    {
+      id: 'itin-langtang-valley',
+      title: 'Langtang Valley & Kyanjin Ri Glacier Trek',
+      trailName: 'Langtang Valley & Kyanjin Ri',
+      author: 'Tenzing Norbu Tamang',
+      authorAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80',
+      totalDays: 8,
+      maxAltitude: 4773,
+      difficulty: 'Moderate',
+      estimatedCostUSD: 850,
+      likes: 82,
+      clones: 19,
+      days: [
+        { day: 1, title: 'Drive Kathmandu to Syabrubesi', route: 'Kathmandu (1,400m) -> Syabrubesi (1,550m)', distanceKm: 145, hours: 7, sleepingAltitude: 1550, altitudeGain: 150, highlights: 'Scenic drive along Trishuli river valley and Nuwakot hills' },
+        { day: 2, title: 'Syabrubesi to Lama Hotel', route: 'Syabrubesi (1,550m) -> Lama Hotel (2,470m)', distanceKm: 11, hours: 5.5, sleepingAltitude: 2470, altitudeGain: 920, highlights: 'Bamboo groves, suspension bridges, waterfalls along Langtang Khola' },
+        { day: 3, title: 'Lama Hotel to Langtang Village', route: 'Lama Hotel (2,470m) -> Langtang Village (3,430m)', distanceKm: 14, hours: 5, sleepingAltitude: 3430, altitudeGain: 960, highlights: 'Ghimna alpine meadows, water-powered prayer wheels, rebuilt Tamang heritage' },
+        { day: 4, title: 'Langtang Village to Kyanjin Gompa', route: 'Langtang Village (3,430m) -> Kyanjin Gompa (3,870m)', distanceKm: 7, hours: 3.5, sleepingAltitude: 3870, altitudeGain: 440, highlights: 'Historic monastery, artisanal yak cheese factory, alpine amphitheater' },
+        { day: 5, title: 'Acclimatization & Kyanjin Ri Summit', route: 'Kyanjin Gompa -> Kyanjin Ri Peak (4,773m) -> Kyanjin Gompa', distanceKm: 5, hours: 4.5, sleepingAltitude: 3870, altitudeGain: 903, highlights: '360° panoramas of Langtang Lirung, Kinshung, and glacier ice falls' },
+        { day: 6, title: 'Kyanjin Gompa to Lama Hotel', route: 'Kyanjin Gompa (3,870m) -> Lama Hotel (2,470m)', distanceKm: 21, hours: 6, sleepingAltitude: 2470, altitudeGain: -1400, highlights: 'Fast downhill descent through rhododendron forest' },
+        { day: 7, title: 'Lama Hotel back to Syabrubesi', route: 'Lama Hotel (2,470m) -> Syabrubesi (1,550m)', distanceKm: 11, hours: 4.5, sleepingAltitude: 1550, altitudeGain: -920, highlights: 'Sherpa gaon vistas and soothing riverside hot spring bath' },
+        { day: 8, title: 'Drive Syabrubesi back to Kathmandu', route: 'Syabrubesi (1,550m) -> Kathmandu (1,400m)', distanceKm: 145, hours: 6.5, sleepingAltitude: 1400, altitudeGain: -150, highlights: 'Return to capital, farewell dinner' }
+      ]
+    },
+    {
+      id: 'itin-manaslu-circuit',
+      title: 'Manaslu Circuit & Larkya La Alpine Traverse',
+      trailName: 'Manaslu Circuit Trek',
+      author: 'Karsang Lama',
+      authorAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80',
+      totalDays: 14,
+      maxAltitude: 5106,
+      difficulty: 'Challenging',
+      estimatedCostUSD: 1350,
+      likes: 110,
+      clones: 28,
+      days: [
+        { day: 1, title: 'Drive Kathmandu to Soti Khola', route: 'Kathmandu (1,400m) -> Soti Khola (700m)', distanceKm: 140, hours: 7, sleepingAltitude: 700, altitudeGain: -700, highlights: 'Passing Arughat along the rugged Budhi Gandaki river' },
+        { day: 2, title: 'Soti Khola to Machha Khola', route: 'Soti Khola (700m) -> Machha Khola (870m)', distanceKm: 14, hours: 5.5, sleepingAltitude: 870, altitudeGain: 170, highlights: 'Sal forests, canyon rim paths, suspension bridge crossings' },
+        { day: 3, title: 'Machha Khola to Jagat', route: 'Machha Khola (870m) -> Tatopani -> Jagat (1,340m)', distanceKm: 16, hours: 6, sleepingAltitude: 1340, altitudeGain: 470, highlights: 'Cantilever trail pinned to cliff face, MCAP checkpoint at Jagat' },
+        { day: 4, title: 'Jagat to Deng', route: 'Jagat (1,340m) -> Philim -> Deng (1,860m)', distanceKm: 18, hours: 6.5, sleepingAltitude: 1860, altitudeGain: 520, highlights: 'Entrance to Tibetan Buddhist cultural zone, bamboo forests' },
+        { day: 5, title: 'Deng to Namrung', route: 'Deng (1,860m) -> Ghap -> Namrung (2,630m)', distanceKm: 19, hours: 7, sleepingAltitude: 2630, altitudeGain: 770, highlights: 'Intricate mani stone walls, first views of Ganesh Himal' },
+        { day: 6, title: 'Namrung to Samagaon', route: 'Namrung (2,630m) -> Lho -> Samagaon (3,530m)', distanceKm: 17, hours: 5.5, sleepingAltitude: 3530, altitudeGain: 900, highlights: 'Ribung Gompa in Lho, majestic close-up of Mt. Manaslu (8,163m)' },
+        { day: 7, title: 'Acclimatization Day at Samagaon', route: 'Samagaon -> Birendra Tal / Manaslu Base Camp -> Samagaon', distanceKm: 8, hours: 4.5, sleepingAltitude: 3530, altitudeGain: 470, highlights: 'Glacial Birendra Tal, prayer wheels, mountaineering staging camp' },
+        { day: 8, title: 'Samagaon to Samdo', route: 'Samagaon (3,530m) -> Samdo (3,860m)', distanceKm: 16, hours: 4, sleepingAltitude: 3860, altitudeGain: 330, highlights: 'Tibetan border trading route, juniper scrublands' },
+        { day: 9, title: 'Samdo to Dharmasala (Larkya Phedi)', route: 'Samdo (3,860m) -> Dharmasala (4,460m)', distanceKm: 12, hours: 4.5, sleepingAltitude: 4460, altitudeGain: 600, highlights: 'Rugged moraine climbing, preparing high gear for Larkya La pass' },
+        { day: 10, title: 'Cross Larkya La Pass to Bimthang', route: 'Dharmasala (4,460m) -> Larkya La (5,106m) -> Bimthang (3,720m)', distanceKm: 24, hours: 9, sleepingAltitude: 3720, altitudeGain: 646, highlights: 'Glacial crest at 5,106m, prayer flags, vistas of Annapurna II and Himlung' },
+        { day: 11, title: 'Bimthang to Tilije', route: 'Bimthang (3,720m) -> Gho -> Tilije (2,300m)', distanceKm: 26, hours: 6, sleepingAltitude: 2300, altitudeGain: -1420, highlights: 'Descent through pristine pine, rhododendron, and fig orchards' },
+        { day: 12, title: 'Tilije to Dharapani & drive Besisahar', route: 'Tilije (2,300m) -> Dharapani (1,860m) -> Besisahar (820m)', distanceKm: 15, hours: 4, sleepingAltitude: 820, altitudeGain: -1040, highlights: 'Joining Annapurna Circuit junction at Dharapani, celebratory drive' }
+      ]
+    },
+    {
+      id: 'itin-upper-mustang',
+      title: 'Upper Mustang Walled Kingdom of Lo Manthang',
+      trailName: 'Upper Mustang Forbidden Kingdom',
+      author: 'Palden Bista',
+      authorAvatar: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=200&q=80',
+      totalDays: 12,
+      maxAltitude: 3840,
+      difficulty: 'Moderate',
+      estimatedCostUSD: 1850,
+      likes: 98,
+      clones: 24,
+      days: [
+        { day: 1, title: 'Flight Pokhara to Jomsom & Trek to Kagbeni', route: 'Jomsom (2,720m) -> Kagbeni (2,810m)', distanceKm: 11, hours: 3.5, sleepingAltitude: 2810, altitudeGain: 90, highlights: 'Windy Kali Gandaki gorge, ancient gateway town of Kagbeni' },
+        { day: 2, title: 'Kagbeni to Chele', route: 'Kagbeni (2,810m) -> Tangbe -> Chhusang -> Chele (3,050m)', distanceKm: 16, hours: 5, sleepingAltitude: 3050, altitudeGain: 240, highlights: 'Red sandstone cliffs, apple orchards, crossing Kali Gandaki bridge' },
+        { day: 3, title: 'Chele to Syangboche', route: 'Chele (3,050m) -> Taklam La -> Syangboche (3,800m)', distanceKm: 17, hours: 6, sleepingAltitude: 3800, altitudeGain: 750, highlights: 'Ramche cave, high passes with views of Nilgiri and Tilicho' },
+        { day: 4, title: 'Syangboche to Ghami', route: 'Syangboche (3,800m) -> Nyi La (4,010m) -> Ghami (3,520m)', distanceKm: 12, hours: 5, sleepingAltitude: 3520, altitudeGain: 210, highlights: 'Crossing the Nyi La pass, descending into fertile Ghami valley' },
+        { day: 5, title: 'Ghami to Tsarang', route: 'Ghami (3,520m) -> Longest Mani Wall -> Tsarang (3,560m)', distanceKm: 11, hours: 4.5, sleepingAltitude: 3560, altitudeGain: 40, highlights: 'Longest sculpted Mani wall in Nepal, 14th-century Tsarang Dzong' },
+        { day: 6, title: 'Tsarang to Walled Capital Lo Manthang', route: 'Tsarang (3,560m) -> Lo La Pass (3,950m) -> Lo Manthang (3,840m)', distanceKm: 13, hours: 4.5, sleepingAltitude: 3840, altitudeGain: 280, highlights: 'First sight of the ancient mud-brick walled kingdom of Lo' },
+        { day: 7, title: 'Explore Lo Manthang & Chhoser Caves', route: 'Lo Manthang -> Chhoser Shija Jhong Cave -> Lo Manthang', distanceKm: 9, hours: 4, sleepingAltitude: 3840, altitudeGain: 0, highlights: '5-story ancient cliff-dwelling caves, royal palace, Jampa Gompa' },
+        { day: 8, title: 'Lo Manthang to Dhakmar via Ghar Gompa', route: 'Lo Manthang (3,840m) -> Ghar Gompa -> Dhakmar (3,820m)', distanceKm: 16, hours: 6, sleepingAltitude: 3820, altitudeGain: -20, highlights: '8th-century Guru Rinpoche Ghar Gompa, crimson red cliff bluffs' },
+        { day: 9, title: 'Dhakmar to Ghiling', route: 'Dhakmar (3,820m) -> Ja-Te La -> Ghiling (3,570m)', distanceKm: 15, hours: 5.5, sleepingAltitude: 3570, altitudeGain: -250, highlights: 'Dry desert plateaus, sweeping views of Dhaulagiri range' },
+        { day: 10, title: 'Ghiling to Chhusang', route: 'Ghiling (3,570m) -> Chele -> Chhusang (2,980m)', distanceKm: 18, hours: 6, sleepingAltitude: 2980, altitudeGain: -590, highlights: 'Eroded canyon amphitheaters, wind-carved caves' },
+        { day: 11, title: 'Chhusang to Jomsom', route: 'Chhusang (2,980m) -> Kagbeni -> Jomsom (2,720m)', distanceKm: 22, hours: 6.5, sleepingAltitude: 2720, altitudeGain: -260, highlights: 'Completing the restricted corridor, celebrating with local apple cider' },
+        { day: 12, title: 'Flight Jomsom to Pokhara', route: 'Jomsom (2,720m) -> Pokhara (820m)', distanceKm: 0, hours: 0.5, sleepingAltitude: 820, altitudeGain: -1900, highlights: 'Thrilling flight through the Annapurna-Dhaulagiri chasm' }
+      ]
+    },
+    {
+      id: 'itin-rolwaling-valley',
+      title: 'Rolwaling Valley & Tashi Lapcha High Pass Traverse',
+      trailName: 'Rolwaling Valley & Tashi Lapcha Pass',
+      author: 'Mingma Tenzi Sherpa',
+      authorAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+      totalDays: 14,
+      maxAltitude: 5755,
+      difficulty: 'Extreme',
+      estimatedCostUSD: 1750,
+      likes: 74,
+      clones: 16,
+      days: [
+        { day: 1, title: 'Drive Kathmandu to Gonggar / Chhetchhet', route: 'Kathmandu (1,400m) -> Chhetchhet (1,370m)', distanceKm: 190, hours: 8, sleepingAltitude: 1370, altitudeGain: -30, highlights: 'Tama Koshi river gorge and roaring hydropower waterfalls' },
+        { day: 2, title: 'Chhetchhet to Simigaon', route: 'Chhetchhet (1,370m) -> Simigaon (2,020m)', distanceKm: 6, hours: 4, sleepingAltitude: 2020, altitudeGain: 650, highlights: 'Steep stone staircase through terraces to cliffside Sherpa village' },
+        { day: 3, title: 'Simigaon to Dongang', route: 'Simigaon (2,020m) -> Kelche -> Dongang (2,790m)', distanceKm: 12, hours: 5.5, sleepingAltitude: 2790, altitudeGain: 770, highlights: 'Rhododendron groves, deep river canyon, view of Gauri Shankar' },
+        { day: 4, title: 'Dongang to Beding', route: 'Dongang (2,790m) -> Beding (3,740m)', distanceKm: 14, hours: 6, sleepingAltitude: 3740, altitudeGain: 950, highlights: 'Entering wide glacial valley, sacred Beding Gompa founded by Padmasambhava' },
+        { day: 5, title: 'Beding to Na Gaon', route: 'Beding (3,740m) -> Na Gaon (4,180m)', distanceKm: 7, hours: 3.5, sleepingAltitude: 4180, altitudeGain: 440, highlights: 'Summer yak grazing pastures, massive rock faces, Chobutse vista' },
+        { day: 6, title: 'Acclimatization Day at Na Gaon', route: 'Na Gaon -> Yalung Glacier / Sangma Lake -> Na Gaon', distanceKm: 6, hours: 4, sleepingAltitude: 4180, altitudeGain: 400, highlights: 'Acclimatization climb toward Yalung Base Camp, crystal lake' },
+        { day: 7, title: 'Na Gaon to Tsho Rolpa Glacial Lake', route: 'Na Gaon (4,180m) -> Tsho Rolpa (4,580m)', distanceKm: 8, hours: 4.5, sleepingAltitude: 4580, altitudeGain: 400, highlights: 'Camp beside the turquoise glacial lake surrounded by sheer moraines' },
+        { day: 8, title: 'Tsho Rolpa to Drolambau Glacier Camp', route: 'Tsho Rolpa (4,580m) -> Glacier Camp (4,820m)', distanceKm: 8, hours: 5, sleepingAltitude: 4820, altitudeGain: 240, highlights: 'Technical moraine scrambling, crampon fitting on Drolambau ice' },
+        { day: 9, title: 'Glacier Camp to Tashi Lapcha High Camp', route: 'Glacier Camp (4,820m) -> High Camp (5,400m)', distanceKm: 6, hours: 5.5, sleepingAltitude: 5400, altitudeGain: 580, highlights: 'Frozen seracs, sheer ice pinnacles, high alpine bivouac' },
+        { day: 10, title: 'Technical Crossing of Tashi Lapcha Pass', route: 'High Camp (5,400m) -> Tashi Lapcha (5,755m) -> Ngole (5,110m)', distanceKm: 9, hours: 8.5, sleepingAltitude: 5110, altitudeGain: 355, highlights: 'Glacial apex at 5,755m, panoramic gateway into Everest Khumbu region' },
+        { day: 11, title: 'Ngole to Thame Village', route: 'Ngole (5,110m) -> Thame (3,820m)', distanceKm: 14, hours: 6, sleepingAltitude: 3820, altitudeGain: -1290, highlights: 'Descent into Khumbu valley, historic Thame Monastery' },
+        { day: 12, title: 'Thame to Namche Bazaar', route: 'Thame (3,820m) -> Namche Bazaar (3,440m)', distanceKm: 10, hours: 4, sleepingAltitude: 3440, altitudeGain: -380, highlights: 'Return to Sherpa capital, hot showers and mountain bakeries' },
+        { day: 13, title: 'Namche Bazaar down to Lukla', route: 'Namche Bazaar (3,440m) -> Lukla (2,860m)', distanceKm: 19, hours: 7, sleepingAltitude: 2860, altitudeGain: -580, highlights: 'Crossing suspension bridges, celebration with expedition crew' },
+        { day: 14, title: 'Morning Flight Lukla to Kathmandu', route: 'Lukla (2,860m) -> Kathmandu (1,400m)', distanceKm: 0, hours: 0.5, sleepingAltitude: 1400, altitudeGain: -1460, highlights: 'Final scenic flight past Himalayan ranges back to capital' }
+      ]
     }
   ];
 
   const insertItinerary = db.prepare(`
-    INSERT INTO itineraries (
+    INSERT OR REPLACE INTO itineraries (
       id, title, trail_name, author, author_avatar, total_days, max_altitude,
       difficulty, estimated_cost_usd, likes, clones, days_json, created_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -711,6 +857,7 @@ function seedInitialDataIfEmpty(db: DatabaseSync) {
       now
     );
   }
+}
 
   // Seed Weather
   const weatherReports = [

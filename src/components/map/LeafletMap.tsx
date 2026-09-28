@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Polygon, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Compass, ExternalLink, Layers, SlidersHorizontal, Mountain, MapPin, Eye } from 'lucide-react';
-import { Landmark, Trail, HimalayanRange } from '@/types';
+import { Compass, ExternalLink, Layers, SlidersHorizontal, Mountain, MapPin, Eye, Calendar } from 'lucide-react';
+import { Landmark, Trail, HimalayanRange, ItineraryDay } from '@/types';
 import { ROUTE_TRACKS } from '@/data/routeTracks';
 import { HIMALAYAN_SUMMITS, ApexSummit } from '@/data/summitTours';
 import FloatingMapPanel from '@/components/ui/FloatingMapPanel';
@@ -46,6 +46,28 @@ function createCustomIcon(category: string, isSelected: boolean) {
   });
 }
 
+// Create custom divIcon for Itinerary Day milestone markers
+function createItineraryDayIcon(day: number, isSelected: boolean) {
+  const html = `
+    <div class="relative group cursor-pointer flex flex-col items-center">
+      <div class="px-2 py-0.5 rounded-lg bg-[#B68D40] text-black border-2 border-white shadow-2xl flex items-center justify-center font-black text-xs transform transition-all ${
+        isSelected ? 'scale-125 ring-4 ring-amber-400 bg-amber-400 font-extrabold' : 'hover:scale-110'
+      }">
+        <span>D${day}</span>
+      </div>
+      <div class="w-1.5 h-1.5 bg-[#B68D40] rounded-full mt-0.5 shadow"></div>
+    </div>
+  `;
+
+  return L.divIcon({
+    html,
+    className: 'custom-itinerary-day-marker',
+    iconSize: [36, 28],
+    iconAnchor: [18, 28],
+    popupAnchor: [0, -28],
+  });
+}
+
 // Create custom divIcon for Apex Summit pins
 function createSummitIcon(isSelected: boolean) {
   const html = `
@@ -69,6 +91,9 @@ export interface LeafletMapProps {
   selectedRegion?: string;
   focusedCoords?: [number, number];
   activeTrailId?: string;
+  itineraryDays?: ItineraryDay[];
+  activeItineraryDay?: number | null;
+  onSelectItineraryDay?: (day: ItineraryDay, coords: [number, number]) => void;
   landmarks?: Landmark[];
   onSelectLandmark?: (landmark: Landmark) => void;
   onSelectTrail?: (trailId: string) => void;
@@ -81,6 +106,9 @@ export default function LeafletMap({
   selectedRegion = 'All',
   focusedCoords,
   activeTrailId,
+  itineraryDays,
+  activeItineraryDay,
+  onSelectItineraryDay,
   landmarks: propLandmarks,
   onSelectLandmark,
   onSelectTrail,
@@ -98,7 +126,35 @@ export default function LeafletMap({
   const [showRoutes, setShowRoutes] = useState(true);
   const [showRanges, setShowRanges] = useState(true);
   const [showSummits, setShowSummits] = useState(true);
+  const [showItinerary, setShowItinerary] = useState(true);
   const [showControls, setShowControls] = useState(true);
+
+  // Compute waypoint coordinates along active trail for each itinerary day
+  const mappedItineraryWaypoints = useMemo(() => {
+    if (!itineraryDays || itineraryDays.length === 0 || !activeTrailId) return [];
+    const track = ROUTE_TRACKS[activeTrailId];
+    if (!track || !track.coords || track.coords.length < 2) return [];
+
+    const totalDays = itineraryDays.length;
+    let runningKm = 0;
+    const totalDayKm = itineraryDays.reduce((acc, d) => acc + (d.distanceKm || 0), 0);
+
+    return itineraryDays.map((day, idx) => {
+      if (idx === 0) {
+        runningKm = day.distanceKm > 0 ? day.distanceKm : 10;
+      } else {
+        runningKm += day.distanceKm > 0 ? day.distanceKm : (totalDayKm ? totalDayKm / totalDays : 12);
+      }
+      const ratio = totalDayKm > 0 ? Math.min(1, runningKm / totalDayKm) : Math.min(1, (idx + 1) / totalDays);
+      const targetIdx = Math.min(track.coords.length - 1, Math.floor(ratio * (track.coords.length - 1)));
+      const coord = track.coords[targetIdx];
+
+      return {
+        ...day,
+        coords: coord as [number, number],
+      };
+    });
+  }, [itineraryDays, activeTrailId]);
 
   // Fetch official ranges & landmarks from persistent DB APIs
   useEffect(() => {
@@ -483,10 +539,75 @@ export default function LeafletMap({
             </Marker>
           );
         })}
+
+        {/* Itinerary Day Waypoint Markers */}
+        {showItinerary && mappedItineraryWaypoints.map((dayWp) => {
+          const isSelected = activeItineraryDay === dayWp.day;
+          return (
+            <Marker
+              key={`itin-marker-${dayWp.day}`}
+              position={dayWp.coords}
+              icon={createItineraryDayIcon(dayWp.day, isSelected)}
+              eventHandlers={{
+                click: () => {
+                  onSelectItineraryDay?.(dayWp, dayWp.coords);
+                }
+              }}
+            >
+              <Popup className="custom-leaflet-popup">
+                <div className="p-1 space-y-2 max-w-xs text-xs">
+                  <div className="flex items-center justify-between gap-2 border-b border-neutral-200 pb-1">
+                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-[#B68D40] text-black">
+                      Day {dayWp.day}
+                    </span>
+                    <span className="text-xs font-mono font-bold text-amber-600">
+                      {dayWp.sleepingAltitude}m
+                    </span>
+                  </div>
+                  <h4 className="font-extrabold text-sm text-neutral-900 leading-snug">{dayWp.title}</h4>
+                  <p className="text-neutral-600 font-mono text-[11px]">{dayWp.route}</p>
+                  <div className="flex items-center gap-2 text-[10px] text-neutral-500 font-mono">
+                    <span>{dayWp.distanceKm} km</span>
+                    <span>•</span>
+                    <span>{dayWp.hours} hrs</span>
+                    <span>•</span>
+                    <span className={dayWp.altitudeGain >= 0 ? 'text-emerald-600' : 'text-blue-600'}>
+                      {dayWp.altitudeGain >= 0 ? `+${dayWp.altitudeGain}m` : `${dayWp.altitudeGain}m`}
+                    </span>
+                  </div>
+                  {dayWp.highlights && (
+                    <p className="text-[11px] text-neutral-700 bg-amber-500/10 p-1.5 rounded-lg border border-amber-500/20 italic">
+                      ✨ {dayWp.highlights}
+                    </p>
+                  )}
+                  <button
+                    onClick={() => onSelectItineraryDay?.(dayWp, dayWp.coords)}
+                    className="w-full py-1 text-center font-bold text-[11px] rounded bg-neutral-900 text-[#B68D40] hover:bg-neutral-800 transition cursor-pointer"
+                  >
+                    Select Day {dayWp.day}
+                  </button>
+                </div>
+              </Popup>
+            </Marker>
+          );
+        })}
       </MapContainer>
 
       {/* MAP BOTTOM CONTROL TOOLBAR */}
       <div className="absolute bottom-4 left-4 z-[1000] flex flex-wrap items-center gap-2 pointer-events-auto">
+        {mappedItineraryWaypoints.length > 0 && (
+          <button
+            onClick={() => setShowItinerary(!showItinerary)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold border backdrop-blur-md shadow-xl transition-all flex items-center gap-1.5 ${
+              showItinerary 
+                ? 'bg-[#B68D40] text-black border-[#E2C085]' 
+                : 'bg-black/80 text-gray-300 border-neutral-800'
+            }`}
+          >
+            <Calendar className="h-3 w-3" />
+            <span>{showItinerary ? '✓' : ''} Itinerary ({mappedItineraryWaypoints.length}d)</span>
+          </button>
+        )}
         <button
           onClick={() => setShowRoutes(!showRoutes)}
           className={`px-3 py-1.5 rounded-xl text-xs font-bold border backdrop-blur-md shadow-xl transition-all ${

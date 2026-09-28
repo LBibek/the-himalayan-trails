@@ -28,12 +28,16 @@ import SummitTourConsole from '@/components/map/SummitTourConsole';
 import DroneFlightConsole from '@/components/map/DroneFlightConsole';
 import FloatingMapPanel from '@/components/ui/FloatingMapPanel';
 import type { DroneFlightTelemetry } from '@/lib/map/types';
+import { ItineraryDay } from '@/types';
 
 interface CesiumGlobeMapProps {
   initialCenter?: GeoPoint;
   polyline?: MapPolyline;
   markers?: MapMarker[];
   landmarks?: Landmark[];
+  itineraryDays?: ItineraryDay[];
+  activeItineraryDay?: number | null;
+  onSelectItineraryDay?: (day: ItineraryDay, coords: [number, number]) => void;
   onSelectLandmark?: (landmark: Landmark) => void;
   onMarkerClick?: (markerId: string) => void;
   onFlyToFullRoute?: () => void;
@@ -55,6 +59,9 @@ export default function CesiumGlobeMap({
   polyline,
   markers = [],
   landmarks: propLandmarks,
+  itineraryDays,
+  activeItineraryDay,
+  onSelectItineraryDay,
   onSelectLandmark,
   onMarkerClick,
   onFlyToFullRoute,
@@ -104,6 +111,33 @@ export default function CesiumGlobeMap({
     }
   }, [cameraMode]);
 
+  // Fly Cesium 3D camera to active itinerary day milestone
+  useEffect(() => {
+    if (!controllerRef.current?.isInitialized || !activeItineraryDay || !itineraryDays || !activeTrail) return;
+    const day = itineraryDays.find((d) => d.day === activeItineraryDay);
+    if (!day) return;
+    const track = ROUTE_TRACKS[activeTrail.id];
+    const trackCoords = track?.coords || (activeTrail.routeCoordinates?.map((c) => [c[0], c[1]] as [number, number]) || []);
+    if (trackCoords.length < 2) return;
+    const totalDayKm = itineraryDays.reduce((acc, d) => acc + (d.distanceKm || 0), 0);
+    let runningKm = 0;
+    for (let i = 0; i < itineraryDays.length; i++) {
+      runningKm += itineraryDays[i].distanceKm || 12;
+      if (itineraryDays[i].day === activeItineraryDay) break;
+    }
+    const ratio = totalDayKm > 0 ? Math.min(1, runningKm / totalDayKm) : 0.5;
+    const targetIdx = Math.min(trackCoords.length - 1, Math.floor(ratio * (trackCoords.length - 1)));
+    const coord = trackCoords[targetIdx];
+    if (coord) {
+      const alt = (day.sleepingAltitude || 4000) + 2200;
+      controllerRef.current.flyTo(
+        { lat: coord[0], lng: coord[1], altitude: alt },
+        alt,
+        1.5
+      );
+    }
+  }, [activeItineraryDay, itineraryDays, activeTrail]);
+
   // 1. Fetch official Himalayan ranges & landmarks from persistent DB API
   useEffect(() => {
     fetch('/api/ranges')
@@ -145,6 +179,19 @@ export default function CesiumGlobeMap({
         if (controller.onMarkerClick) {
           controller.onMarkerClick((markerId: string) => {
             onMarkerClick?.(markerId);
+            if (markerId.startsWith('itin-day-') && itineraryDays && activeTrail) {
+              const dayNum = parseInt(markerId.replace('itin-day-', ''), 10);
+              const matchedDay = itineraryDays.find((d) => d.day === dayNum);
+              if (matchedDay) {
+                const track = ROUTE_TRACKS[activeTrail.id];
+                const trackCoords = track?.coords || (activeTrail.routeCoordinates?.map((c) => [c[0], c[1]] as [number, number]) || []);
+                const ratio = Math.min(1, dayNum / itineraryDays.length);
+                const targetIdx = trackCoords.length > 1 ? Math.min(trackCoords.length - 1, Math.floor(ratio * (trackCoords.length - 1))) : 0;
+                const coord = trackCoords[targetIdx] || [28.0, 86.85];
+                onSelectItineraryDay?.(matchedDay, [coord[0], coord[1]]);
+              }
+              return;
+            }
             const matched = allLandmarks.find((lm) => lm.id === markerId);
             if (matched) {
               onSelectLandmark?.(matched);
@@ -158,7 +205,7 @@ export default function CesiumGlobeMap({
           syncActiveTrailPolyline(controller, activeTrail);
         }
 
-        // Combine custom markers and landmark markers
+        // Combine custom markers, landmark markers, and itinerary days
         const allMarkers: MapMarker[] = [...markers];
         if (allLandmarks && allLandmarks.length > 0) {
           allLandmarks.forEach((lm) => {
@@ -168,6 +215,34 @@ export default function CesiumGlobeMap({
               title: lm.name,
               category: lm.category,
               elevation: lm.elevation,
+            });
+          });
+        }
+
+        if (itineraryDays && itineraryDays.length > 0 && activeTrail) {
+          const track = ROUTE_TRACKS[activeTrail.id];
+          const trackCoords = track?.coords || (activeTrail.routeCoordinates?.map((c) => [c[0], c[1]] as [number, number]) || []);
+          let runningKm = 0;
+          const totalDayKm = itineraryDays.reduce((acc, d) => acc + (d.distanceKm || 0), 0);
+
+          itineraryDays.forEach((day, idx) => {
+            if (idx === 0) {
+              runningKm = day.distanceKm > 0 ? day.distanceKm : 10;
+            } else {
+              runningKm += day.distanceKm > 0 ? day.distanceKm : (totalDayKm ? totalDayKm / itineraryDays.length : 12);
+            }
+            const ratio = totalDayKm > 0 ? Math.min(1, runningKm / totalDayKm) : Math.min(1, (idx + 1) / itineraryDays.length);
+            const targetIdx = trackCoords.length > 1
+              ? Math.min(trackCoords.length - 1, Math.floor(ratio * (trackCoords.length - 1)))
+              : 0;
+            const coord = trackCoords[targetIdx] || [28.0, 86.85];
+
+            allMarkers.push({
+              id: `itin-day-${day.day}`,
+              position: { lat: coord[0], lng: coord[1], altitude: (day.sleepingAltitude || 3500) + 120 },
+              title: `Day ${day.day}: ${day.title} (${day.sleepingAltitude}m)`,
+              category: 'Base Camp',
+              elevation: day.sleepingAltitude || 3500,
             });
           });
         }

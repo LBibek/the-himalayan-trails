@@ -890,6 +890,7 @@ export default function TrailDetailPage() {
               mode="drone-flight"
               activeTrail={trail}
               landmarks={landmarks}
+              itineraryDays={itinerary?.days}
               activeDistanceKm={theaterDistanceKm}
               onFlightTelemetry={(t) => {
                 setTheaterTelemetry(t);
@@ -905,6 +906,8 @@ export default function TrailDetailPage() {
             <div className="max-w-6xl mx-auto">
               <ElevationProfileChart
                 trail={trail}
+                itinerary={itinerary}
+                itineraryDays={itinerary?.days}
                 landmarks={landmarks}
                 activeDistanceKm={theaterDistanceKm}
                 onHoverPoint={(pt) => {
