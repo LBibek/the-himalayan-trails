@@ -30,6 +30,7 @@ export interface MapViewOptions {
 export interface DroneFlightTelemetry {
   isPlaying: boolean;
   speedMultiplier: 1 | 2 | 5;
+  cameraMode: 'chase' | 'cockpit';
   currentDistanceMeters: number;
   totalDistanceMeters: number;
   progressRatio: number; // 0.0 to 1.0
@@ -37,8 +38,10 @@ export interface DroneFlightTelemetry {
   currentAltitudeMeters: number;
   remainingDistanceKm: number;
   currentSpeedKmh: number;
+  verticalSpeedMps: number;
   headingDegrees: number;
   pitchDegrees: number;
+  rollDegrees: number;
   slopePercent: number;
   nextLandmark?: {
     name: string;
@@ -61,10 +64,11 @@ export interface IMapController {
   destroy(): void;
 
   // Drone flight simulator controls and telemetry
-  startDroneFlight?(options?: { speedMultiplier?: 1 | 2 | 5; initialDistanceMeters?: number }): void;
+  startDroneFlight?(options?: { speedMultiplier?: 1 | 2 | 5; initialDistanceMeters?: number; cameraMode?: 'chase' | 'cockpit' }): void;
   pauseDroneFlight?(): void;
   resumeDroneFlight?(): void;
   setDroneFlightSpeed?(multiplier: 1 | 2 | 5): void;
+  setDroneCameraMode?(mode: 'chase' | 'cockpit'): void;
   seekDroneFlight?(distanceMetersOrRatio: number): void;
   stopDroneFlight?(): void;
   onDroneTelemetry?(listener: (telemetry: DroneFlightTelemetry) => void): () => void;

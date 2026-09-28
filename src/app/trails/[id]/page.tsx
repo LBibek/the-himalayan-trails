@@ -2,13 +2,14 @@
 
 import React, { useState, useTransition, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { useParams, useRouter } from 'next/navigation';
 import {
   Mountain, Calendar, Clock, MapPin, TrendingUp, Compass, CheckCircle2,
   XCircle, ShieldCheck, Users, ChevronDown, ChevronUp, ArrowLeft, Star,
   Share2, Send, AlertCircle, Sparkles, PhoneCall, Loader2, Camera,
   Route, Thermometer, Eye, Flag, X, ChevronLeft, ChevronRight,
-  MessageSquare, ThumbsUp, Footprints, TreePine
+  MessageSquare, ThumbsUp, Footprints, TreePine, Plane
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -16,6 +17,17 @@ import {
 } from 'recharts';
 import { Trail, Itinerary, Landmark } from '@/types';
 import { submitTrekInquiry } from '@/app/actions/inquiry';
+import ElevationProfileChart from '@/components/map/ElevationProfileChart';
+
+const CesiumGlobeMap = dynamic(() => import('@/components/map/CesiumGlobeMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex flex-col items-center justify-center bg-black/90 text-[#B68D40] gap-3">
+      <Loader2 className="w-10 h-10 animate-spin text-[#B68D40]" />
+      <span className="text-xs uppercase tracking-widest text-[#E2C085]">Initializing 3D Himalayan Terrain...</span>
+    </div>
+  ),
+});
 
 // ────────────────────────────────────────────────────────
 // Helpers
@@ -116,6 +128,32 @@ export default function TrailDetailPage() {
     preferredStartDate: '', fitnessLevel: 'Intermediate (Regular Gym / Hiker)', notes: '',
   });
   const [formStatus, setFormStatus] = useState<{ success?: boolean; message?: string; errors?: Record<string, string> } | null>(null);
+
+  // 3D Alpine Theater Mode
+  const [isTheaterModeOpen, setIsTheaterModeOpen] = useState(false);
+  const [theaterDistanceKm, setTheaterDistanceKm] = useState<number | null>(null);
+  const [theaterTelemetry, setTheaterTelemetry] = useState<any>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isTheaterModeOpen) {
+        setIsTheaterModeOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isTheaterModeOpen]);
+
+  useEffect(() => {
+    if (isTheaterModeOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isTheaterModeOpen]);
 
   // ── Data fetching ──
   useEffect(() => {
@@ -284,6 +322,17 @@ export default function TrailDetailPage() {
               {trail.region}
             </span>
             <button
+              onClick={() => {
+                setTheaterDistanceKm(0);
+                setIsTheaterModeOpen(true);
+              }}
+              className="px-2.5 py-1 rounded-lg bg-[#B68D40]/20 hover:bg-[#B68D40]/30 text-[#B68D40] border border-[#B68D40]/40 text-xs font-bold flex items-center gap-1.5 transition"
+              title="Launch 3D Alpine Drone Flight"
+            >
+              <Plane className="w-3.5 h-3.5 fill-[#B68D40]" />
+              <span>3D Flight</span>
+            </button>
+            <button
               onClick={() => { if (navigator.share) navigator.share({ title: trail.name, url: window.location.href }); else { navigator.clipboard.writeText(window.location.href); } }}
               className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition focus-visible:ring-2 focus-visible:ring-[#B68D40]"
               title="Share Trail"
@@ -308,6 +357,16 @@ export default function TrailDetailPage() {
               <span className="ml-1">{trail.rating}</span>
               <span className="text-white/60">({trail.reviewsCount})</span>
             </span>
+            <button
+              onClick={() => {
+                setTheaterDistanceKm(0);
+                setIsTheaterModeOpen(true);
+              }}
+              className="px-3.5 py-1.5 rounded-full bg-gradient-to-r from-[#B68D40] to-[#E2C085] text-black font-extrabold text-xs flex items-center gap-1.5 shadow-lg shadow-[#B68D40]/30 hover:scale-105 transition"
+            >
+              <Plane className="w-3.5 h-3.5 fill-black" />
+              <span>3D Virtual Drone Tour</span>
+            </button>
           </div>
           <h1 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight">{trail.name}</h1>
           <p className="text-sm text-slate-300 max-w-3xl leading-relaxed">{trail.description}</p>
@@ -459,18 +518,29 @@ export default function TrailDetailPage() {
             <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-[#B68D40]/20 via-[#B68D40]/10 to-transparent border border-[#B68D40]/40 backdrop-blur-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="w-11 h-11 rounded-2xl bg-[#B68D40]/25 border border-[#B68D40]/50 flex items-center justify-center shrink-0">
-                  <Mountain className="w-6 h-6 text-[#E2C085]" />
+                  <Plane className="w-6 h-6 text-[#E2C085] animate-pulse" />
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
-                    Explore in 3D Globe <Sparkles className="w-3.5 h-3.5 text-[#B68D40]" />
+                    Alpine Drone Flight Simulator <Sparkles className="w-3.5 h-3.5 text-[#B68D40]" />
                   </h3>
-                  <p className="text-xs text-gray-300">Fly along the 3D {trail.region} terrain and inspect waypoints.</p>
+                  <p className="text-xs text-gray-300">Fly along the 3D {trail.region} terrain in Alpine Theater mode with dual camera perspectives and live telemetry.</p>
                 </div>
               </div>
-              <Link href={`/map?trail=${trail.id}&engine=3d`} className="px-4 py-2.5 rounded-xl bg-[#B68D40] hover:bg-[#c99e4b] text-black font-bold text-xs flex items-center justify-center gap-2 transition shadow-lg shadow-[#B68D40]/20 shrink-0 focus-visible:ring-2 focus-visible:ring-[#B68D40]">
-                <Compass className="w-4 h-4" /> Launch 3D Flight
-              </Link>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setTheaterDistanceKm(0);
+                    setIsTheaterModeOpen(true);
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-[#B68D40] hover:bg-[#c99e4b] text-black font-bold text-xs flex items-center justify-center gap-2 transition shadow-lg shadow-[#B68D40]/20 shrink-0 focus-visible:ring-2 focus-visible:ring-[#B68D40]"
+                >
+                  <Plane className="w-4 h-4 fill-black" /> Launch Alpine Theater
+                </button>
+                <Link href={`/map?trail=${trail.id}&engine=3d`} className="px-3 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition border border-slate-700">
+                  <Compass className="w-3.5 h-3.5 text-[#B68D40]" /> Explorer Map
+                </Link>
+              </div>
             </div>
 
             {/* ──────── HIGHLIGHTS ──────── */}
@@ -775,6 +845,79 @@ export default function TrailDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* ──────── 9. ALPINE THEATER 3D DRONE FLIGHT MODAL ──────── */}
+      {isTheaterModeOpen && trail && (
+        <div
+          data-slot="alpine-theater-modal"
+          className="fixed inset-0 z-[9999] bg-black/95 backdrop-blur-3xl flex flex-col animate-in fade-in duration-300"
+        >
+          {/* Header Bar */}
+          <div className="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-white/10 bg-neutral-950/90 z-20">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-[#B68D40]/20 border border-[#B68D40]/40 flex items-center justify-center">
+                <Plane className="w-5 h-5 text-[#B68D40] animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm sm:text-base font-extrabold text-white">
+                    Alpine Theater: 3D Drone Flight
+                  </h2>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#B68D40]/20 text-[#B68D40] border border-[#B68D40]/40">
+                    {trail.name}
+                  </span>
+                </div>
+                <p className="text-[10px] sm:text-xs text-gray-400">
+                  Photorealistic 3D terrain simulation • Dual Chase & Cockpit perspectives • Recharts profile sync
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsTheaterModeOpen(false)}
+                className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold flex items-center gap-1.5 transition border border-white/10"
+              >
+                <X className="w-4 h-4" />
+                <span className="hidden sm:inline">Exit Theater Mode (Esc)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 3D Cesium Canvas with Cockpit / Chase HUD */}
+          <div className="relative flex-1 w-full overflow-hidden bg-black">
+            <CesiumGlobeMap
+              mode="drone-flight"
+              activeTrail={trail}
+              landmarks={landmarks}
+              activeDistanceKm={theaterDistanceKm}
+              onFlightTelemetry={(t) => {
+                setTheaterTelemetry(t);
+                setTheaterDistanceKm(t.currentDistanceMeters / 1000);
+              }}
+              onSeekDistanceKm={(km) => setTheaterDistanceKm(km)}
+              height="h-full"
+            />
+          </div>
+
+          {/* Bottom Synchronized Recharts Elevation Profile Bar */}
+          <div className="p-3 sm:p-4 border-t border-white/10 bg-neutral-950/95 max-h-60 overflow-y-auto">
+            <div className="max-w-6xl mx-auto">
+              <ElevationProfileChart
+                trail={trail}
+                landmarks={landmarks}
+                activeDistanceKm={theaterDistanceKm}
+                onHoverPoint={(pt) => {
+                  if (pt) setTheaterDistanceKm(pt.distanceKm);
+                }}
+                onSelectPoint={(pt) => {
+                  setTheaterDistanceKm(pt.distanceKm);
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

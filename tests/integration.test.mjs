@@ -2540,7 +2540,96 @@ describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () =>
       assert.ok(dbSrc.includes('elevation_profile'), 'trails table must have elevation_profile column');
     });
   });
+
+  describe('22. 3D Cesium Drone Flight Simulator, Dual Camera Perspectives & Alpine Theater Mode', () => {
+    test('CesiumController exposes polymorphic drone camera controls and dynamic telemetry calculation', () => {
+      const ctrl = new CesiumController();
+      assert.equal(typeof ctrl.startDroneFlight, 'function', 'startDroneFlight method must exist');
+      assert.equal(typeof ctrl.pauseDroneFlight, 'function', 'pauseDroneFlight method must exist');
+      assert.equal(typeof ctrl.resumeDroneFlight, 'function', 'resumeDroneFlight method must exist');
+      assert.equal(typeof ctrl.setDroneFlightSpeed, 'function', 'setDroneFlightSpeed method must exist');
+      assert.equal(typeof ctrl.setDroneCameraMode, 'function', 'setDroneCameraMode method must exist');
+      assert.equal(typeof ctrl.seekDroneFlight, 'function', 'seekDroneFlight method must exist');
+      assert.equal(typeof ctrl.stopDroneFlight, 'function', 'stopDroneFlight method must exist');
+      assert.equal(typeof ctrl.onDroneTelemetry, 'function', 'onDroneTelemetry method must exist');
+
+      // Test telemetry subscription
+      let receivedTelemetry = null;
+      const unsubscribe = ctrl.onDroneTelemetry((t) => {
+        receivedTelemetry = t;
+      });
+      assert.ok(typeof unsubscribe === 'function', 'onDroneTelemetry must return an unsubscribe function');
+
+      // Set trail polyline with elevation data to initialize flight path
+      ctrl.setTrailPolyline({
+        id: 'test-drone-flight',
+        points: [
+          { lat: 27.9881, lng: 86.9250, altitude: 2860 },
+          { lat: 27.9950, lng: 86.9320, altitude: 3440 },
+          { lat: 28.0050, lng: 86.9450, altitude: 3860 },
+          { lat: 28.0150, lng: 86.9550, altitude: 5364 }
+        ],
+        color: '#B68D40',
+        weight: 6
+      });
+
+      // Switch to cockpit mode
+      ctrl.setDroneCameraMode('cockpit');
+      assert.ok(receivedTelemetry, 'Telemetry must be emitted after camera mode update');
+      assert.equal(receivedTelemetry.cameraMode, 'cockpit', 'Telemetry cameraMode must reflect cockpit');
+      assert.ok(typeof receivedTelemetry.verticalSpeedMps === 'number', 'verticalSpeedMps must be a number');
+      assert.ok(typeof receivedTelemetry.rollDegrees === 'number', 'rollDegrees must be a number');
+
+      // Switch to chase mode
+      ctrl.setDroneCameraMode('chase');
+      assert.equal(receivedTelemetry.cameraMode, 'chase', 'Telemetry cameraMode must reflect chase');
+
+      // Test speed changes
+      ctrl.setDroneFlightSpeed(5);
+      assert.equal(receivedTelemetry.speedMultiplier, 5, 'Speed multiplier must update to 5x');
+
+      unsubscribe();
+      ctrl.destroy();
+    });
+
+    test('DroneFlightConsole renders dual camera toggle, aviation HUD instruments, and landmark skipper', () => {
+      const consoleSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'map', 'DroneFlightConsole.tsx'), 'utf8');
+
+      assert.ok(consoleSrc.includes("handleSetCameraMode('chase')"), 'Must provide Chase camera mode button');
+      assert.ok(consoleSrc.includes("handleSetCameraMode('cockpit')"), 'Must provide Cockpit camera mode button');
+      assert.ok(consoleSrc.includes('data-slot="instruments"'), 'Must render aviation instruments slot');
+      assert.ok(consoleSrc.includes('Heading (HDG)'), 'Must render heading / compass tape');
+      assert.ok(consoleSrc.includes('Attitude (P/R)'), 'Must render pitch and roll attitude indicator');
+      assert.ok(consoleSrc.includes('Vertical Speed (VSI)'), 'Must render vertical speed indicator');
+      assert.ok(consoleSrc.includes('handleJumpToNextLandmark'), 'Must support jumping directly to next landmark checkpoint');
+      assert.ok(consoleSrc.includes('handleScrubberChange'), 'Must provide timeline slider scrubber');
+    });
+
+    test('Trail detail page mounts 3D drone tour CTA and Alpine Theater Modal with Recharts sync', () => {
+      const trailPageSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'trails', '[id]', 'page.tsx'), 'utf8');
+
+      assert.ok(trailPageSrc.includes('isTheaterModeOpen'), 'Must manage isTheaterModeOpen state');
+      assert.ok(trailPageSrc.includes('theaterDistanceKm'), 'Must synchronize theaterDistanceKm with Cesium flight');
+      assert.ok(trailPageSrc.includes('3D Virtual Drone Tour'), 'Hero must render prominent 3D Virtual Drone Tour CTA');
+      assert.ok(trailPageSrc.includes('data-slot="alpine-theater-modal"'), 'Must render full-screen Alpine Theater Modal');
+      assert.ok(trailPageSrc.includes('CesiumGlobeMap'), 'Alpine Theater must mount dynamic CesiumGlobeMap');
+      assert.ok(trailPageSrc.includes('mode="drone-flight"'), 'CesiumGlobeMap must be launched in drone-flight mode');
+      assert.ok(trailPageSrc.includes('<ElevationProfileChart'), 'Alpine Theater must synchronize Recharts ElevationProfileChart');
+      assert.ok(trailPageSrc.includes("e.key === 'Escape'"), 'Must support Escape key to exit Alpine Theater mode');
+    });
+
+    test('UnifiedDiscoveryHub incorporates 3d-drone-flight engine mode and bidirectional chart scrubbing', () => {
+      const hubSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'explorer', 'UnifiedDiscoveryHub.tsx'), 'utf8');
+
+      assert.ok(hubSrc.includes("'3d-drone-flight'"), 'mapEngine state must support 3d-drone-flight choice');
+      assert.ok(hubSrc.includes("onClick={() => setMapEngine('3d-drone-flight')}"), 'Header must provide Drone Flight engine toggle');
+      assert.ok(hubSrc.includes('droneDistanceKm'), 'Must manage droneDistanceKm state for bidirectional scrubber');
+      assert.ok(hubSrc.includes('activeDistanceKm={droneDistanceKm}'), 'ElevationProfileChart must bind activeDistanceKm');
+      assert.ok(hubSrc.includes('setDroneDistanceKm(pt.distanceKm)'), 'ElevationProfileChart scrubbing must seek drone flight distance');
+    });
+  });
 });
+
 
 
 

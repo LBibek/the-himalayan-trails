@@ -38,6 +38,7 @@ export class CesiumController implements IMapController {
   private droneTotalDistanceMeters = 0;
   private droneCurrentDistanceMeters = 0;
   private droneSpeedMultiplier: 1 | 2 | 5 = 1;
+  private droneCameraMode: 'chase' | 'cockpit' = 'chase';
   private isDroneFlying = false;
   private droneBeaconEntity: any = null;
   private droneTickListener: any = null;
@@ -738,7 +739,10 @@ export class CesiumController implements IMapController {
     bearingRad: number;
     bearingDeg: number;
     slopePercent: number;
+    slopeAngleRad: number;
+    dynamicPitchAdjustment: number;
     pitchDeg: number;
+    rollDeg: number;
   } {
     if (this.droneSegments.length === 0) {
       return {
@@ -746,7 +750,10 @@ export class CesiumController implements IMapController {
         bearingRad: 0,
         bearingDeg: 0,
         slopePercent: 0,
+        slopeAngleRad: 0,
+        dynamicPitchAdjustment: 0,
         pitchDeg: -20,
+        rollDeg: 0,
       };
     }
 
@@ -821,6 +828,40 @@ export class CesiumController implements IMapController {
     let bearingRad = Math.atan2(y, x);
     let bearingDeg = ((bearingRad * 180) / Math.PI + 360) % 360;
 
+    // Sample further ahead to compute cornering banking roll
+    let rollDeg = 0;
+    const turnDist = Math.min(clampedDist + 110, this.droneTotalDistanceMeters);
+    if (turnDist > lookaheadDist) {
+      let turnSeg = seg;
+      if (turnDist > seg.endDistance) {
+        let tLow = 0;
+        let tHigh = this.droneSegments.length - 1;
+        while (tLow <= tHigh) {
+          const tMid = (tLow + tHigh) >> 1;
+          const tS = this.droneSegments[tMid];
+          if (turnDist < tS.startDistance) {
+            tHigh = tMid - 1;
+          } else if (turnDist > tS.endDistance) {
+            tLow = tMid + 1;
+          } else {
+            turnSeg = tS;
+            break;
+          }
+        }
+      }
+      const tU = turnSeg.length > 0 ? Math.max(0, Math.min(1, (turnDist - turnSeg.startDistance) / turnSeg.length)) : 1;
+      const tLat = turnSeg.p1.lat + tU * (turnSeg.p2.lat - turnSeg.p1.lat);
+      const tLng = turnSeg.p1.lng + tU * (turnSeg.p2.lng - turnSeg.p1.lng);
+      const tdLng = ((tLng - aheadPoint.lng) * Math.PI) / 180;
+      const tLat1 = (aheadPoint.lat * Math.PI) / 180;
+      const tLat2 = (tLat * Math.PI) / 180;
+      const ty = Math.sin(tdLng) * Math.cos(tLat2);
+      const tx = Math.cos(tLat1) * Math.sin(tLat2) - Math.sin(tLat1) * Math.cos(tLat2) * Math.cos(tdLng);
+      const turnBearingDeg = ((Math.atan2(ty, tx) * 180) / Math.PI + 360) % 360;
+      const bearingDelta = ((turnBearingDeg - bearingDeg + 540) % 360) - 180;
+      rollDeg = Math.max(-20, Math.min(20, bearingDelta * 0.45));
+    }
+
     const deltaH = (aheadPoint.altitude ?? curAlt) - curAlt;
     const deltaD = computeHaversineMeters(currentPoint.lat, currentPoint.lng, aheadPoint.lat, aheadPoint.lng);
     const slopePercent = deltaD > 0.5 ? (deltaH / deltaD) * 100 : 0;
@@ -834,26 +875,31 @@ export class CesiumController implements IMapController {
       bearingRad,
       bearingDeg,
       slopePercent,
+      slopeAngleRad,
+      dynamicPitchAdjustment,
       pitchDeg,
+      rollDeg,
     };
   }
 
   private applyDroneState(distanceMeters: number): DroneFlightTelemetry {
     const state = this.getDroneStateAtDistance(distanceMeters);
-    const { point, bearingRad, bearingDeg, slopePercent, pitchDeg } = state;
+    const { point, bearingRad, bearingDeg, slopePercent, slopeAngleRad, dynamicPitchAdjustment, pitchDeg, rollDeg } = state;
 
     if (this.viewer && this.Cesium) {
+      const isCockpit = this.droneCameraMode === 'cockpit';
       const beaconPos = this.Cesium.Cartesian3.fromDegrees(
         point.lng,
         point.lat,
-        (point.altitude || 3500) + 20
+        (point.altitude || 3500) + 15
       );
 
       let beacon = this.droneBeaconEntity || this.viewer.entities.getById('cesium-drone-beacon');
       if (beacon) {
         beacon.position = beaconPos;
+        beacon.show = !isCockpit;
         this.droneBeaconEntity = beacon;
-      } else {
+      } else if (!isCockpit) {
         this.droneBeaconEntity = this.viewer.entities.add({
           id: 'cesium-drone-beacon',
           name: 'Himalayan Drone Simulator',
@@ -878,16 +924,37 @@ export class CesiumController implements IMapController {
         });
       }
 
-      // Camera positioned ~80m above route with forward tangent orientation
-      const cameraAlt = (point.altitude || 3500) + 80;
-      const cameraPos = this.Cesium.Cartesian3.fromDegrees(point.lng, point.lat, cameraAlt);
+      let cameraPos: any;
+      let cameraPitchDeg: number;
+      let cameraRollDeg: number;
+
+      if (isCockpit) {
+        // Cockpit mode: First-person pilot perspective looking directly ahead along trajectory
+        const cockpitAlt = (point.altitude || 3500) + 20;
+        cameraPos = this.Cesium.Cartesian3.fromDegrees(point.lng, point.lat, cockpitAlt);
+        cameraPitchDeg = Math.max(-30, Math.min(15, -6 + dynamicPitchAdjustment * 0.7));
+        cameraRollDeg = Math.max(-20, Math.min(20, rollDeg));
+      } else {
+        // Chase mode: Third-person camera trailing ~180m behind and ~110m above
+        const chaseDistanceMeters = 180;
+        const latRad = (point.lat * Math.PI) / 180;
+        const dLat = (-chaseDistanceMeters * Math.cos(bearingRad)) / 111320;
+        const dLng = (-chaseDistanceMeters * Math.sin(bearingRad)) / (111320 * Math.cos(latRad));
+        const chaseLat = point.lat + dLat;
+        const chaseLng = point.lng + dLng;
+        const chaseAlt = (point.altitude || 3500) + 110;
+
+        cameraPos = this.Cesium.Cartesian3.fromDegrees(chaseLng, chaseLat, chaseAlt);
+        cameraPitchDeg = Math.max(-40, Math.min(5, -20 + dynamicPitchAdjustment * 0.3));
+        cameraRollDeg = Math.max(-12, Math.min(12, rollDeg * 0.5));
+      }
 
       this.viewer.camera.setView({
         destination: cameraPos,
         orientation: {
           heading: bearingRad,
-          pitch: this.Cesium.Math.toRadians(pitchDeg),
-          roll: 0.0,
+          pitch: this.Cesium.Math.toRadians(cameraPitchDeg),
+          roll: this.Cesium.Math.toRadians(cameraRollDeg),
         },
       });
 
@@ -896,6 +963,7 @@ export class CesiumController implements IMapController {
 
     const speedKmh = 50 * this.droneSpeedMultiplier;
     const speedMps = (speedKmh * 1000) / 3600;
+    const verticalSpeedMps = Math.round(speedMps * Math.sin(slopeAngleRad) * 10) / 10;
     const remainingDistanceKm = Math.max(
       0,
       Math.round(((this.droneTotalDistanceMeters - distanceMeters) / 1000) * 10) / 10
@@ -915,6 +983,7 @@ export class CesiumController implements IMapController {
     const telemetry: DroneFlightTelemetry = {
       isPlaying: this.isDroneFlying,
       speedMultiplier: this.droneSpeedMultiplier,
+      cameraMode: this.droneCameraMode,
       currentDistanceMeters: Math.round(distanceMeters),
       totalDistanceMeters: Math.round(this.droneTotalDistanceMeters),
       progressRatio: this.droneTotalDistanceMeters > 0 ? distanceMeters / this.droneTotalDistanceMeters : 0,
@@ -922,8 +991,10 @@ export class CesiumController implements IMapController {
       currentAltitudeMeters: Math.round(point.altitude || 0),
       remainingDistanceKm,
       currentSpeedKmh: speedKmh,
+      verticalSpeedMps,
       headingDegrees: Math.round(bearingDeg),
       pitchDegrees: Math.round(pitchDeg),
+      rollDegrees: Math.round(rollDeg),
       slopePercent: Math.round(slopePercent * 10) / 10,
       nextLandmark,
     };
@@ -955,7 +1026,7 @@ export class CesiumController implements IMapController {
     this.emitDroneTelemetry(telemetry);
   };
 
-  startDroneFlight(options?: { speedMultiplier?: 1 | 2 | 5; initialDistanceMeters?: number }): void {
+  startDroneFlight(options?: { speedMultiplier?: 1 | 2 | 5; initialDistanceMeters?: number; cameraMode?: 'chase' | 'cockpit' }): void {
     if (!this.viewer || !this.Cesium) return;
 
     if (this.droneSegments.length === 0 && this.lastPolylineObj) {
@@ -967,6 +1038,9 @@ export class CesiumController implements IMapController {
 
     if (options?.speedMultiplier) {
       this.droneSpeedMultiplier = options.speedMultiplier;
+    }
+    if (options?.cameraMode) {
+      this.droneCameraMode = options.cameraMode;
     }
     if (options?.initialDistanceMeters !== undefined) {
       this.droneCurrentDistanceMeters = Math.max(0, Math.min(options.initialDistanceMeters, this.droneTotalDistanceMeters));
@@ -987,6 +1061,15 @@ export class CesiumController implements IMapController {
 
     const initialTelemetry = this.applyDroneState(this.droneCurrentDistanceMeters);
     this.emitDroneTelemetry(initialTelemetry);
+  }
+
+  setDroneCameraMode(mode: 'chase' | 'cockpit'): void {
+    this.droneCameraMode = mode;
+    if (this.droneBeaconEntity) {
+      this.droneBeaconEntity.show = mode === 'chase';
+    }
+    const telemetry = this.applyDroneState(this.droneCurrentDistanceMeters);
+    this.emitDroneTelemetry(telemetry);
   }
 
   pauseDroneFlight(): void {

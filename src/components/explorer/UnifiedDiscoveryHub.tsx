@@ -39,7 +39,8 @@ import {
   Share2,
   Route,
   Download,
-  AlertCircle
+  AlertCircle,
+  Plane,
 } from 'lucide-react';
 import { Trail, Landmark } from '@/types';
 import { ROUTE_TRACKS } from '@/data/routeTracks';
@@ -454,7 +455,8 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('All');
   const [maxAltitude, setMaxAltitude] = useState<number>(6000);
   const [layoutMode, setLayoutMode] = useState<'split' | 'mapOnly' | 'cardsOnly'>(urlLayout || defaultLayout);
-  const [mapEngine, setMapEngine] = useState<'2d' | '3d-freeroam' | '3d-summit-tours'>('2d');
+  const [mapEngine, setMapEngine] = useState<'2d' | '3d-freeroam' | '3d-summit-tours' | '3d-drone-flight'>('2d');
+  const [droneDistanceKm, setDroneDistanceKm] = useState<number | null>(null);
   
   // Active Selected / Hovered Trail for Elevation Profile & Map Focus
   const [selectedTrail, setSelectedTrail] = useState<Trail | null>(null);
@@ -477,7 +479,9 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
   }, [urlLayout]);
 
   useEffect(() => {
-    if (urlMode === 'summit-tours' || urlTour) {
+    if (urlMode === 'drone-flight' || urlMode === 'drone') {
+      setMapEngine('3d-drone-flight');
+    } else if (urlMode === 'summit-tours' || urlTour) {
       setMapEngine('3d-summit-tours');
     } else if (urlEngine === '3d') {
       setMapEngine('3d-freeroam');
@@ -681,7 +685,7 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
               </button>
             </div>
 
-            {/* Map Engine Toggle: 2D Leaflet vs 3D Free Roam vs 3D Summit Tours */}
+            {/* Map Engine Toggle: 2D Leaflet vs 3D Free Roam vs 3D Drone Flight vs 3D Summit Tours */}
             <div className="flex items-center p-0.5 rounded-full bg-neutral-900 border border-[#B68D40]/30 text-xs font-semibold shadow-lg">
               <button
                 onClick={() => setMapEngine('2d')}
@@ -701,6 +705,17 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
               >
                 <Globe className="h-3.5 w-3.5" />
                 <span>3D Roam</span>
+              </button>
+
+              <button
+                onClick={() => setMapEngine('3d-drone-flight')}
+                className={`px-3 py-1.5 rounded-full transition flex items-center gap-1.5 ${
+                  mapEngine === '3d-drone-flight' ? 'bg-[#B68D40] text-black font-bold shadow' : 'text-gray-400 hover:text-white'
+                }`}
+                title="3D Alpine Drone Flight Simulator"
+              >
+                <Plane className="h-3.5 w-3.5" />
+                <span>Drone Flight</span>
               </button>
 
               <button
@@ -1068,13 +1083,65 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                         <div className="space-y-2 pt-2 border-t border-neutral-900">
                           <button
                             type="button"
-                            onClick={() => setMapEngine('3d-summit-tours')}
-                            className="w-full py-2.5 rounded-xl bg-[#B68D40] hover:bg-[#c99e4b] text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg transition"
+                            onClick={() => setMapEngine('3d-drone-flight')}
+                            className="w-full py-2.5 rounded-xl bg-gradient-to-r from-[#B68D40] to-amber-500 hover:from-[#c99e4b] hover:to-amber-400 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg transition"
                           >
-                            <Mountain className="h-4 w-4" />
+                            <Plane className="h-4 w-4 fill-black" />
+                            <span>Launch 3D Drone Flight Simulator</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setMapEngine('3d-summit-tours')}
+                            className="w-full py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-[#B68D40]/50 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg transition"
+                          >
+                            <Mountain className="h-4 w-4 text-[#B68D40]" />
                             <span>Launch 3D Summit Orbital Tours</span>
                           </button>
 
+                          <button
+                            type="button"
+                            onClick={() => setMapEngine('2d')}
+                            className="w-full py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-gray-300 text-xs font-semibold transition"
+                          >
+                            Switch to 2D Topo Map
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* MODE 4: 3D Alpine Drone Flight Simulator */}
+                    {mapEngine === '3d-drone-flight' && (
+                      <div className="space-y-4">
+                        <div className="p-3 rounded-2xl bg-neutral-900/80 border border-accent/40 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] uppercase font-bold text-accent">Drone Flight Simulator</span>
+                            <span className="text-[10px] text-emerald-400 font-mono">Active</span>
+                          </div>
+                          <p className="text-xs text-gray-300 leading-relaxed">
+                            Photorealistic 3D drone trajectory navigation with Chase & Cockpit camera perspectives and Recharts elevation sync.
+                          </p>
+                        </div>
+
+                        {activeTrail && (
+                          <div className="p-3 rounded-2xl bg-neutral-950/80 border border-neutral-800 space-y-1.5 text-xs">
+                            <span className="text-[10px] text-gray-400 uppercase font-bold">Simulating Expedition:</span>
+                            <div className="font-bold text-white text-sm">{activeTrail.name}</div>
+                            <div className="grid grid-cols-2 gap-1.5 pt-1 text-[11px] font-mono text-gray-400">
+                              <div>Distance: <strong className="text-white">{activeTrail.distanceKm}km</strong></div>
+                              <div>Apex: <strong className="text-amber-400">{activeTrail.maxElevation}m</strong></div>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="space-y-2 pt-2 border-t border-neutral-900">
+                          <button
+                            type="button"
+                            onClick={() => setMapEngine('3d-freeroam')}
+                            className="w-full py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-gray-300 text-xs font-semibold transition"
+                          >
+                            Exit Drone Simulator to 3D Roam
+                          </button>
                           <button
                             type="button"
                             onClick={() => setMapEngine('2d')}
@@ -1518,10 +1585,23 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                 <CesiumGlobeMap
                   height="h-full"
                   activeTrail={activeTrail}
-                  mode={mapEngine === '3d-summit-tours' ? 'summit-tours' : 'freeroam'}
+                  mode={
+                    mapEngine === '3d-drone-flight'
+                      ? 'drone-flight'
+                      : mapEngine === '3d-summit-tours'
+                      ? 'summit-tours'
+                      : 'freeroam'
+                  }
                   initialSummitSlug={urlTour || (selectedRegion.toLowerCase().includes('everest') ? 'everest' : selectedRegion.toLowerCase().includes('annapurna') ? 'annapurna' : selectedRegion.toLowerCase().includes('manaslu') ? 'manaslu' : 'everest')}
                   onSelectLandmark={(lm) => {
                     setFocusedCoords([lm.coordinates.lat, lm.coordinates.lng]);
+                  }}
+                  activeDistanceKm={droneDistanceKm}
+                  onFlightTelemetry={(t) => {
+                    setDroneDistanceKm(t.currentDistanceMeters / 1000);
+                  }}
+                  onSeekDistanceKm={(km) => {
+                    setDroneDistanceKm(km);
                   }}
                   scrubberPoint={
                     focusedCoords
@@ -1534,7 +1614,7 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                       : undefined
                   }
                   onClose3D={() => setMapEngine('2d')}
-                  hideHUD={true}
+                  hideHUD={mapEngine === '3d-drone-flight' ? false : true}
                 />
               )}
 
@@ -1549,8 +1629,10 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                   >
                     <ElevationProfileChart
                       trail={activeTrail}
+                      activeDistanceKm={droneDistanceKm}
                       onClose={() => {/* no-op — altitude bar is always visible */}}
                       onSelectPoint={(pt) => {
+                        setDroneDistanceKm(pt.distanceKm);
                         if (pt.lat && pt.lng) {
                           setFocusedCoords([pt.lat, pt.lng]);
                         }
@@ -1563,6 +1645,7 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                           setFocusedCoords(undefined);
                           return;
                         }
+                        setDroneDistanceKm(pt.distanceKm);
                         if (pt.lat && pt.lng) {
                           setFocusedCoords([pt.lat, pt.lng]);
                           return;

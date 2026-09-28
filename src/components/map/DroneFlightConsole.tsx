@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Play,
   Pause,
@@ -14,6 +14,13 @@ import {
   TrendingUp,
   Sparkles,
   Plane,
+  Camera,
+  Eye,
+  FastForward,
+  ChevronRight,
+  ArrowUp,
+  ArrowDown,
+  Gauge,
   X,
 } from 'lucide-react';
 import type { IMapController, DroneFlightTelemetry, MapPolyline } from '@/lib/map/types';
@@ -27,6 +34,7 @@ export interface DroneFlightConsoleProps {
   landmarks?: Landmark[];
   onClose?: () => void;
   onTelemetryChange?: (telemetry: DroneFlightTelemetry) => void;
+  onSeekDistanceKm?: (distanceKm: number) => void;
   className?: string;
 }
 
@@ -37,11 +45,16 @@ export default function DroneFlightConsole({
   landmarks,
   onClose,
   onTelemetryChange,
+  onSeekDistanceKm,
   className = '',
 }: DroneFlightConsoleProps) {
+  const [cameraMode, setCameraMode] = useState<'chase' | 'cockpit'>('chase');
+  const [showInstruments, setShowInstruments] = useState<boolean>(true);
+
   const [telemetry, setTelemetry] = useState<DroneFlightTelemetry>({
     isPlaying: false,
     speedMultiplier: 1,
+    cameraMode: 'chase',
     currentDistanceMeters: 0,
     totalDistanceMeters: (trail?.distanceKm || 0) * 1000,
     progressRatio: 0,
@@ -53,8 +66,10 @@ export default function DroneFlightConsole({
     currentAltitudeMeters: trail?.elevationProfile?.[0]?.elevation || 2860,
     remainingDistanceKm: trail?.distanceKm || 0,
     currentSpeedKmh: 50,
+    verticalSpeedMps: 0,
     headingDegrees: 0,
     pitchDegrees: -20,
+    rollDegrees: 0,
     slopePercent: 0,
   });
 
@@ -64,13 +79,16 @@ export default function DroneFlightConsole({
 
     const unsubscribe = controller.onDroneTelemetry((t) => {
       setTelemetry(t);
+      if (t.cameraMode && t.cameraMode !== cameraMode) {
+        setCameraMode(t.cameraMode);
+      }
       onTelemetryChange?.(t);
     });
 
     return () => {
       unsubscribe();
     };
-  }, [controller, onTelemetryChange]);
+  }, [controller, onTelemetryChange, cameraMode]);
 
   const handleTogglePlay = () => {
     if (!controller) return;
@@ -82,6 +100,7 @@ export default function DroneFlightConsole({
         controller.startDroneFlight?.({
           speedMultiplier: telemetry.speedMultiplier,
           initialDistanceMeters: 0,
+          cameraMode,
         });
       } else {
         controller.resumeDroneFlight?.();
@@ -95,7 +114,9 @@ export default function DroneFlightConsole({
     controller.startDroneFlight?.({
       speedMultiplier: telemetry.speedMultiplier,
       initialDistanceMeters: 0,
+      cameraMode,
     });
+    onSeekDistanceKm?.(0);
   };
 
   const handleSetSpeed = (multiplier: 1 | 2 | 5) => {
@@ -103,16 +124,31 @@ export default function DroneFlightConsole({
     controller.setDroneFlightSpeed?.(multiplier);
   };
 
+  const handleSetCameraMode = (mode: 'chase' | 'cockpit') => {
+    setCameraMode(mode);
+    if (!controller) return;
+    controller.setDroneCameraMode?.(mode);
+  };
+
   const handleScrubberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!controller) return;
     const targetMeters = parseFloat(e.target.value);
     controller.seekDroneFlight?.(targetMeters);
+    onSeekDistanceKm?.(targetMeters / 1000);
+  };
+
+  const handleJumpToNextLandmark = () => {
+    if (!controller || !telemetry.nextLandmark) return;
+    const targetMeters = telemetry.currentDistanceMeters + telemetry.nextLandmark.distanceKm * 1000;
+    controller.seekDroneFlight?.(targetMeters);
+    onSeekDistanceKm?.(targetMeters / 1000);
   };
 
   // Barometric atmospheric calculations
   const altitudeMeters = telemetry.currentAltitudeMeters;
   const altitudeFeet = Math.round(altitudeMeters * 3.28084);
   const barometricO2Percent = Math.max(20, Math.min(100, Math.round(100 * Math.exp(-altitudeMeters / 7200))));
+  const verticalSpeedFpm = Math.round((telemetry.verticalSpeedMps || 0) * 196.85);
 
   const formatEta = (seconds: number) => {
     if (seconds <= 0) return 'Immediate';
@@ -122,6 +158,14 @@ export default function DroneFlightConsole({
     return `${mins}m ${secs.toString().padStart(2, '0')}s`;
   };
 
+  // Compass cardinal heading indicator
+  const cardinalHeading = useMemo(() => {
+    const deg = (telemetry.headingDegrees % 360 + 360) % 360;
+    const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    const idx = Math.round(deg / 45) % 8;
+    return directions[idx];
+  }, [telemetry.headingDegrees]);
+
   return (
     <div data-slot="base" className={`w-full ${className}`}>
       <FloatingMapPanel
@@ -130,7 +174,7 @@ export default function DroneFlightConsole({
           <div data-slot="header" className="flex items-center gap-2">
             <Plane className="w-4 h-4 text-accent animate-pulse" />
             <span className="font-extrabold text-white text-sm">
-              3D Drone Flight Path Simulator
+              3D Alpine Drone Flight Simulator
             </span>
           </div>
         }
@@ -193,6 +237,39 @@ export default function DroneFlightConsole({
               </button>
             </div>
 
+            {/* Camera Perspective Mode: Chase vs Cockpit */}
+            <div className="flex items-center gap-1 bg-neutral-950/90 border border-accent/40 rounded-xl p-1">
+              <button
+                onClick={() => handleSetCameraMode('chase')}
+                data-slot="trigger"
+                data-selected={cameraMode === 'chase'}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  cameraMode === 'chase'
+                    ? 'bg-accent text-accent-foreground shadow-md'
+                    : 'text-muted-foreground hover:text-white hover:bg-white/5'
+                } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent`}
+                title="Chase Camera: 3rd-person camera gliding behind drone beacon"
+              >
+                <Camera className="w-3.5 h-3.5" />
+                <span>Chase</span>
+              </button>
+
+              <button
+                onClick={() => handleSetCameraMode('cockpit')}
+                data-slot="trigger"
+                data-selected={cameraMode === 'cockpit'}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  cameraMode === 'cockpit'
+                    ? 'bg-accent text-accent-foreground shadow-md'
+                    : 'text-muted-foreground hover:text-white hover:bg-white/5'
+                } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent`}
+                title="Cockpit Camera: 1st-person forward pilot view with banking roll"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>Cockpit</span>
+              </button>
+            </div>
+
             {/* Speed Multiplier Pills */}
             <div className="flex items-center gap-1 bg-neutral-950/80 border border-border/40 rounded-xl p-1">
               <span className="text-[10px] text-muted-foreground uppercase font-mono px-1.5 font-bold">Speed:</span>
@@ -216,8 +293,21 @@ export default function DroneFlightConsole({
               })}
             </div>
 
+            {/* Next Landmark Skipper Button */}
+            {telemetry.nextLandmark && (
+              <button
+                onClick={handleJumpToNextLandmark}
+                data-slot="trigger"
+                className="px-2.5 py-1.5 rounded-xl bg-neutral-950/80 hover:bg-neutral-800 border border-accent/40 text-[11px] font-semibold text-accent flex items-center gap-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                title={`Jump directly to ${telemetry.nextLandmark.name}`}
+              >
+                <FastForward className="w-3.5 h-3.5 text-accent" />
+                <span className="max-w-[120px] truncate">Jump to {telemetry.nextLandmark.name}</span>
+              </button>
+            )}
+
             {/* Flight Timeline Scrubber Slider */}
-            <div className="flex-1 min-w-[200px] flex items-center gap-2.5">
+            <div className="flex-1 min-w-[220px] flex items-center gap-2.5">
               <span className="text-[11px] font-mono text-accent font-extrabold w-14 text-right">
                 {(telemetry.currentDistanceMeters / 1000).toFixed(1)} km
               </span>
@@ -236,7 +326,89 @@ export default function DroneFlightConsole({
             </div>
           </div>
 
-          {/* 2. TELEMETRY HUD TILES */}
+          {/* 2. AVIATION COCKPIT INSTRUMENT STRIP (Pitch Ladder, Compass Tape, VSI, Banking Roll) */}
+          <div
+            data-slot="instruments"
+            className="p-2.5 rounded-2xl bg-neutral-950/90 border border-border/40 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono"
+          >
+            {/* Instrument 1: Compass Tape */}
+            <div className="p-2 rounded-xl bg-neutral-900/60 border border-border/30 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Compass className="w-4 h-4 text-accent" />
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase">Heading (HDG)</p>
+                  <p className="font-extrabold text-white text-xs">
+                    {telemetry.headingDegrees}° <span className="text-accent">({cardinalHeading})</span>
+                  </p>
+                </div>
+              </div>
+              <div className="text-[9px] px-1.5 py-0.5 rounded bg-accent/15 text-accent border border-accent/30 font-bold">
+                MAG
+              </div>
+            </div>
+
+            {/* Instrument 2: Pitch & Roll Horizon */}
+            <div className="p-2 rounded-xl bg-neutral-900/60 border border-border/30 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Gauge className="w-4 h-4 text-accent" />
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase">Attitude (P/R)</p>
+                  <p className="font-extrabold text-white text-xs">
+                    P: {telemetry.pitchDegrees}° • R: {telemetry.rollDegrees || 0}°
+                  </p>
+                </div>
+              </div>
+              <div
+                className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${
+                  (telemetry.rollDegrees || 0) !== 0 ? 'bg-cyan-500/20 text-cyan-300' : 'bg-white/10 text-gray-400'
+                }`}
+              >
+                BANK
+              </div>
+            </div>
+
+            {/* Instrument 3: Vertical Speed Indicator (VSI) */}
+            <div className="p-2 rounded-xl bg-neutral-900/60 border border-border/30 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {(telemetry.verticalSpeedMps || 0) >= 0 ? (
+                  <ArrowUp className="w-4 h-4 text-emerald-400" />
+                ) : (
+                  <ArrowDown className="w-4 h-4 text-rose-400" />
+                )}
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase">Vertical Speed (VSI)</p>
+                  <p className={`font-extrabold text-xs ${(telemetry.verticalSpeedMps || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {(telemetry.verticalSpeedMps || 0) > 0 ? `+${telemetry.verticalSpeedMps}` : (telemetry.verticalSpeedMps || 0)} m/s
+                  </p>
+                </div>
+              </div>
+              <span className="text-[9px] text-muted-foreground font-normal">
+                {verticalSpeedFpm > 0 ? `+${verticalSpeedFpm}` : verticalSpeedFpm} fpm
+              </span>
+            </div>
+
+            {/* Instrument 4: Camera Mode Status */}
+            <div className="p-2 rounded-xl bg-neutral-900/60 border border-border/30 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {cameraMode === 'cockpit' ? (
+                  <Eye className="w-4 h-4 text-cyan-400" />
+                ) : (
+                  <Camera className="w-4 h-4 text-accent" />
+                )}
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase">Camera Perspective</p>
+                  <p className="font-extrabold text-accent text-xs capitalize">
+                    {cameraMode} Mode
+                  </p>
+                </div>
+              </div>
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
+                60 FPS
+              </span>
+            </div>
+          </div>
+
+          {/* 3. TELEMETRY HUD TILES */}
           <div data-slot="telemetry" className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
             {/* Tile 1: Altitude & O2 */}
             <div className="p-2.5 rounded-xl bg-neutral-900/80 border border-border/40 backdrop-blur-md flex flex-col justify-between">

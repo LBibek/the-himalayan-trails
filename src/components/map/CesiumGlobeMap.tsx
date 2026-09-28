@@ -44,6 +44,9 @@ interface CesiumGlobeMapProps {
   mode?: 'freeroam' | 'summit-tours' | 'drone-flight';
   initialSummitSlug?: string;
   onFlightTelemetry?: (telemetry: DroneFlightTelemetry) => void;
+  onSeekDistanceKm?: (distanceKm: number) => void;
+  activeDistanceKm?: number | null;
+  cameraMode?: 'chase' | 'cockpit';
   hideHUD?: boolean;
 }
 
@@ -62,6 +65,9 @@ export default function CesiumGlobeMap({
   mode = 'freeroam',
   initialSummitSlug = 'everest',
   onFlightTelemetry,
+  onSeekDistanceKm,
+  activeDistanceKm,
+  cameraMode = 'chase',
   hideHUD = false,
 }: CesiumGlobeMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -81,7 +87,22 @@ export default function CesiumGlobeMap({
 
   useEffect(() => {
     setCurrentMode(mode);
-  }, [mode]);
+    if (mode === 'drone-flight' && controllerRef.current?.isInitialized) {
+      controllerRef.current.startDroneFlight({ speedMultiplier: 1, initialDistanceMeters: 0, cameraMode });
+    }
+  }, [mode, cameraMode]);
+
+  useEffect(() => {
+    if (controllerRef.current?.isInitialized && activeDistanceKm !== undefined && activeDistanceKm !== null) {
+      controllerRef.current.seekDroneFlight(activeDistanceKm * 1000);
+    }
+  }, [activeDistanceKm]);
+
+  useEffect(() => {
+    if (controllerRef.current?.isInitialized && cameraMode) {
+      controllerRef.current.setDroneCameraMode?.(cameraMode);
+    }
+  }, [cameraMode]);
 
   // 1. Fetch official Himalayan ranges & landmarks from persistent DB API
   useEffect(() => {
@@ -482,6 +503,7 @@ export default function CesiumGlobeMap({
                   setCurrentMode('freeroam');
                 }}
                 onTelemetryChange={onFlightTelemetry}
+                onSeekDistanceKm={onSeekDistanceKm}
               />
             </div>
           ) : currentMode === 'summit-tours' ? (

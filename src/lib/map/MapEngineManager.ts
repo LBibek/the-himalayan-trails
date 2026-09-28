@@ -75,6 +75,38 @@ export class MapEngineManager {
     this.activeController?.setScrubberPosition(point);
   }
 
+  startDroneFlight(options?: { speedMultiplier?: 1 | 2 | 5; initialDistanceMeters?: number; cameraMode?: 'chase' | 'cockpit' }): void {
+    this.activeController?.startDroneFlight?.(options);
+  }
+
+  pauseDroneFlight(): void {
+    this.activeController?.pauseDroneFlight?.();
+  }
+
+  resumeDroneFlight(): void {
+    this.activeController?.resumeDroneFlight?.();
+  }
+
+  setDroneFlightSpeed(multiplier: 1 | 2 | 5): void {
+    this.activeController?.setDroneFlightSpeed?.(multiplier);
+  }
+
+  setDroneCameraMode(mode: 'chase' | 'cockpit'): void {
+    this.activeController?.setDroneCameraMode?.(mode);
+  }
+
+  seekDroneFlight(distanceMetersOrRatio: number): void {
+    this.activeController?.seekDroneFlight?.(distanceMetersOrRatio);
+  }
+
+  stopDroneFlight(): void {
+    this.activeController?.stopDroneFlight?.();
+  }
+
+  onDroneTelemetry(listener: (telemetry: import('./types').DroneFlightTelemetry) => void): (() => void) | undefined {
+    return this.activeController?.onDroneTelemetry?.(listener);
+  }
+
   destroy(): void {
     if (this.activeController) {
       this.activeController.destroy();
