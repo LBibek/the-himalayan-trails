@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -41,8 +41,11 @@ import {
   Download,
   AlertCircle,
   Plane,
+  CloudSun,
+  Sun,
+  Moon,
 } from 'lucide-react';
-import { Trail, Landmark, Itinerary, ItineraryDay } from '@/types';
+import { Trail, Landmark, Itinerary, ItineraryDay, HimalayanRange } from '@/types';
 import { ROUTE_TRACKS } from '@/data/routeTracks';
 import ElevationProfileChart from '@/components/map/ElevationProfileChart';
 import FloatingMapPanel from '@/components/ui/FloatingMapPanel';
@@ -70,6 +73,24 @@ export function getCleanTrailName(name: string): string {
     .replace(/\s+Forbidden\s+Kingdom$/i, '')
     .replace(/\s+&\s+Tashi\s+Lapcha\s+Pass$/i, '')
     .trim();
+}
+
+// Compute accurate center coordinates for any trail (route tracks, routeCoordinates, or region preset)
+export function getTrailCenterCoords(trail: Trail): [number, number] | undefined {
+  if (!trail) return undefined;
+  const track = ROUTE_TRACKS[trail.id];
+  if (track && track.coords && track.coords.length > 0) {
+    const midIdx = Math.floor(track.coords.length / 2);
+    return track.coords[midIdx];
+  }
+  if (trail.routeCoordinates && trail.routeCoordinates.length > 0) {
+    const midIdx = Math.floor(trail.routeCoordinates.length / 2);
+    return [trail.routeCoordinates[midIdx][0], trail.routeCoordinates[midIdx][1]];
+  }
+  if (trail.region && REGION_FOCUS_COORDS[trail.region]) {
+    return REGION_FOCUS_COORDS[trail.region].center;
+  }
+  return undefined;
 }
 
 // Dynamically import Leaflet Map without SSR
@@ -183,14 +204,17 @@ function SidebarQuickSpecs({
     URL.revokeObjectURL(url);
   };
 
+  const estSummitTemp = Math.round(15 - ((trail.maxElevation - 1400) / 1000) * 6.5);
+
   return (
     <div data-slot="base" className="space-y-4 animate-in fade-in slide-in-from-left-2 duration-200 pb-4">
       {/* 1. Header Toolbar — Back, Share, Save, Close */}
-      <div className="flex items-center justify-between pb-2.5 border-b border-neutral-800">
+      <div data-slot="header" className="flex items-center justify-between pb-2.5 border-b border-neutral-800">
         <button
           type="button"
+          data-slot="trigger"
           onClick={onBack}
-          className="flex items-center gap-1.5 text-xs font-bold text-gray-300 hover:text-[#B68D40] transition py-1 px-2 rounded-lg hover:bg-neutral-900"
+          className="flex items-center gap-1.5 text-xs font-bold text-gray-300 hover:text-[#B68D40] transition py-1 px-2 rounded-lg hover:bg-neutral-900 focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none"
         >
           <ArrowLeft className="h-4 w-4" />
           <span>Back</span>
@@ -203,8 +227,9 @@ function SidebarQuickSpecs({
         <div className="flex items-center gap-1">
           <button
             type="button"
+            data-slot="trigger"
             onClick={handleShare}
-            className="p-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-gray-300 hover:text-white transition"
+            className="p-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-gray-300 hover:text-white transition focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none"
             title="Share trail"
           >
             <Share2 className="h-3.5 w-3.5" />
@@ -213,8 +238,9 @@ function SidebarQuickSpecs({
           {onToggleSave && (
             <button
               type="button"
+              data-slot="trigger"
               onClick={() => onToggleSave(trail.id)}
-              className="p-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-gray-300 hover:text-red-500 transition"
+              className="p-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-gray-300 hover:text-red-500 transition focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none"
               title="Save trail"
             >
               <Heart className={`h-3.5 w-3.5 ${isSaved ? 'fill-red-500 text-red-500' : ''}`} />
@@ -223,8 +249,9 @@ function SidebarQuickSpecs({
 
           <button
             type="button"
+            data-slot="trigger"
             onClick={onBack}
-            className="p-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-gray-300 hover:text-white transition ml-0.5"
+            className="p-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-gray-300 hover:text-white transition ml-0.5 focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none"
             title="Close specs"
           >
             <X className="h-3.5 w-3.5" />
@@ -238,175 +265,188 @@ function SidebarQuickSpecs({
         </div>
       )}
 
-      {/* 2. Hero Image Banner with AllTrails Overlays */}
-      <div className="relative h-44 w-full rounded-2xl overflow-hidden bg-neutral-900 border border-neutral-800 shadow-xl group">
-        <img
-          src={trail.image}
-          alt={trail.name}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/30 to-transparent" />
+      {/* BODY CONTENT CONTAINER */}
+      <div data-slot="body" className="space-y-4">
+        {/* 2. Hero Image Banner with AllTrails Overlays */}
+        <div className="relative h-44 w-full rounded-2xl overflow-hidden bg-neutral-900 border border-neutral-800 shadow-xl group">
+          <img
+            src={trail.image}
+            alt={trail.name}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/30 to-transparent" />
 
-        {/* Top Badges: Difficulty & Stars */}
-        <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
-          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase shadow-md ${diffBadge.bg}`}>
-            {diffBadge.label}
+          {/* Top Badges: Difficulty & Stars */}
+          <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase shadow-md ${diffBadge.bg}`}>
+              {diffBadge.label}
+            </span>
+            <span className="px-2 py-0.5 rounded-full bg-black/75 backdrop-blur-md text-white text-[10px] font-semibold border border-white/20 flex items-center gap-1">
+              <Star className="h-3 w-3 text-amber-400 fill-amber-400" />
+              <span>{(trail.rating || 4.8).toFixed(1)}</span>
+              <span className="text-gray-400">({trail.reviewsCount || 86})</span>
+            </span>
+          </div>
+
+          {/* Bottom Badge: Duration */}
+          <div className="absolute bottom-2.5 right-2.5 px-2.5 py-1 rounded-lg bg-black/80 backdrop-blur-md text-[11px] font-mono font-bold text-amber-400 border border-amber-500/20">
+            {trail.durationDays} Days Expedition
+          </div>
+        </div>
+
+        {/* 3. Title & Region Breadcrumb */}
+        <div className="space-y-1">
+          <h3 className="text-base font-extrabold text-white leading-tight">{trail.name}</h3>
+          <div className="flex items-center gap-1.5 text-xs text-gray-400">
+            <MapPin className="h-3.5 w-3.5 text-[#B68D40] shrink-0" />
+            <span className="truncate">{trail.region} National Park • Bagmati / Gandaki, Nepal</span>
+          </div>
+        </div>
+
+        {/* 4. AllTrails Signature 4-Box Key Stats Grid */}
+        <div className="grid grid-cols-2 gap-2 p-2.5 rounded-2xl bg-neutral-900/90 border border-neutral-800 text-left">
+          <div className="p-2 rounded-xl bg-neutral-950/80 border border-neutral-900">
+            <span className="text-[9px] text-gray-400 uppercase font-semibold block">Length</span>
+            <p className="text-sm font-extrabold text-white font-mono mt-0.5">{trail.distanceKm} km</p>
+          </div>
+          <div className="p-2 rounded-xl bg-neutral-950/80 border border-neutral-900">
+            <span className="text-[9px] text-gray-400 uppercase font-semibold block">Elevation Gain</span>
+            <p className="text-sm font-extrabold text-amber-400 font-mono mt-0.5">
+              +{trail.elevationGain || (trail.maxElevation - 1500).toLocaleString()} m
+            </p>
+          </div>
+          <div className="p-2 rounded-xl bg-neutral-950/80 border border-neutral-900">
+            <span className="text-[9px] text-gray-400 uppercase font-semibold block">Route Type</span>
+            <p className="text-xs font-bold text-white mt-0.5">{routeType}</p>
+          </div>
+          <div className="p-2 rounded-xl bg-neutral-950/80 border border-neutral-900">
+            <span className="text-[9px] text-gray-400 uppercase font-semibold block">Est. Time</span>
+            <p className="text-xs font-bold text-[#B68D40] font-mono mt-0.5">
+              {estHours} hrs ({trail.durationDays}d)
+            </p>
+          </div>
+        </div>
+
+        {/* 5. AllTrails Feature Tag Chips */}
+        <div className="space-y-1.5">
+          <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider block">
+            Trail Features:
           </span>
-          <span className="px-2 py-0.5 rounded-full bg-black/75 backdrop-blur-md text-white text-[10px] font-semibold border border-white/20 flex items-center gap-1">
-            <Star className="h-3 w-3 text-amber-400 fill-amber-400" />
-            <span>{(trail.rating || 4.8).toFixed(1)}</span>
-            <span className="text-gray-400">({trail.reviewsCount || 86})</span>
+          <div className="flex flex-wrap gap-1.5">
+            <span className="px-2 py-0.5 rounded-lg bg-neutral-900 border border-neutral-800 text-[10px] text-gray-300">
+              🏔️ Mountain Views
+            </span>
+            <span className="px-2 py-0.5 rounded-lg bg-neutral-900 border border-neutral-800 text-[10px] text-gray-300">
+              🌸 Wildflowers
+            </span>
+            <span className="px-2 py-0.5 rounded-lg bg-neutral-900 border border-neutral-800 text-[10px] text-gray-300">
+              🌲 Forest Trail
+            </span>
+            <span className="px-2 py-0.5 rounded-lg bg-neutral-900 border border-neutral-800 text-[10px] text-gray-300">
+              💧 River & Waterfalls
+            </span>
+            <span className="px-2 py-0.5 rounded-lg bg-neutral-900 border border-neutral-800 text-[10px] text-gray-300">
+              🏛️ Sacred Monastery
+            </span>
+            <span className="px-2 py-0.5 rounded-lg bg-neutral-900 border border-neutral-800 text-[10px] text-gray-300">
+              🏕️ Teahouses Available
+            </span>
+          </div>
+        </div>
+
+        {/* 6. Trail Condition & Live Weather Telemetry Banner */}
+        <div className="p-3 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-1.5 text-xs backdrop-blur-md">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+              <CloudSun className="h-3.5 w-3.5 text-[#B68D40]" />
+              <span>Apex Weather Telemetry</span>
+            </span>
+            <span className="text-[10px] font-mono font-bold text-emerald-400">
+              {estSummitTemp <= -5 ? `${estSummitTemp}°C Alpine Freeze` : `${estSummitTemp}°C Clear & Crisp`}
+            </span>
+          </div>
+          <div className="text-[11px] text-gray-300 flex items-center justify-between border-t border-neutral-800/80 pt-1.5">
+            <span className="text-gray-400">Summit Forecast:</span>
+            <span className="font-semibold text-white">
+              {estSummitTemp <= -5 ? 'Freezing Temperatures • High Wind Chill' : 'Clear Visibility • Favorable Climbing'}
+            </span>
+          </div>
+          <div className="text-[11px] text-gray-300 flex items-center justify-between">
+            <span className="text-gray-400">Best Season:</span>
+            <span className="font-semibold text-white">
+              {trail.bestMonths && trail.bestMonths.length > 0
+                ? trail.bestMonths.join(', ')
+                : 'March - May, Sept - Nov'}
+            </span>
+          </div>
+          <div className="text-[11px] text-gray-300 flex items-center justify-between">
+            <span className="text-gray-400">Permits Required:</span>
+            <span className="font-semibold text-amber-400">TIMS & National Park</span>
+          </div>
+        </div>
+
+        {/* 7. Route Altitude Progression Profile */}
+        <div className="p-2.5 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-2">
+          <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider block">
+            Altitude Progression:
           </span>
+          <div className="grid grid-cols-3 gap-1.5 text-center text-[10px] font-mono">
+            <div className="p-1.5 rounded-xl bg-neutral-950 border border-neutral-900">
+              <span className="text-gray-500 block text-[9px]">Start</span>
+              <span className="font-bold text-gray-300 truncate block">{trail.startPoint}</span>
+            </div>
+            <div className="p-1.5 rounded-xl bg-neutral-950 border border-[#B68D40]/30">
+              <span className="text-[#B68D40] block text-[9px] font-bold">Apex Peak</span>
+              <span className="font-extrabold text-amber-400 block">{trail.maxElevation.toLocaleString()}m</span>
+            </div>
+            <div className="p-1.5 rounded-xl bg-neutral-950 border border-neutral-900">
+              <span className="text-gray-500 block text-[9px]">Finish</span>
+              <span className="font-bold text-gray-300 truncate block">{trail.endPoint}</span>
+            </div>
+          </div>
         </div>
 
-        {/* Bottom Badge: Duration */}
-        <div className="absolute bottom-2.5 right-2.5 px-2.5 py-1 rounded-lg bg-black/80 backdrop-blur-md text-[11px] font-mono font-bold text-amber-400 border border-amber-500/20">
-          {trail.durationDays} Days Expedition
-        </div>
-      </div>
-
-      {/* 3. Title & Region Breadcrumb */}
-      <div className="space-y-1">
-        <h3 className="text-base font-extrabold text-white leading-tight">{trail.name}</h3>
-        <div className="flex items-center gap-1.5 text-xs text-gray-400">
-          <MapPin className="h-3.5 w-3.5 text-[#B68D40] shrink-0" />
-          <span className="truncate">{trail.region} National Park • Bagmati / Gandaki, Nepal</span>
-        </div>
-      </div>
-
-      {/* 4. AllTrails Signature 4-Box Key Stats Grid */}
-      <div className="grid grid-cols-2 gap-2 p-2.5 rounded-2xl bg-neutral-900/90 border border-neutral-800 text-left">
-        <div className="p-2 rounded-xl bg-neutral-950/80 border border-neutral-900">
-          <span className="text-[9px] text-gray-400 uppercase font-semibold block">Length</span>
-          <p className="text-sm font-extrabold text-white font-mono mt-0.5">{trail.distanceKm} km</p>
-        </div>
-        <div className="p-2 rounded-xl bg-neutral-950/80 border border-neutral-900">
-          <span className="text-[9px] text-gray-400 uppercase font-semibold block">Elevation Gain</span>
-          <p className="text-sm font-extrabold text-amber-400 font-mono mt-0.5">
-            +{trail.elevationGain || (trail.maxElevation - 1500).toLocaleString()} m
+        {/* 8. Description with Read More Toggle */}
+        <div className="space-y-1.5">
+          <h4 className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Overview</h4>
+          <p className={`text-xs text-gray-300 leading-relaxed ${showFullDesc ? '' : 'line-clamp-3'}`}>
+            {trail.description}
           </p>
+          {trail.description && trail.description.length > 140 && (
+            <button
+              type="button"
+              data-slot="trigger"
+              onClick={() => setShowFullDesc(!showFullDesc)}
+              className="text-[11px] font-bold text-[#B68D40] hover:underline focus-visible:outline-none"
+            >
+              {showFullDesc ? 'Show less' : 'Read more'}
+            </button>
+          )}
         </div>
-        <div className="p-2 rounded-xl bg-neutral-950/80 border border-neutral-900">
-          <span className="text-[9px] text-gray-400 uppercase font-semibold block">Route Type</span>
-          <p className="text-xs font-bold text-white mt-0.5">{routeType}</p>
-        </div>
-        <div className="p-2 rounded-xl bg-neutral-950/80 border border-neutral-900">
-          <span className="text-[9px] text-gray-400 uppercase font-semibold block">Est. Time</span>
-          <p className="text-xs font-bold text-[#B68D40] font-mono mt-0.5">
-            {estHours} hrs ({trail.durationDays}d)
-          </p>
-        </div>
-      </div>
 
-      {/* 5. AllTrails Feature Tag Chips */}
-      <div className="space-y-1.5">
-        <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider block">
-          Trail Features:
-        </span>
-        <div className="flex flex-wrap gap-1.5">
-          <span className="px-2 py-0.5 rounded-lg bg-neutral-900 border border-neutral-800 text-[10px] text-gray-300">
-            🏔️ Mountain Views
-          </span>
-          <span className="px-2 py-0.5 rounded-lg bg-neutral-900 border border-neutral-800 text-[10px] text-gray-300">
-            🌸 Wildflowers
-          </span>
-          <span className="px-2 py-0.5 rounded-lg bg-neutral-900 border border-neutral-800 text-[10px] text-gray-300">
-            🌲 Forest Trail
-          </span>
-          <span className="px-2 py-0.5 rounded-lg bg-neutral-900 border border-neutral-800 text-[10px] text-gray-300">
-            💧 River & Waterfalls
-          </span>
-          <span className="px-2 py-0.5 rounded-lg bg-neutral-900 border border-neutral-800 text-[10px] text-gray-300">
-            🏛️ Sacred Monastery
-          </span>
-          <span className="px-2 py-0.5 rounded-lg bg-neutral-900 border border-neutral-800 text-[10px] text-gray-300">
-            🏕️ Teahouses Available
-          </span>
-        </div>
-      </div>
-
-      {/* 6. Trail Condition & Seasonality Banner (AllTrails Style) */}
-      <div className="p-3 rounded-2xl bg-neutral-900/70 border border-neutral-800 space-y-1.5 text-xs">
-        <div className="flex items-center justify-between">
-          <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            Trail Condition: Good & Clear
-          </span>
-          <span className="text-[10px] font-mono text-gray-400">Verified Guides</span>
-        </div>
-        <div className="text-[11px] text-gray-300 flex items-center justify-between border-t border-neutral-800/80 pt-1.5">
-          <span className="text-gray-400">Best Season:</span>
-          <span className="font-semibold text-white">
-            {trail.bestMonths && trail.bestMonths.length > 0
-              ? trail.bestMonths.join(', ')
-              : 'March - May, Sept - Nov'}
-          </span>
-        </div>
-        <div className="text-[11px] text-gray-300 flex items-center justify-between">
-          <span className="text-gray-400">Permits Required:</span>
-          <span className="font-semibold text-amber-400">TIMS & National Park</span>
-        </div>
-      </div>
-
-      {/* 7. Route Altitude Progression Profile */}
-      <div className="p-2.5 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-2">
-        <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider block">
-          Altitude Progression:
-        </span>
-        <div className="grid grid-cols-3 gap-1.5 text-center text-[10px] font-mono">
-          <div className="p-1.5 rounded-xl bg-neutral-950 border border-neutral-900">
-            <span className="text-gray-500 block text-[9px]">Start</span>
-            <span className="font-bold text-gray-300 truncate block">{trail.startPoint}</span>
+        {/* 9. Key Highlights */}
+        {trail.highlights && trail.highlights.length > 0 && (
+          <div className="space-y-2 pt-1 border-t border-neutral-900">
+            <h4 className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Key Highlights</h4>
+            <div className="space-y-1.5">
+              {trail.highlights.map((hl, idx) => (
+                <div key={idx} className="flex items-start gap-2 text-xs text-gray-200">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-[#B68D40] shrink-0 mt-0.5" />
+                  <span>{hl}</span>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="p-1.5 rounded-xl bg-neutral-950 border border-[#B68D40]/30">
-            <span className="text-[#B68D40] block text-[9px] font-bold">Apex Peak</span>
-            <span className="font-extrabold text-amber-400 block">{trail.maxElevation.toLocaleString()}m</span>
-          </div>
-          <div className="p-1.5 rounded-xl bg-neutral-950 border border-neutral-900">
-            <span className="text-gray-500 block text-[9px]">Finish</span>
-            <span className="font-bold text-gray-300 truncate block">{trail.endPoint}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* 8. Description with Read More Toggle */}
-      <div className="space-y-1.5">
-        <h4 className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Overview</h4>
-        <p className={`text-xs text-gray-300 leading-relaxed ${showFullDesc ? '' : 'line-clamp-3'}`}>
-          {trail.description}
-        </p>
-        {trail.description && trail.description.length > 140 && (
-          <button
-            type="button"
-            onClick={() => setShowFullDesc(!showFullDesc)}
-            className="text-[11px] font-bold text-[#B68D40] hover:underline"
-          >
-            {showFullDesc ? 'Show less' : 'Read more'}
-          </button>
         )}
       </div>
 
-      {/* 9. Key Highlights */}
-      {trail.highlights && trail.highlights.length > 0 && (
-        <div className="space-y-2 pt-1 border-t border-neutral-900">
-          <h4 className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Key Highlights</h4>
-          <div className="space-y-1.5">
-            {trail.highlights.map((hl, idx) => (
-              <div key={idx} className="flex items-start gap-2 text-xs text-gray-200">
-                <CheckCircle2 className="h-3.5 w-3.5 text-[#B68D40] shrink-0 mt-0.5" />
-                <span>{hl}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* 10. Actions & GPX Export (No reviews as requested) */}
-      <div className="pt-2 space-y-2 border-t border-neutral-900">
+      {/* 10. Actions & GPX Export (Footer) */}
+      <div data-slot="footer" className="pt-2 space-y-2 border-t border-neutral-900">
         <button
           type="button"
+          data-slot="trigger"
           onClick={onFocusMap}
-          className="w-full py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-[#B68D40] text-xs font-bold flex items-center justify-center gap-2 transition"
+          className="w-full py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-[#B68D40] text-xs font-bold flex items-center justify-center gap-2 transition focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none"
         >
           <MapIcon className="h-4 w-4" />
           <span>Focus on 2D/3D Map</span>
@@ -414,8 +454,9 @@ function SidebarQuickSpecs({
 
         <button
           type="button"
+          data-slot="trigger"
           onClick={handleDownloadGPX}
-          className="w-full py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-gray-300 hover:text-white text-xs font-semibold flex items-center justify-center gap-2 transition"
+          className="w-full py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-gray-300 hover:text-white text-xs font-semibold flex items-center justify-center gap-2 transition focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none"
         >
           <Download className="h-3.5 w-3.5 text-gray-400" />
           <span>Download GPX Track</span>
@@ -423,11 +464,312 @@ function SidebarQuickSpecs({
 
         <Link
           href={`/trails/${trail.slug || trail.id}`}
-          className="w-full py-2.5 rounded-xl bg-[#B68D40] hover:bg-[#c99e4b] text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg transition"
+          data-slot="trigger"
+          className="w-full py-2.5 rounded-xl bg-[#B68D40] hover:bg-[#c99e4b] text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg transition focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none"
         >
           <span>View Full Trail Guide & Book Expedition</span>
           <ArrowUpRight className="h-4 w-4" />
         </Link>
+      </div>
+    </div>
+  );
+}
+
+interface LandmarkQuickSpecsProps {
+  landmark: Landmark;
+  onBack: () => void;
+  onFocusMap: () => void;
+}
+
+function LandmarkQuickSpecs({ landmark, onBack, onFocusMap }: LandmarkQuickSpecsProps) {
+  const estLapseTemp = Math.round(15 - ((landmark.elevation - 1400) / 1000) * 6.5);
+  return (
+    <div data-slot="base" className="space-y-4 animate-in fade-in slide-in-from-left-2 duration-200 pb-4">
+      {/* 1. Header Toolbar */}
+      <div data-slot="header" className="flex items-center justify-between pb-2.5 border-b border-neutral-800">
+        <button
+          type="button"
+          data-slot="trigger"
+          onClick={onBack}
+          className="flex items-center gap-1.5 text-xs font-bold text-gray-300 hover:text-[#B68D40] transition py-1 px-2 rounded-lg hover:bg-neutral-900 focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          <span>Back</span>
+        </button>
+
+        <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold">
+          {landmark.category || 'Landmark'}
+        </span>
+
+        <button
+          type="button"
+          data-slot="trigger"
+          onClick={onBack}
+          className="p-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-gray-300 hover:text-white transition focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none"
+          title="Close specs"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {/* 2. Body Container */}
+      <div data-slot="body" className="space-y-4">
+        {landmark.image && (
+          <div className="relative h-40 w-full rounded-2xl overflow-hidden bg-neutral-900 border border-neutral-800 shadow-xl group">
+            <img
+              src={landmark.image}
+              alt={landmark.name}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/20 to-transparent" />
+            <div className="absolute top-2.5 left-2.5 px-2.5 py-0.5 rounded-full bg-black/80 backdrop-blur-md text-[#B68D40] text-[10px] font-bold border border-[#B68D40]/30 uppercase">
+              {landmark.region || 'Himalayan Ridge'}
+            </div>
+            <div className="absolute bottom-2.5 right-2.5 px-2 py-0.5 rounded-lg bg-black/80 backdrop-blur-md text-[11px] font-mono font-bold text-amber-400 border border-amber-500/20">
+              {landmark.elevation}m Altitude
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-1">
+          <h3 className="text-base font-extrabold text-white leading-tight">{landmark.name}</h3>
+          {landmark.nativeName && (
+            <p className="text-xs text-[#B68D40] font-medium">{landmark.nativeName}</p>
+          )}
+          <div className="flex items-center gap-1.5 text-xs text-gray-400">
+            <MapPin className="h-3.5 w-3.5 text-[#B68D40] shrink-0" />
+            <span>{landmark.region || 'Nepal'} • {landmark.coordinates.lat.toFixed(4)}°N, {landmark.coordinates.lng.toFixed(4)}°E</span>
+          </div>
+        </div>
+
+        {/* Key Metrics */}
+        <div className="grid grid-cols-2 gap-2 p-2.5 rounded-2xl bg-neutral-900/90 border border-neutral-800 text-left">
+          <div className="p-2 rounded-xl bg-neutral-950/80 border border-neutral-900">
+            <span className="text-[9px] text-gray-400 uppercase font-semibold block">Elevation</span>
+            <p className="text-sm font-extrabold text-amber-400 font-mono mt-0.5">{landmark.elevation.toLocaleString()} m</p>
+          </div>
+          <div className="p-2 rounded-xl bg-neutral-950/80 border border-neutral-900">
+            <span className="text-[9px] text-gray-400 uppercase font-semibold block">Category</span>
+            <p className="text-xs font-bold text-white mt-0.5">{landmark.category}</p>
+          </div>
+        </div>
+
+        {/* Live Weather Telemetry */}
+        <div className="p-3 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-1.5 text-xs backdrop-blur-md">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+              <CloudSun className="h-3.5 w-3.5 text-[#B68D40]" />
+              <span>Apex Weather Telemetry</span>
+            </span>
+            <span className="text-[10px] font-mono font-bold text-emerald-400">
+              {estLapseTemp <= 0 ? `${estLapseTemp}°C Sub-Zero Alpine` : `${estLapseTemp}°C Crisp Mountain Air`}
+            </span>
+          </div>
+          <div className="text-[11px] text-gray-300 flex items-center justify-between border-t border-neutral-800/80 pt-1.5">
+            <span className="text-gray-400">Permit Status:</span>
+            <span className="font-semibold text-amber-400">{landmark.permitRequired || 'Standard Park Permit'}</span>
+          </div>
+          {landmark.associatedTrail && (
+            <div className="text-[11px] text-gray-300 flex items-center justify-between">
+              <span className="text-gray-400">Associated Expedition:</span>
+              <span className="font-semibold text-white truncate max-w-[160px]">{landmark.associatedTrail}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Description */}
+        {landmark.description && (
+          <div className="space-y-1.5">
+            <h4 className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Overview</h4>
+            <p className="text-xs text-gray-300 leading-relaxed">
+              {landmark.description}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* 3. Footer */}
+      <div data-slot="footer" className="pt-2 space-y-2 border-t border-neutral-900">
+        <button
+          type="button"
+          data-slot="trigger"
+          onClick={onFocusMap}
+          className="w-full py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-[#B68D40] text-xs font-bold flex items-center justify-center gap-2 transition focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none"
+        >
+          <MapIcon className="h-4 w-4" />
+          <span>Focus on 2D/3D Map</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+interface SummitQuickSpecsProps {
+  summit: ApexSummit;
+  onBack: () => void;
+  onFocusMap: () => void;
+  onLaunchTour?: () => void;
+}
+
+function SummitQuickSpecs({
+  summit,
+  onBack,
+  onFocusMap,
+  onLaunchTour,
+}: SummitQuickSpecsProps) {
+  const matchingTour = SUMMIT_TOURS.find(
+    (t) =>
+      t.name.toLowerCase().includes(summit.name.toLowerCase()) ||
+      summit.name.toLowerCase().includes(t.name.toLowerCase())
+  );
+
+  const oxygenPercent = matchingTour?.oxygenAtSummitPercent ?? Math.round(100 * Math.exp(-summit.elevation / 7200));
+  const estSummitTemp = matchingTour?.summitTempC ?? Math.round(15 - (summit.elevation / 1000) * 6.5);
+  const isDeathZone = summit.elevation >= 8000;
+
+  return (
+    <div data-slot="base" className="space-y-4 animate-in fade-in slide-in-from-left-2 duration-200 pb-4">
+      {/* 1. Header Toolbar */}
+      <div data-slot="header" className="flex items-center justify-between pb-2.5 border-b border-neutral-800">
+        <button
+          type="button"
+          data-slot="trigger"
+          onClick={onBack}
+          className="flex items-center gap-1.5 text-xs font-bold text-gray-300 hover:text-[#B68D40] transition py-1 px-2 rounded-lg hover:bg-neutral-900 focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          <span>Back</span>
+        </button>
+
+        <span className={`text-[10px] uppercase font-mono px-2 py-0.5 rounded-full border font-bold ${
+          isDeathZone
+            ? 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+            : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+        }`}>
+          {isDeathZone ? '☠️ 8,000m+ Death Zone' : 'Apex Summit'}
+        </span>
+
+        <button
+          type="button"
+          data-slot="trigger"
+          onClick={onBack}
+          className="p-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-gray-300 hover:text-white transition focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none"
+          title="Close specs"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {/* 2. Body Container */}
+      <div data-slot="body" className="space-y-4">
+        {matchingTour?.coverImage && (
+          <div className="relative h-44 w-full rounded-2xl overflow-hidden bg-neutral-900 border border-neutral-800 shadow-xl group">
+            <img
+              src={matchingTour.coverImage}
+              alt={summit.name}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/20 to-transparent" />
+            <div className="absolute top-2.5 left-2.5 px-2.5 py-0.5 rounded-full bg-black/80 backdrop-blur-md text-[#B68D40] text-[10px] font-bold border border-[#B68D40]/30 uppercase">
+              {summit.region} Massif
+            </div>
+            {matchingTour.rankInWorld && (
+              <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-lg bg-[#B68D40]/90 text-black text-[10px] font-extrabold uppercase shadow">
+                #{matchingTour.rankInWorld} Earth
+              </div>
+            )}
+            <div className="absolute bottom-2.5 right-2.5 px-2 py-0.5 rounded-lg bg-black/80 backdrop-blur-md text-[11px] font-mono font-bold text-amber-400 border border-amber-500/20">
+              {summit.elevation.toLocaleString()}m Altitude
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-1">
+          <h3 className="text-base font-extrabold text-white leading-tight">{summit.name}</h3>
+          {matchingTour?.nativeName && (
+            <p className="text-xs text-[#B68D40] font-medium">{matchingTour.nativeName}</p>
+          )}
+          <div className="flex items-center gap-1.5 text-xs text-gray-400">
+            <MapPin className="h-3.5 w-3.5 text-[#B68D40] shrink-0" />
+            <span>{summit.region} Range • {summit.coords.lat.toFixed(4)}°N, {summit.coords.lng.toFixed(4)}°E</span>
+          </div>
+        </div>
+
+        {/* Key Metrics */}
+        <div className="grid grid-cols-3 gap-1.5 p-2 rounded-2xl bg-neutral-900/90 border border-neutral-800 text-left">
+          <div className="p-2 rounded-xl bg-neutral-950/80 border border-neutral-900">
+            <span className="text-[9px] text-gray-400 uppercase font-semibold block">Apex Elevation</span>
+            <p className="text-xs font-extrabold text-amber-400 font-mono mt-0.5">{summit.elevation.toLocaleString()}m</p>
+          </div>
+          <div className="p-2 rounded-xl bg-neutral-950/80 border border-neutral-900">
+            <span className="text-[9px] text-gray-400 uppercase font-semibold block">Effective O₂</span>
+            <p className="text-xs font-extrabold text-emerald-400 font-mono mt-0.5">{oxygenPercent}% sea level</p>
+          </div>
+          <div className="p-2 rounded-xl bg-neutral-950/80 border border-neutral-900">
+            <span className="text-[9px] text-gray-400 uppercase font-semibold block">Lapse Temp</span>
+            <p className="text-xs font-extrabold text-sky-400 font-mono mt-0.5">{estSummitTemp}°C</p>
+          </div>
+        </div>
+
+        {/* Live Weather & Hypoxia Telemetry */}
+        <div className="p-3 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-1.5 text-xs backdrop-blur-md">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+              <CloudSun className="h-3.5 w-3.5 text-[#B68D40]" />
+              <span>Apex Weather & Hypoxia Telemetry</span>
+            </span>
+            <span className={`text-[10px] font-mono font-bold ${isDeathZone ? 'text-rose-400' : 'text-emerald-400'}`}>
+              {isDeathZone ? 'High Hypoxia Danger' : 'Sub-Apex Alpine'}
+            </span>
+          </div>
+          <div className="text-[11px] text-gray-300 flex items-center justify-between border-t border-neutral-800/80 pt-1.5">
+            <span className="text-gray-400">Summit Winds:</span>
+            <span className="font-semibold text-white">
+              {matchingTour?.summitWindKmh ? `${matchingTour.summitWindKmh} km/h Jet Stream` : '40-60 km/h Alpine Gusts'}
+            </span>
+          </div>
+          {matchingTour?.firstAscenders && (
+            <div className="text-[11px] text-gray-300 flex flex-col gap-0.5 border-t border-neutral-800/80 pt-1.5">
+              <span className="text-gray-400">First Ascent ({matchingTour.firstAscentYear}):</span>
+              <span className="font-semibold text-white text-[10px] leading-tight">{matchingTour.firstAscenders}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Historical Overview */}
+        {matchingTour?.historicalOverview && (
+          <div className="space-y-1.5">
+            <h4 className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Mountaineering History</h4>
+            <p className="text-xs text-gray-300 leading-relaxed">
+              {matchingTour.historicalOverview}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* 3. Footer */}
+      <div data-slot="footer" className="pt-2 space-y-2 border-t border-neutral-900">
+        {matchingTour && onLaunchTour && (
+          <button
+            type="button"
+            data-slot="trigger"
+            onClick={onLaunchTour}
+            className="w-full py-2.5 rounded-xl bg-gradient-to-r from-[#B68D40] to-amber-500 hover:from-[#c99e4b] hover:to-amber-400 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg transition focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none"
+          >
+            <Mountain className="h-4 w-4 fill-black" />
+            <span>Launch 3D Summit Orbital Tour</span>
+          </button>
+        )}
+
+        <button
+          type="button"
+          data-slot="trigger"
+          onClick={onFocusMap}
+          className="w-full py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-[#B68D40] text-xs font-bold flex items-center justify-center gap-2 transition focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none"
+        >
+          <MapIcon className="h-4 w-4" />
+          <span>Focus on 2D/3D Map</span>
+        </button>
       </div>
     </div>
   );
@@ -447,19 +789,28 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
   const urlLandmark = searchParams.get('landmark');
   const urlRange = searchParams.get('range');
   const urlRegion = searchParams.get('region');
+  const urlSearch = searchParams.get('search') || searchParams.get('q');
 
   const [trails, setTrails] = useState<Trail[]>([]);
+  const [landmarks, setLandmarks] = useState<Landmark[]>([]);
+  const [ranges, setRanges] = useState<HimalayanRange[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(urlSearch || '');
+  const [searchOpen, setSearchOpen] = useState(false);
   const [selectedRegion, setSelectedRegion] = useState<string>('All');
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('All');
   const [maxAltitude, setMaxAltitude] = useState<number>(6000);
   const [layoutMode, setLayoutMode] = useState<'split' | 'mapOnly' | 'cardsOnly'>(urlLayout || defaultLayout);
   const [mapEngine, setMapEngine] = useState<'2d' | '3d-freeroam' | '3d-summit-tours' | '3d-drone-flight'>('2d');
+  const [perspective, setPerspective] = useState<'topo' | 'ridge' | 'summit'>('ridge');
+  const [timeOfDay, setTimeOfDay] = useState<'sunrise' | 'midday' | 'sunset' | 'night'>('midday');
   const [droneDistanceKm, setDroneDistanceKm] = useState<number | null>(null);
   
   // Active Selected / Hovered Trail for Elevation Profile & Map Focus
   const [selectedTrail, setSelectedTrail] = useState<Trail | null>(null);
+  const [selectedLandmark, setSelectedLandmark] = useState<Landmark | null>(null);
+  const [selectedSummit, setSelectedSummit] = useState<ApexSummit | null>(null);
+  const [activeSummitTourSlug, setActiveSummitTourSlug] = useState<string>(urlTour || 'everest');
   const [hoveredTrailId, setHoveredTrailId] = useState<string | null>(null);
   const [focusedCoords, setFocusedCoords] = useState<[number, number] | undefined>(undefined);
   const [savedTrails, setSavedTrails] = useState<string[]>([]);
@@ -475,6 +826,62 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
 
   // Quick Detail Modal / Slide-Over State
   const [detailModalTrail, setDetailModalTrail] = useState<Trail | null>(null);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setSearchOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (urlSearch) {
+      setSearchQuery(urlSearch);
+    }
+  }, [urlSearch]);
+
+  // Synchronize URL search queries with instant map focus and trail/landmark selection
+  useEffect(() => {
+    if (urlSearch && trails.length > 0) {
+      const q = urlSearch.trim().toLowerCase();
+      const matchTrail = trails.find(
+        (t) => t.name.toLowerCase() === q || t.slug.toLowerCase() === q
+      ) || trails.find((t) => t.name.toLowerCase().includes(q));
+
+      if (matchTrail) {
+        handleTrailSelect(matchTrail, true);
+        return;
+      }
+
+      const matchSummit = HIMALAYAN_SUMMITS.find(
+        (s) => s.name.toLowerCase().includes(q)
+      );
+      if (matchSummit) {
+        setActiveSummit(matchSummit.name);
+        setSelectedSummit(matchSummit);
+        setFocusedCoords([matchSummit.coords.lat, matchSummit.coords.lng]);
+        setSelectedRegion(matchSummit.region);
+        setSidebarTab('hud');
+        return;
+      }
+
+      if (landmarks.length > 0) {
+        const matchLandmark = landmarks.find(
+          (lm) => lm.name.toLowerCase().includes(q)
+        );
+        if (matchLandmark) {
+          setSelectedLandmark(matchLandmark);
+          setFocusedCoords([matchLandmark.coordinates.lat, matchLandmark.coordinates.lng]);
+          if (matchLandmark.region) setSelectedRegion(matchLandmark.region);
+          setSidebarTab('hud');
+        }
+      }
+    }
+  }, [urlSearch, trails, landmarks]);
 
   useEffect(() => {
     if (urlLayout) {
@@ -510,27 +917,7 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
     }
   }, [urlLat, urlLng]);
 
-  useEffect(() => {
-    if (urlLandmark) {
-      fetch('/api/landmarks')
-        .then((res) => (res.ok ? res.json() : []))
-        .then((landmarks: Landmark[]) => {
-          const match = landmarks.find(
-            (lm) =>
-              lm.id.toLowerCase() === urlLandmark.toLowerCase() ||
-              lm.name.toLowerCase().includes(urlLandmark.toLowerCase())
-          );
-          if (match) {
-            setFocusedCoords([match.coordinates.lat, match.coordinates.lng]);
-            if (match.region) {
-              setSelectedRegion(match.region);
-            }
-          }
-        })
-        .catch(console.error);
-    }
-  }, [urlLandmark]);
-
+  // Single centralized source of truth: fetch trails, itineraries, landmarks, and ranges ONCE
   useEffect(() => {
     fetch('/api/trails')
       .then((res) => (res.ok ? res.json() : []))
@@ -547,10 +934,7 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [urlTrail]);
 
-  // Fetch authentic expedition itineraries from API
-  useEffect(() => {
     fetch('/api/itineraries')
       .then((res) => (res.ok ? res.json() : []))
       .then((data: Itinerary[]) => {
@@ -559,7 +943,42 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
         }
       })
       .catch((err) => console.warn('Failed to load itineraries in Discovery Hub:', err));
-  }, []);
+
+    fetch('/api/landmarks')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: Landmark[]) => {
+        if (Array.isArray(data)) {
+          setLandmarks(data);
+        }
+      })
+      .catch((err) => console.warn('Failed to load landmarks in Discovery Hub:', err));
+
+    fetch('/api/ranges')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: HimalayanRange[]) => {
+        if (Array.isArray(data)) {
+          setRanges(data);
+        }
+      })
+      .catch((err) => console.warn('Failed to load ranges in Discovery Hub:', err));
+  }, [urlTrail]);
+
+  // Match urlLandmark from centralized landmarks (no duplicate network requests)
+  useEffect(() => {
+    if (urlLandmark && landmarks.length > 0) {
+      const match = landmarks.find(
+        (lm) =>
+          lm.id.toLowerCase() === urlLandmark.toLowerCase() ||
+          lm.name.toLowerCase().includes(urlLandmark.toLowerCase())
+      );
+      if (match) {
+        setFocusedCoords([match.coordinates.lat, match.coordinates.lng]);
+        if (match.region) {
+          setSelectedRegion(match.region);
+        }
+      }
+    }
+  }, [urlLandmark, landmarks]);
 
   // Compute matching itinerary for current active expedition
   const activeItinerary = useMemo(() => {
@@ -607,6 +1026,90 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
     return matchesSearch && matchesRegion && matchesDiff && matchesAlt;
   });
 
+  // Real-time categorized search filtering across trails, summits, passes, and landmarks
+  const searchResults = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return { trails: [], summits: [], passes: [], landmarks: [] };
+
+    const matchingTrails = trails.filter(
+      (t) =>
+        t.name.toLowerCase().includes(q) ||
+        t.region.toLowerCase().includes(q) ||
+        t.description.toLowerCase().includes(q)
+    );
+
+    const matchingSummits = HIMALAYAN_SUMMITS.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        s.region.toLowerCase().includes(q)
+    );
+
+    const matchingPasses = landmarks.filter(
+      (lm) =>
+        (lm.category === 'High Pass' || lm.name.toLowerCase().includes('pass')) &&
+        (lm.name.toLowerCase().includes(q) || (lm.region && lm.region.toLowerCase().includes(q)))
+    );
+
+    const matchingLandmarks = landmarks.filter(
+      (lm) =>
+        lm.category !== 'High Pass' &&
+        !lm.name.toLowerCase().includes('pass') &&
+        (lm.name.toLowerCase().includes(q) ||
+          (lm.category && lm.category.toLowerCase().includes(q)) ||
+          (lm.region && lm.region.toLowerCase().includes(q)))
+    );
+
+    return {
+      trails: matchingTrails,
+      summits: matchingSummits,
+      passes: matchingPasses,
+      landmarks: matchingLandmarks,
+    };
+  }, [searchQuery, trails, landmarks]);
+
+  const totalSearchMatches =
+    searchResults.trails.length +
+    searchResults.summits.length +
+    searchResults.passes.length +
+    searchResults.landmarks.length;
+
+  const handleSelectSearchResult = (
+    type: 'trail' | 'summit' | 'pass' | 'landmark',
+    item: any
+  ) => {
+    setSearchOpen(false);
+    if (type === 'trail') {
+      const trail = item as Trail;
+      handleTrailSelect(trail, true);
+      setDetailModalTrail(trail);
+      setSelectedLandmark(null);
+      setSelectedSummit(null);
+      if (trail.region) setSelectedRegion(trail.region);
+      const center = getTrailCenterCoords(trail);
+      if (center) {
+        setFocusedCoords(center);
+      }
+    } else if (type === 'summit') {
+      const summit = item as ApexSummit;
+      setActiveSummit(summit.name);
+      setSelectedSummit(summit);
+      setFocusedCoords([summit.coords.lat, summit.coords.lng]);
+      setSelectedRegion(summit.region);
+      setSelectedLandmark(null);
+      setDetailModalTrail(null);
+      setLeftPanelOpen(true);
+    } else {
+      const lm = item as Landmark;
+      setSelectedLandmark(lm);
+      setSelectedSummit(null);
+      setDetailModalTrail(null);
+      setFocusedCoords([lm.coordinates.lat, lm.coordinates.lng]);
+      if (lm.region) setSelectedRegion(lm.region);
+      setSidebarTab('hud');
+      setLeftPanelOpen(true);
+    }
+  };
+
   const toggleSaveTrail = (id: string) => {
     setSavedTrails((prev) => 
       prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
@@ -616,11 +1119,12 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
   const handleTrailSelect = (trail: Trail, switchMode = false) => {
     setSelectedTrail(trail);
     setHoveredTrailId(trail.id);
+    setSelectedLandmark(null);
+    setSelectedSummit(null);
     setActiveItineraryDay(1);
-    const track = ROUTE_TRACKS[trail.id];
-    if (track && track.coords.length) {
-      const midIdx = Math.floor(track.coords.length / 2);
-      setFocusedCoords(track.coords[midIdx]);
+    const center = getTrailCenterCoords(trail);
+    if (center) {
+      setFocusedCoords(center);
     }
     if (switchMode && layoutMode === 'cardsOnly') {
       setLayoutMode('split');
@@ -629,10 +1133,9 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
 
   const handleTrailCardHover = (trail: Trail) => {
     setHoveredTrailId(trail.id);
-    const track = ROUTE_TRACKS[trail.id];
-    if (track && track.coords.length) {
-      const midIdx = Math.floor(track.coords.length / 2);
-      setFocusedCoords(track.coords[midIdx]);
+    const center = getTrailCenterCoords(trail);
+    if (center) {
+      setFocusedCoords(center);
     }
   };
 
@@ -678,23 +1181,175 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
               <span>Navigator</span>
             </div>
 
-            <div className="relative w-full">
-              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-gray-400" />
+            <div className="relative w-full" ref={searchContainerRef}>
+              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-gray-400 z-10" />
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onFocus={() => setSearchOpen(true)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setSearchOpen(true);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setSearchOpen(false);
+                }}
                 placeholder="Search trails, peaks, passes, valleys..."
-                className="w-full pl-9 pr-8 py-1.5 rounded-full bg-neutral-900 border border-neutral-700/80 text-xs text-white placeholder-gray-400 focus:outline-none focus:border-[#B68D40] transition"
+                className="w-full pl-9 pr-8 py-1.5 rounded-full bg-neutral-900 border border-neutral-700/80 text-xs text-white placeholder-gray-400 focus:outline-none focus:border-[#B68D40] transition focus-visible:ring-2 focus-visible:ring-[#B68D40]"
               />
               {searchQuery && (
                 <button 
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-2 text-gray-400 hover:text-white"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setSearchOpen(false);
+                  }}
+                  className="absolute right-2.5 top-2 text-gray-400 hover:text-white z-10"
                   title="Clear search"
+                  aria-label="Clear search"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
+              )}
+
+              {/* Real-time categorized search dropdown */}
+              {searchOpen && searchQuery.trim().length > 0 && (
+                <div
+                  data-slot="search-results"
+                  className="absolute top-full left-0 right-0 mt-2 max-h-80 overflow-y-auto rounded-2xl bg-neutral-950/95 border border-[#B68D40]/40 shadow-2xl backdrop-blur-2xl p-2 z-50 divide-y divide-neutral-900 scrollbar-thin scrollbar-thumb-amber-500/20"
+                >
+                  {totalSearchMatches === 0 ? (
+                    <div className="p-3 text-center text-xs text-gray-400">
+                      No matching trails, peaks, passes, or landmarks found.
+                    </div>
+                  ) : (
+                    <>
+                      {/* 1. Trails */}
+                      {searchResults.trails.length > 0 && (
+                        <div className="py-1.5 first:pt-0">
+                          <span className="text-[10px] text-[#B68D40] uppercase font-bold tracking-wider px-2 block mb-1">
+                            Trails & Expeditions ({searchResults.trails.length})
+                          </span>
+                          <div className="space-y-0.5">
+                            {searchResults.trails.slice(0, 5).map((t) => (
+                              <button
+                                key={t.id}
+                                type="button"
+                                data-slot="trigger"
+                                onClick={() => handleSelectSearchResult('trail', t)}
+                                className="w-full px-2 py-1.5 rounded-xl hover:bg-white/10 text-left flex items-center justify-between transition group focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none"
+                              >
+                                <div className="min-w-0 pr-2">
+                                  <div className="text-xs font-bold text-white group-hover:text-[#E2C085] truncate">
+                                    {t.name}
+                                  </div>
+                                  <div className="text-[10px] text-gray-400 truncate">
+                                    {t.region} • {t.distanceKm} km • {t.durationDays}d
+                                  </div>
+                                </div>
+                                <span className="text-[10px] font-mono text-amber-400 shrink-0">
+                                  {t.maxElevation}m
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 2. Apex Summits */}
+                      {searchResults.summits.length > 0 && (
+                        <div className="py-1.5">
+                          <span className="text-[10px] text-amber-400 uppercase font-bold tracking-wider px-2 block mb-1">
+                            Apex Peaks & Summits ({searchResults.summits.length})
+                          </span>
+                          <div className="space-y-0.5">
+                            {searchResults.summits.slice(0, 4).map((s) => (
+                              <button
+                                key={s.name}
+                                type="button"
+                                data-slot="trigger"
+                                onClick={() => handleSelectSearchResult('summit', s)}
+                                className="w-full px-2 py-1.5 rounded-xl hover:bg-white/10 text-left flex items-center justify-between transition group focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none"
+                              >
+                                <div className="flex items-center gap-1.5 min-w-0 pr-2">
+                                  <Mountain className="h-3 w-3 text-[#B68D40] shrink-0" />
+                                  <span className="text-xs font-bold text-white group-hover:text-[#E2C085] truncate">
+                                    {s.name}
+                                  </span>
+                                  <span className="text-[10px] text-gray-400">({s.region})</span>
+                                </div>
+                                <span className="text-[10px] font-mono font-bold text-amber-400 shrink-0">
+                                  {s.elevation}m
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 3. High Passes */}
+                      {searchResults.passes.length > 0 && (
+                        <div className="py-1.5">
+                          <span className="text-[10px] text-emerald-400 uppercase font-bold tracking-wider px-2 block mb-1">
+                            High Altitude Passes ({searchResults.passes.length})
+                          </span>
+                          <div className="space-y-0.5">
+                            {searchResults.passes.slice(0, 4).map((p) => (
+                              <button
+                                key={p.id}
+                                type="button"
+                                data-slot="trigger"
+                                onClick={() => handleSelectSearchResult('pass', p)}
+                                className="w-full px-2 py-1.5 rounded-xl hover:bg-white/10 text-left flex items-center justify-between transition group focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none"
+                              >
+                                <div className="flex items-center gap-1.5 min-w-0 pr-2">
+                                  <span className="text-xs">🚩</span>
+                                  <span className="text-xs font-bold text-white group-hover:text-[#E2C085] truncate">
+                                    {p.name}
+                                  </span>
+                                  <span className="text-[10px] text-gray-400">({p.region || 'Himalayas'})</span>
+                                </div>
+                                <span className="text-[10px] font-mono text-emerald-400 shrink-0">
+                                  {p.elevation}m
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 4. Landmarks & POIs */}
+                      {searchResults.landmarks.length > 0 && (
+                        <div className="py-1.5 last:pb-0">
+                          <span className="text-[10px] text-sky-400 uppercase font-bold tracking-wider px-2 block mb-1">
+                            Monasteries & Base Camps ({searchResults.landmarks.length})
+                          </span>
+                          <div className="space-y-0.5">
+                            {searchResults.landmarks.slice(0, 4).map((lm) => (
+                              <button
+                                key={lm.id}
+                                type="button"
+                                data-slot="trigger"
+                                onClick={() => handleSelectSearchResult('landmark', lm)}
+                                className="w-full px-2 py-1.5 rounded-xl hover:bg-white/10 text-left flex items-center justify-between transition group focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none"
+                              >
+                                <div className="flex items-center gap-1.5 min-w-0 pr-2">
+                                  <MapPin className="h-3 w-3 text-[#B68D40] shrink-0" />
+                                  <span className="text-xs font-bold text-white group-hover:text-[#E2C085] truncate">
+                                    {lm.name}
+                                  </span>
+                                  <span className="text-[10px] text-gray-400">({lm.category || 'Landmark'})</span>
+                                </div>
+                                <span className="text-[10px] font-mono text-gray-300 shrink-0">
+                                  {lm.elevation}m
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -961,6 +1616,37 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                       isSaved={savedTrails.includes(detailModalTrail.id)}
                     />
                   </div>
+                ) : selectedLandmark ? (
+                  <div className="p-3">
+                    <LandmarkQuickSpecs
+                      landmark={selectedLandmark}
+                      onBack={() => setSelectedLandmark(null)}
+                      onFocusMap={() => {
+                        setFocusedCoords([selectedLandmark.coordinates.lat, selectedLandmark.coordinates.lng]);
+                      }}
+                    />
+                  </div>
+                ) : selectedSummit ? (
+                  <div className="p-3">
+                    <SummitQuickSpecs
+                      summit={selectedSummit}
+                      onBack={() => setSelectedSummit(null)}
+                      onFocusMap={() => {
+                        setFocusedCoords([selectedSummit.coords.lat, selectedSummit.coords.lng]);
+                      }}
+                      onLaunchTour={() => {
+                        const matchingTour = SUMMIT_TOURS.find(
+                          (t) =>
+                            t.name.toLowerCase().includes(selectedSummit.name.toLowerCase()) ||
+                            selectedSummit.name.toLowerCase().includes(t.name.toLowerCase())
+                        );
+                        if (matchingTour) {
+                          setActiveSummitTourSlug(matchingTour.slug);
+                        }
+                        setMapEngine('3d-summit-tours');
+                      }}
+                    />
+                  </div>
                 ) : sidebarTab === 'hud' ? (
                   /* B. Geospatial HUD View (Adapted for 2D, 3D Roam, 3D Summit Tours) */
                   <div className="p-3 space-y-4 animate-in fade-in duration-200">
@@ -1019,6 +1705,7 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                                   type="button"
                                   onClick={() => {
                                     setActiveSummit(summit.name);
+                                    setSelectedSummit(summit);
                                     setFocusedCoords([summit.coords.lat, summit.coords.lng]);
                                     setSelectedRegion(summit.region);
                                   }}
@@ -1121,29 +1808,100 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                           </p>
                         </div>
 
-                        {/* Apex Summit Fly-To */}
+                        {/* 1. Camera Perspective Presets & Reset */}
                         <div className="space-y-2">
-                          <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider block">
-                            Summit 3D Camera Teleport:
-                          </span>
-                          <div className="grid grid-cols-2 gap-1.5">
-                            {HIMALAYAN_SUMMITS.slice(0, 6).map((summit: ApexSummit) => (
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">
+                              Camera Perspective:
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const target = REGION_FOCUS_COORDS['All'] || { center: [28.25, 85.4] };
+                                setFocusedCoords(target.center);
+                                setSelectedRegion('All');
+                              }}
+                              className="text-[10px] text-gray-400 hover:text-[#B68D40] flex items-center gap-1 transition"
+                              title="Reset 3D Camera"
+                            >
+                              <RotateCcw className="h-3 w-3" />
+                              <span>Reset</span>
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-3 gap-1">
+                            <button
+                              type="button"
+                              data-slot="trigger"
+                              data-pressed={perspective === 'topo'}
+                              onClick={() => setPerspective('topo')}
+                              className={`py-1.5 px-2 rounded-xl text-[10px] font-bold transition flex items-center justify-center gap-1 focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none ${
+                                perspective === 'topo'
+                                  ? 'bg-[#B68D40] text-black shadow'
+                                  : 'bg-neutral-900 text-gray-300 border border-neutral-800 hover:text-white'
+                              }`}
+                            >
+                              <span>Topo (90°)</span>
+                            </button>
+                            <button
+                              type="button"
+                              data-slot="trigger"
+                              data-pressed={perspective === 'ridge'}
+                              onClick={() => setPerspective('ridge')}
+                              className={`py-1.5 px-2 rounded-xl text-[10px] font-bold transition flex items-center justify-center gap-1 focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none ${
+                                perspective === 'ridge'
+                                  ? 'bg-[#B68D40] text-black shadow'
+                                  : 'bg-neutral-900 text-gray-300 border border-neutral-800 hover:text-white'
+                              }`}
+                            >
+                              <span>Ridge (45°)</span>
+                            </button>
+                            <button
+                              type="button"
+                              data-slot="trigger"
+                              data-pressed={perspective === 'summit'}
+                              onClick={() => setPerspective('summit')}
+                              className={`py-1.5 px-2 rounded-xl text-[10px] font-bold transition flex items-center justify-center gap-1 focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none ${
+                                perspective === 'summit'
+                                  ? 'bg-[#B68D40] text-black shadow'
+                                  : 'bg-neutral-900 text-gray-300 border border-neutral-800 hover:text-white'
+                              }`}
+                            >
+                              <span>Summit</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* 3D Sun & Alpenglow Lighting */}
+                        <div className="space-y-2 pt-2 border-t border-neutral-900">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">
+                              3D Sun & Lighting:
+                            </span>
+                            <span className="text-[9px] text-[#B68D40] font-mono capitalize font-bold">
+                              {timeOfDay}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-4 gap-1">
+                            {(['sunrise', 'midday', 'sunset', 'night'] as const).map((time) => (
                               <button
-                                key={summit.name}
+                                key={time}
                                 type="button"
-                                onClick={() => {
-                                  setFocusedCoords([summit.coords.lat, summit.coords.lng]);
-                                }}
-                                className="px-2.5 py-1.5 rounded-xl bg-neutral-900 border border-neutral-800 text-[11px] text-gray-200 hover:border-[#B68D40] transition text-left"
+                                data-slot="trigger"
+                                data-pressed={timeOfDay === time}
+                                onClick={() => setTimeOfDay(time)}
+                                className={`py-1 px-1.5 rounded-xl text-[10px] font-bold capitalize transition flex items-center justify-center gap-1 focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none ${
+                                  timeOfDay === time
+                                    ? 'bg-[#B68D40] text-black shadow'
+                                    : 'bg-neutral-900 text-gray-300 border border-neutral-800 hover:text-white'
+                                }`}
                               >
-                                <div className="font-bold truncate">{summit.name}</div>
-                                <div className="text-[10px] font-mono text-[#B68D40]">{summit.elevation}m</div>
+                                <span>{time === 'sunrise' ? '🌅 Dawn' : time === 'midday' ? '☀️ Noon' : time === 'sunset' ? '🌄 Dusk' : '🌙 Night'}</span>
                               </button>
                             ))}
                           </div>
                         </div>
 
-                        {/* Range Boundaries in 3D */}
+                        {/* 2. Range Boundaries in 3D */}
                         <div className="space-y-2 pt-2 border-t border-neutral-900">
                           <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider block">
                             Explore Range Boundaries:
@@ -1153,30 +1911,121 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                               <button
                                 key={reg}
                                 type="button"
+                                data-slot="trigger"
                                 onClick={() => {
                                   setSelectedRegion(reg);
                                   const target = REGION_FOCUS_COORDS[reg];
                                   if (target) setFocusedCoords(target.center);
                                 }}
-                                className={`px-2.5 py-1.5 rounded-xl text-[11px] font-semibold transition border text-left flex items-center gap-1.5 ${
-                                  selectedRegion.toLowerCase() === reg.toLowerCase()
+                                className={`px-2.5 py-1.5 rounded-xl text-[11px] font-semibold transition border text-left flex items-center gap-1.5 focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none ${
+                                  selectedRegion.toLowerCase() === reg.toLowerCase() || (selectedRegion === 'All' && reg === 'All')
                                     ? 'bg-[#B68D40] text-black border-[#B68D40] font-bold shadow-md'
                                     : 'bg-neutral-900/90 text-gray-300 border-neutral-800 hover:border-neutral-700 hover:text-white'
                                 }`}
                               >
-                                <Layers className="h-3 w-3 text-[#B68D40]" />
+                                <Layers className={`h-3 w-3 ${selectedRegion.toLowerCase() === reg.toLowerCase() || (selectedRegion === 'All' && reg === 'All') ? 'text-black' : 'text-[#B68D40]'}`} />
                                 <span className="truncate">{reg}</span>
                               </button>
                             ))}
                           </div>
                         </div>
 
-                        {/* Mode Action */}
+                        {/* 3. Apex Summits in 3D */}
+                        <div className="space-y-2 pt-2 border-t border-neutral-900">
+                          <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider block">
+                            Apex Summits (8,000m+ Giants):
+                          </span>
+                          <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                            {HIMALAYAN_SUMMITS.map((summit: ApexSummit) => {
+                              const isActive = activeSummit === summit.name;
+                              return (
+                                <button
+                                  key={summit.name}
+                                  type="button"
+                                  data-slot="trigger"
+                                  onClick={() => {
+                                    setActiveSummit(summit.name);
+                                    setSelectedSummit(summit);
+                                    setFocusedCoords([summit.coords.lat, summit.coords.lng]);
+                                    setSelectedRegion(summit.region);
+                                  }}
+                                  className={`w-full px-2.5 py-1.5 rounded-xl text-[11px] font-semibold transition flex items-center justify-between border focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none ${
+                                    isActive
+                                      ? 'bg-[#B68D40] text-black border-[#B68D40] font-bold shadow'
+                                      : 'bg-neutral-900/80 text-gray-200 border-neutral-800 hover:border-neutral-700'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-xs">⛰️</span>
+                                    <span>{summit.name}</span>
+                                  </div>
+                                  <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
+                                    isActive ? 'bg-black/20 text-black font-extrabold' : 'bg-neutral-800 text-amber-400'
+                                  }`}>
+                                    {summit.elevation}m
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* 4. Quick Trail Selector HUD in 3D Mode */}
+                        <div className="space-y-2 pt-2 border-t border-neutral-900">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">
+                              Quick Trail Selector (3D):
+                            </span>
+                            <span className="text-[9px] text-[#B68D40] font-mono">
+                              {uniqueHudTrails.length} Tracks
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto pr-1">
+                            {uniqueHudTrails.map((t: Trail) => {
+                              const isSelected = activeTrail?.id === t.id;
+                              const cleanName = getCleanTrailName(t.name);
+                              const formattedElevation = t.maxElevation
+                                ? `${t.maxElevation.toLocaleString()}m`
+                                : '';
+                              return (
+                                <button
+                                  key={`3d-hud-${t.id}`}
+                                  data-slot="trail-button"
+                                  data-trail-id={t.id}
+                                  aria-pressed={isSelected}
+                                  onClick={() => handleTrailSelect(t)}
+                                  className={`px-2.5 py-1.5 rounded-xl text-[11px] font-semibold transition flex items-center gap-1.5 focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none ${
+                                    isSelected
+                                      ? 'bg-[#B68D40] text-black font-bold shadow-md'
+                                      : 'bg-neutral-900/90 text-gray-300 border border-neutral-800 hover:border-neutral-700 hover:text-white'
+                                  }`}
+                                  title={`${cleanName} (${formattedElevation}) — ${t.region}`}
+                                >
+                                  <span>{cleanName}</span>
+                                  {formattedElevation && (
+                                    <span
+                                      className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${
+                                        isSelected
+                                          ? 'bg-black/20 text-black font-extrabold'
+                                          : 'bg-neutral-800 text-[#B68D40]'
+                                      }`}
+                                    >
+                                      {formattedElevation}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Mode Action Buttons */}
                         <div className="space-y-2 pt-2 border-t border-neutral-900">
                           <button
                             type="button"
+                            data-slot="trigger"
                             onClick={() => setMapEngine('3d-drone-flight')}
-                            className="w-full py-2.5 rounded-xl bg-gradient-to-r from-[#B68D40] to-amber-500 hover:from-[#c99e4b] hover:to-amber-400 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg transition"
+                            className="w-full py-2.5 rounded-xl bg-gradient-to-r from-[#B68D40] to-amber-500 hover:from-[#c99e4b] hover:to-amber-400 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg transition focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none"
                           >
                             <Plane className="h-4 w-4 fill-black" />
                             <span>Launch 3D Drone Flight Simulator</span>
@@ -1184,8 +2033,9 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
 
                           <button
                             type="button"
+                            data-slot="trigger"
                             onClick={() => setMapEngine('3d-summit-tours')}
-                            className="w-full py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-[#B68D40]/50 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg transition"
+                            className="w-full py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-[#B68D40]/50 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg transition focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none"
                           >
                             <Mountain className="h-4 w-4 text-[#B68D40]" />
                             <span>Launch 3D Summit Orbital Tours</span>
@@ -1193,8 +2043,9 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
 
                           <button
                             type="button"
+                            data-slot="trigger"
                             onClick={() => setMapEngine('2d')}
-                            className="w-full py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-gray-300 text-xs font-semibold transition"
+                            className="w-full py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-gray-300 text-xs font-semibold transition focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none"
                           >
                             Switch to 2D Topo Map
                           </button>
@@ -1264,23 +2115,41 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                             Select Peak Tour:
                           </span>
                           <div className="space-y-2">
-                            {SUMMIT_TOURS.map((tour) => (
-                              <div
-                                key={tour.id}
-                                className="p-3 rounded-2xl bg-neutral-900/90 border border-neutral-800 hover:border-[#B68D40] transition space-y-2"
-                              >
-                                <div className="flex items-center justify-between">
-                                  <h4 className="text-xs font-black text-white">{tour.name}</h4>
-                                  <span className="text-[10px] font-mono text-[#B68D40] font-bold">
-                                    #{tour.rankInWorld} World
-                                  </span>
-                                </div>
-                                <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-gray-400 border-t border-neutral-800 pt-1.5">
-                                  <div>Elevation: <strong className="text-white">{tour.elevation}m</strong></div>
-                                  <div>Oxygen: <strong className="text-amber-400">{tour.oxygenAtSummitPercent}%</strong></div>
-                                </div>
-                              </div>
-                            ))}
+                            {SUMMIT_TOURS.map((tour) => {
+                              const isTourActive = activeSummitTourSlug === tour.slug;
+                              return (
+                                <button
+                                  key={tour.id}
+                                  type="button"
+                                  data-slot="trigger"
+                                  onClick={() => {
+                                    setActiveSummitTourSlug(tour.slug);
+                                    if (tour.waypoints[0]) {
+                                      setFocusedCoords([tour.waypoints[0].coords.lat, tour.waypoints[0].coords.lng]);
+                                    }
+                                    setActiveSummit(tour.name);
+                                  }}
+                                  className={`w-full text-left p-3 rounded-2xl border transition space-y-2 focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none ${
+                                    isTourActive
+                                      ? 'bg-neutral-900 border-[#B68D40] shadow-md shadow-[#B68D40]/20'
+                                      : 'bg-neutral-900/90 border-neutral-800 hover:border-[#B68D40]/50'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <h4 className={`text-xs font-black ${isTourActive ? 'text-[#E2C085]' : 'text-white'}`}>
+                                      {tour.name}
+                                    </h4>
+                                    <span className="text-[10px] font-mono text-[#B68D40] font-bold">
+                                      #{tour.rankInWorld} World
+                                    </span>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-gray-400 border-t border-neutral-800 pt-1.5">
+                                    <div>Elevation: <strong className="text-white">{tour.elevation}m</strong></div>
+                                    <div>Oxygen: <strong className="text-amber-400">{tour.oxygenAtSummitPercent}%</strong></div>
+                                  </div>
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
 
@@ -1662,19 +2531,24 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                   selectedRegion={selectedRegion}
                   focusedCoords={focusedCoords}
                   activeTrailId={activeTrail?.id}
+                  landmarks={landmarks}
+                  ranges={ranges}
                   onSelectRegion={(reg) => setSelectedRegion(reg)}
                   onSelectTrail={(trailId) => {
                     const match = trails.find((t) => t.id === trailId);
                     if (match) handleTrailSelect(match);
                   }}
                   onSelectLandmark={(lm) => {
+                    setSelectedLandmark(lm);
                     setFocusedCoords([lm.coordinates.lat, lm.coordinates.lng]);
+                    setSidebarTab('hud');
+                    setLeftPanelOpen(true);
                   }}
                   itineraryDays={activeItinerary?.days}
                   activeItineraryDay={activeItineraryDay}
                   onSelectItineraryDay={handleSelectItineraryDay}
                   height="h-full"
-                  hideHeaderControls={true}
+                  hideHeaderControls={layoutMode === 'split'}
                   weatherOverlay={weatherOverlay}
                   onWeatherOverlayChange={setWeatherOverlay}
                 />
@@ -1694,9 +2568,12 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                       ? 'summit-tours'
                       : 'freeroam'
                   }
-                  initialSummitSlug={urlTour || (selectedRegion.toLowerCase().includes('everest') ? 'everest' : selectedRegion.toLowerCase().includes('annapurna') ? 'annapurna' : selectedRegion.toLowerCase().includes('manaslu') ? 'manaslu' : 'everest')}
+                  initialSummitSlug={activeSummitTourSlug || urlTour || (selectedRegion.toLowerCase().includes('everest') ? 'everest' : selectedRegion.toLowerCase().includes('annapurna') ? 'annapurna' : selectedRegion.toLowerCase().includes('manaslu') ? 'manaslu' : 'everest')}
                   onSelectLandmark={(lm) => {
+                    setSelectedLandmark(lm);
                     setFocusedCoords([lm.coordinates.lat, lm.coordinates.lng]);
+                    setSidebarTab('hud');
+                    setLeftPanelOpen(true);
                   }}
                   activeDistanceKm={droneDistanceKm}
                   onFlightTelemetry={(t) => {
@@ -1710,13 +2587,24 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                       ? { lat: focusedCoords[0], lng: focusedCoords[1], altitude: 6000 }
                       : null
                   }
+                  focusedCoords={focusedCoords}
+                  selectedRegion={selectedRegion}
+                  activeSummit={activeSummit}
+                  ranges={ranges}
+                  landmarks={landmarks}
+                  perspective={perspective}
+                  onPerspectiveChange={setPerspective}
+                  trails={trails}
+                  onSelectTrail={handleTrailSelect}
+                  timeOfDay={timeOfDay}
+                  onTimeOfDayChange={setTimeOfDay}
                   initialCenter={
                     focusedCoords
                       ? { lat: focusedCoords[0], lng: focusedCoords[1], altitude: 9000 }
                       : undefined
                   }
                   onClose3D={() => setMapEngine('2d')}
-                  hideHUD={mapEngine === '3d-drone-flight' ? false : true}
+                  hideHUD={layoutMode === 'split' && mapEngine !== '3d-drone-flight'}
                 />
               )}
 

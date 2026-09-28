@@ -61,6 +61,16 @@ export default function SummitTourConsole({
   const currentAltitudeFt = Math.round(currentAltitude * 3.28084);
   const oxygenPercentage = Math.round(100 * Math.exp(-currentAltitude / 7200));
 
+  // Synchronize when initialSummitSlug prop changes
+  useEffect(() => {
+    if (initialSummitSlug) {
+      const match = SUMMIT_TOURS.find((t) => t.slug === initialSummitSlug || t.id === initialSummitSlug);
+      if (match && match.slug !== selectedTour.slug) {
+        handleSelectTour(match);
+      }
+    }
+  }, [initialSummitSlug]);
+
   // Change tour peak
   const handleSelectTour = (tour: SummitTour) => {
     setSelectedTour(tour);

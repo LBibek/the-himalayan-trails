@@ -321,20 +321,47 @@ export default function Navbar() {
 
         {/* ── Desktop Right Side ── */}
         <div className="hidden md:flex items-center gap-2 lg:gap-3 shrink-0">
-          {/* Search pill */}
-          <button
-            type="button"
-            onClick={() => router.push('/map')}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B68D40] ${
+          {/* Desktop Live Search Form */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (searchQuery.trim()) {
+                router.push(`/map?search=${encodeURIComponent(searchQuery.trim())}`);
+              } else {
+                router.push('/map');
+              }
+            }}
+            className={`flex items-center gap-2 px-3 py-1 rounded-full border text-xs transition-all ${
               scrolled || !isHome
-                ? 'border-white/15 text-gray-400 hover:text-white hover:border-white/30 bg-white/5'
-                : 'border-white/20 text-white/70 hover:text-white hover:border-white/40 bg-white/5'
+                ? 'border-white/15 text-gray-300 bg-white/5 focus-within:border-[#B68D40]'
+                : 'border-white/20 text-white/90 bg-white/5 focus-within:border-[#B68D40]'
             }`}
-            aria-label="Search trails"
           >
-            <Search className="h-3.5 w-3.5" />
-            <span className="hidden lg:inline text-gray-400">Search trails…</span>
-          </button>
+            <button
+              type="submit"
+              className="text-gray-400 hover:text-[#B68D40] transition focus-visible:outline-none"
+              aria-label="Submit search"
+            >
+              <Search className="h-3.5 w-3.5" />
+            </button>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search trails, peaks…"
+              className="bg-transparent border-none text-xs text-white placeholder-gray-400 focus:outline-none w-28 lg:w-36 focus:w-44 transition-all"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="text-gray-400 hover:text-white"
+                aria-label="Clear search query"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </form>
 
           {/* Login */}
           <Link

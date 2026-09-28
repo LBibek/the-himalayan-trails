@@ -3066,7 +3066,115 @@ describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () =>
       assert.ok(liveConfig.timestamp > 0, 'Must have valid epoch timestamp');
     });
   });
+
+  // =========================================================================
+  // 26. Navigator 3D Parity, Centralized Data Flow & Universal Real-Time Search
+  // =========================================================================
+  describe('26. Navigator 3D Parity, Centralized Data Flow & Universal Real-Time Search', () => {
+    test('Centralized Data Flow: Hub fetches trails, landmarks, and ranges once and eliminates duplicate fetches', () => {
+      const hubSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'explorer', 'UnifiedDiscoveryHub.tsx'), 'utf8');
+      const leafletSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'map', 'LeafletMap.tsx'), 'utf8');
+      const cesiumSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'map', 'CesiumGlobeMap.tsx'), 'utf8');
+
+      // Hub manages centralized states
+      assert.ok(hubSrc.includes('const [landmarks, setLandmarks] = useState<Landmark[]>([])'), 'Hub must maintain centralized landmarks state');
+      assert.ok(hubSrc.includes('const [ranges, setRanges] = useState<HimalayanRange[]>([])'), 'Hub must maintain centralized ranges state');
+      assert.ok(hubSrc.includes("fetch('/api/landmarks')"), 'Hub must fetch /api/landmarks');
+      assert.ok(hubSrc.includes("fetch('/api/ranges')"), 'Hub must fetch /api/ranges');
+
+      // Hub passes landmarks and ranges down to 2D and 3D maps
+      assert.ok(hubSrc.includes('landmarks={landmarks}'), 'Hub must pass landmarks to map components');
+      assert.ok(hubSrc.includes('ranges={ranges}'), 'Hub must pass ranges to map components');
+
+      // Maps accept and prioritize passed props over duplicate network fetches
+      assert.ok(leafletSrc.includes('ranges?: HimalayanRange[]'), 'LeafletMap must define ranges prop');
+      assert.ok(leafletSrc.includes('if (propRanges && propRanges.length > 0)'), 'LeafletMap must skip fetch when propRanges provided');
+      assert.ok(cesiumSrc.includes('ranges?: HimalayanRange[]'), 'CesiumGlobeMap must define ranges prop');
+      assert.ok(cesiumSrc.includes('if (propRanges && propRanges.length > 0)'), 'CesiumGlobeMap must skip fetch when propRanges provided');
+    });
+
+    test('Universal Real-Time Search: Desktop Navbar, Mobile Navbar, and Hub support synchronized queries', () => {
+      const navbarSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'layout', 'Navbar.tsx'), 'utf8');
+      const hubSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'explorer', 'UnifiedDiscoveryHub.tsx'), 'utf8');
+
+      // Desktop Navbar has functional search form
+      assert.ok(navbarSrc.includes('Desktop Live Search Form'), 'Navbar must contain desktop live search form');
+      assert.ok(navbarSrc.includes('/map?search='), 'Navbar search must route to /map?search=...');
+
+      // Hub reads URL search parameters
+      assert.ok(hubSrc.includes("searchParams.get('search') || searchParams.get('q')"), 'Hub must parse search and q query parameters');
+      assert.ok(hubSrc.includes('searchResults = useMemo'), 'Hub must compute searchResults across categories');
+      assert.ok(hubSrc.includes('data-slot="search-results"'), 'Hub must render search-results dropdown slot');
+
+      // Verifies categorized results (trails, summits, passes, landmarks)
+      assert.ok(hubSrc.includes('Trails & Expeditions'), 'Search results must categorize trails');
+      assert.ok(hubSrc.includes('Apex Peaks & Summits'), 'Search results must categorize summits');
+      assert.ok(hubSrc.includes('High Altitude Passes'), 'Search results must categorize passes');
+      assert.ok(hubSrc.includes('Monasteries & Base Camps'), 'Search results must categorize landmarks');
+    });
+
+    test('Side HUD & FloatingMapPanel: HeroUI compound slots, live weather telemetry, and brand gold focus rings', () => {
+      const floatingSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'ui', 'FloatingMapPanel.tsx'), 'utf8');
+      const hubSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'explorer', 'UnifiedDiscoveryHub.tsx'), 'utf8');
+
+      // FloatingMapPanel footer slot
+      assert.ok(floatingSrc.includes('footer?: React.ReactNode'), 'FloatingMapPanel must define footer prop');
+      assert.ok(floatingSrc.includes('data-slot="footer"'), 'FloatingMapPanel must render data-slot="footer"');
+      assert.ok(floatingSrc.includes('focus-visible:ring-[#B68D40]'), 'FloatingMapPanel buttons must use brand gold focus ring');
+
+      // SidebarQuickSpecs metadata and weather telemetry
+      assert.ok(hubSrc.includes('data-slot="header"') && hubSrc.includes('data-slot="body"') && hubSrc.includes('data-slot="footer"'),
+        'SidebarQuickSpecs must implement header, body, and footer slots');
+      assert.ok(hubSrc.includes('Apex Weather Telemetry'), 'SidebarQuickSpecs must display Apex Weather Telemetry');
+      assert.ok(hubSrc.includes('focus-visible:ring-[#B68D40]'), 'SidebarQuickSpecs must style buttons with brand gold focus rings');
+    });
+
+    test('3D Navigator Parity: CesiumGlobeMap flies to focusedCoords and supports 3D Trail Selector HUD', () => {
+      const cesiumSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'map', 'CesiumGlobeMap.tsx'), 'utf8');
+      const hubSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'explorer', 'UnifiedDiscoveryHub.tsx'), 'utf8');
+
+      // CesiumGlobeMap accepts navigator parity props
+      assert.ok(cesiumSrc.includes('focusedCoords?: [number, number]'), 'CesiumGlobeMap must define focusedCoords prop');
+      assert.ok(cesiumSrc.includes('selectedRegion?: string'), 'CesiumGlobeMap must define selectedRegion prop');
+      assert.ok(cesiumSrc.includes('activeSummit?: string | null'), 'CesiumGlobeMap must define activeSummit prop');
+      assert.ok(cesiumSrc.includes('controllerRef.current.flyTo'), 'CesiumGlobeMap must flyTo focusedCoords on update');
+
+      // 3D mode in Hub renders perspective presets, range boundaries, summits, and 3D trail selector HUD
+      assert.ok(hubSrc.includes('Camera Perspective:'), '3D HUD must render camera perspective presets');
+      assert.ok(hubSrc.includes('Topo (90°)'), '3D HUD must include Topo (90°) perspective');
+      assert.ok(hubSrc.includes('Ridge (45°)'), '3D HUD must include Ridge (45°) perspective');
+      assert.ok(hubSrc.includes('Quick Trail Selector (3D):'), '3D HUD must render Quick Trail Selector for 3D globe mode');
+    });
+
+    test('Apex Summit QuickSpecs, Marker Preservation & Summit Tour Synchronization', () => {
+      const hubSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'explorer', 'UnifiedDiscoveryHub.tsx'), 'utf8');
+      const cesiumSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'map', 'CesiumGlobeMap.tsx'), 'utf8');
+      const summitConsoleSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'map', 'SummitTourConsole.tsx'), 'utf8');
+      const leafletSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'map', 'LeafletMap.tsx'), 'utf8');
+
+      // SummitQuickSpecs compound component
+      assert.ok(hubSrc.includes('function SummitQuickSpecs'), 'Hub must define SummitQuickSpecs component');
+      assert.ok(hubSrc.includes('Apex Weather & Hypoxia Telemetry'), 'SummitQuickSpecs must display hypoxia and weather telemetry');
+      assert.ok(hubSrc.includes('Launch 3D Summit Orbital Tour'), 'SummitQuickSpecs must provide launch 3D tour trigger');
+
+      // SummitTourConsole reacts to initialSummitSlug updates
+      assert.ok(summitConsoleSrc.includes('useEffect(') && summitConsoleSrc.includes('match.slug !== selectedTour.slug'),
+        'SummitTourConsole must synchronize when initialSummitSlug prop changes');
+
+      // CesiumGlobeMap marker preservation (preserves itinerary days when landmarks load)
+      assert.ok(cesiumSrc.includes('itin-day-'), 'CesiumGlobeMap must handle itinerary day markers');
+      assert.ok(cesiumSrc.includes('[markers, allLandmarks, itineraryDays, activeTrail]'),
+        'CesiumGlobeMap must synchronize markers comprehensively without wiping itinerary days');
+
+      // LeafletMap non-empty length checks for props
+      assert.ok(leafletSrc.includes('const allLandmarks = (propLandmarks && propLandmarks.length > 0) ? propLandmarks : fetchedLandmarks'),
+        'LeafletMap must check propLandmarks length before falling back to fetchedLandmarks');
+      assert.ok(leafletSrc.includes('const activeRanges = (propRanges && propRanges.length > 0) ? propRanges : ranges'),
+        'LeafletMap must check propRanges length before falling back to ranges');
+    });
+  });
 });
+
 
 
 

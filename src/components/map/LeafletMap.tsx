@@ -100,6 +100,7 @@ export interface LeafletMapProps {
   activeItineraryDay?: number | null;
   onSelectItineraryDay?: (day: ItineraryDay, coords: [number, number]) => void;
   landmarks?: Landmark[];
+  ranges?: HimalayanRange[];
   onSelectLandmark?: (landmark: Landmark) => void;
   onSelectTrail?: (trailId: string) => void;
   onSelectRegion?: (region: string) => void;
@@ -119,6 +120,7 @@ export default function LeafletMap({
   activeItineraryDay,
   onSelectItineraryDay,
   landmarks: propLandmarks,
+  ranges: propRanges,
   onSelectLandmark,
   onSelectTrail,
   onSelectRegion,
@@ -176,16 +178,29 @@ export default function LeafletMap({
     });
   }, [itineraryDays, activeTrailId]);
 
-  // Fetch official ranges & landmarks from persistent DB APIs
+  // Fetch official ranges & landmarks from persistent DB APIs if not passed as props
   useEffect(() => {
-    fetch('/api/ranges')
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data: HimalayanRange[]) => {
-        if (Array.isArray(data)) setRanges(data);
-      })
-      .catch((err) => console.warn('Failed to load ranges in 2D:', err));
+    if (propRanges !== undefined) {
+      if (propRanges && propRanges.length > 0) {
+        setRanges(propRanges);
+      }
+    } else {
+      fetch('/api/ranges')
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data: HimalayanRange[]) => {
+          if (Array.isArray(data)) setRanges(data);
+        })
+        .catch((err) => console.warn('Failed to load ranges in 2D:', err));
+    }
 
-    if (!propLandmarks) {
+    if (propLandmarks !== undefined) {
+      if (propLandmarks && propLandmarks.length > 0) {
+        setFetchedLandmarks(propLandmarks);
+        if (!activeLandmark) {
+          setActiveLandmark(propLandmarks[0]);
+        }
+      }
+    } else {
       fetch('/api/landmarks')
         .then((res) => (res.ok ? res.json() : []))
         .then((data: Landmark[]) => {
@@ -196,9 +211,10 @@ export default function LeafletMap({
         })
         .catch(console.error);
     }
-  }, [propLandmarks]);
+  }, [propLandmarks, propRanges]);
 
-  const allLandmarks = propLandmarks || fetchedLandmarks;
+  const allLandmarks = (propLandmarks && propLandmarks.length > 0) ? propLandmarks : fetchedLandmarks;
+  const activeRanges = (propRanges && propRanges.length > 0) ? propRanges : ranges;
 
   // Sync focused coordinates if passed
   useEffect(() => {
@@ -287,8 +303,10 @@ export default function LeafletMap({
                     return (
                       <button
                         key={reg}
+                        type="button"
+                        data-slot="trigger"
                         onClick={() => handleRegionClick(reg)}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all border flex items-center gap-1 ${
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all border flex items-center gap-1 focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none ${
                           isSelected
                             ? 'bg-[#B68D40] text-black border-[#B68D40] font-bold shadow'
                             : 'bg-neutral-900/80 hover:bg-neutral-800 text-gray-300 border-border/40 hover:border-[#B68D40]/40'
@@ -313,8 +331,10 @@ export default function LeafletMap({
                     return (
                       <button
                         key={summit.name}
+                        type="button"
+                        data-slot="trigger"
                         onClick={() => handleSummitClick(summit)}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all flex items-center gap-1.5 border ${
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all flex items-center gap-1.5 border focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none ${
                           isActive
                             ? 'bg-[#B68D40] text-black border-[#B68D40] font-bold shadow scale-105'
                             : 'bg-neutral-900/80 hover:bg-neutral-800 text-gray-300 border-border/40 hover:border-[#B68D40]/40'
@@ -463,7 +483,7 @@ export default function LeafletMap({
         )}
 
         {/* Himalayan Range Massif Boundary Polygons */}
-        {showRanges && ranges.map((range) => {
+        {showRanges && activeRanges.map((range) => {
           const isSelected = selectedRegion.toLowerCase().includes(range.name.toLowerCase()) || range.name.toLowerCase().includes(selectedRegion.toLowerCase());
           const polygonPositions: [number, number][] = range.bounds.map((b) => [b[1], b[0]]);
           return (

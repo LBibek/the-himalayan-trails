@@ -56,6 +56,16 @@ interface CesiumGlobeMapProps {
   onWeatherOverlayChange?: (mode: 'none' | 'radar' | 'clouds') => void;
   radarTileUrl?: string;
   cloudsTileUrl?: string;
+  focusedCoords?: [number, number];
+  selectedRegion?: string;
+  activeSummit?: string | null;
+  ranges?: HimalayanRange[];
+  perspective?: 'topo' | 'ridge' | 'summit';
+  onPerspectiveChange?: (p: 'topo' | 'ridge' | 'summit') => void;
+  trails?: Trail[];
+  onSelectTrail?: (trail: Trail) => void;
+  timeOfDay?: 'sunrise' | 'midday' | 'sunset' | 'night';
+  onTimeOfDayChange?: (time: 'sunrise' | 'midday' | 'sunset' | 'night') => void;
 }
 
 export default function CesiumGlobeMap({
@@ -84,6 +94,16 @@ export default function CesiumGlobeMap({
   onWeatherOverlayChange,
   radarTileUrl,
   cloudsTileUrl,
+  focusedCoords,
+  selectedRegion,
+  activeSummit: propActiveSummit,
+  ranges: propRanges,
+  perspective: propPerspective,
+  onPerspectiveChange,
+  trails: propTrails,
+  onSelectTrail,
+  timeOfDay = 'midday',
+  onTimeOfDayChange,
 }: CesiumGlobeMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const hudRef = useRef<HTMLDivElement>(null);
@@ -97,6 +117,7 @@ export default function CesiumGlobeMap({
   const [ranges, setRanges] = useState<HimalayanRange[]>([]);
   const [selectedRange, setSelectedRange] = useState<string>('All');
   const [perspective, setPerspective] = useState<'topo' | 'ridge' | 'summit'>('ridge');
+  const [currentTimeOfDay, setCurrentTimeOfDay] = useState<'sunrise' | 'midday' | 'sunset' | 'night'>(timeOfDay);
   const [selectedLandmarkId, setSelectedLandmarkId] = useState<string | null>(null);
   const [fetchedLandmarks, setFetchedLandmarks] = useState<Landmark[]>([]);
   const [currentWeatherOverlay, setCurrentWeatherOverlay] = useState<'none' | 'radar' | 'clouds'>(weatherOverlay);
@@ -160,18 +181,90 @@ export default function CesiumGlobeMap({
     }
   }, [activeItineraryDay, itineraryDays, activeTrail]);
 
-  // 1. Fetch official Himalayan ranges & landmarks from persistent DB API
+  // Synchronize 3D camera to focused coordinates from Search or Navigator
   useEffect(() => {
-    fetch('/api/ranges')
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data: HimalayanRange[]) => {
-        if (Array.isArray(data) && data.length > 0) {
-          setRanges(data);
-        }
-      })
-      .catch((err) => console.warn('Failed to load ranges from API:', err));
+    if (focusedCoords && controllerRef.current?.isInitialized) {
+      const isWideRegion = Math.abs(focusedCoords[0] - 28.25) < 0.05 && Math.abs(focusedCoords[1] - 85.4) < 0.05;
+      const targetAlt = isWideRegion ? 45000 : 11000;
+      controllerRef.current.flyTo(
+        { lat: focusedCoords[0], lng: focusedCoords[1] },
+        targetAlt,
+        2.0
+      );
+    }
+  }, [focusedCoords]);
 
-    if (!propLandmarks || propLandmarks.length === 0) {
+  // Synchronize 3D lighting preset
+  useEffect(() => {
+    if (timeOfDay !== undefined) {
+      setCurrentTimeOfDay(timeOfDay);
+    }
+  }, [timeOfDay]);
+
+  useEffect(() => {
+    if (controllerRef.current?.isInitialized && currentTimeOfDay) {
+      controllerRef.current.setTimeOfDayLighting(currentTimeOfDay);
+    }
+  }, [currentTimeOfDay]);
+
+  // Synchronize selected region and range boundaries in 3D
+  useEffect(() => {
+    if (selectedRegion !== undefined) {
+      setSelectedRange(selectedRegion);
+    }
+    if (controllerRef.current?.isInitialized && ranges.length > 0) {
+      controllerRef.current.setRangeBoundaries(
+        ranges,
+        selectedRegion && selectedRegion !== 'All' ? selectedRegion : undefined
+      );
+    }
+  }, [selectedRegion, ranges]);
+
+  // Synchronize active summit selection
+  useEffect(() => {
+    if (propActiveSummit) {
+      setActiveSummit(propActiveSummit);
+      if (controllerRef.current?.isInitialized) {
+        const summit = HIMALAYAN_SUMMITS.find(
+          (s) => s.name.toLowerCase() === propActiveSummit.toLowerCase()
+        );
+        if (summit) {
+          controllerRef.current.flyTo(summit.coords, summit.coords.altitude || 9000, 2.5);
+        }
+      }
+    }
+  }, [propActiveSummit]);
+
+  // Synchronize camera perspective preset
+  useEffect(() => {
+    if (propPerspective && controllerRef.current?.isInitialized) {
+      setPerspective(propPerspective);
+      controllerRef.current.setPerspective(propPerspective);
+    }
+  }, [propPerspective]);
+
+  // 1. Fetch or use passed Himalayan ranges & landmarks from persistent DB API
+  useEffect(() => {
+    if (propRanges !== undefined) {
+      if (propRanges && propRanges.length > 0) {
+        setRanges(propRanges);
+      }
+    } else {
+      fetch('/api/ranges')
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data: HimalayanRange[]) => {
+          if (Array.isArray(data) && data.length > 0) {
+            setRanges(data);
+          }
+        })
+        .catch((err) => console.warn('Failed to load ranges from API:', err));
+    }
+
+    if (propLandmarks !== undefined) {
+      if (propLandmarks && propLandmarks.length > 0) {
+        setFetchedLandmarks(propLandmarks);
+      }
+    } else {
       fetch('/api/landmarks')
         .then((res) => (res.ok ? res.json() : []))
         .then((data: Landmark[]) => {
@@ -181,7 +274,7 @@ export default function CesiumGlobeMap({
         })
         .catch((err) => console.warn('Failed to load landmarks in 3D Cesium:', err));
     }
-  }, [propLandmarks]);
+  }, [propLandmarks, propRanges]);
 
   const allLandmarks = propLandmarks && propLandmarks.length > 0 ? propLandmarks : fetchedLandmarks;
 
@@ -274,8 +367,12 @@ export default function CesiumGlobeMap({
           controller.addMarkers(allMarkers);
         }
 
-        if (ranges.length > 0) {
-          controller.setRangeBoundaries(ranges);
+        const initialRanges = (propRanges && propRanges.length > 0) ? propRanges : ranges;
+        if (initialRanges && initialRanges.length > 0) {
+          controller.setRangeBoundaries(
+            initialRanges,
+            selectedRegion && selectedRegion !== 'All' ? selectedRegion : undefined
+          );
         }
 
         // Render all route tracks in 3D
@@ -284,6 +381,32 @@ export default function CesiumGlobeMap({
         // Apply real-time weather radar overlay if active
         if (currentWeatherOverlay && currentWeatherOverlay !== 'none') {
           controller.setWeatherOverlay(currentWeatherOverlay);
+        }
+
+        // Apply time of day lighting preset
+        if (currentTimeOfDay) {
+          controller.setTimeOfDayLighting(currentTimeOfDay);
+        }
+
+        // Fly to initial target if provided on mount
+        if (focusedCoords) {
+          controller.flyTo({ lat: focusedCoords[0], lng: focusedCoords[1] }, 11000, 2.0);
+        } else if (propActiveSummit) {
+          const summit = HIMALAYAN_SUMMITS.find(
+            (s) => s.name.toLowerCase() === propActiveSummit.toLowerCase()
+          );
+          if (summit) {
+            controller.flyTo(summit.coords, summit.coords.altitude || 9000, 2.5);
+          }
+        } else if (selectedRegion && selectedRegion !== 'All') {
+          const range = initialRanges.find((r) => r.name.toLowerCase() === selectedRegion.toLowerCase());
+          if (range) {
+            controller.flyTo({ lat: range.center[0], lng: range.center[1] }, 26000, 2.5);
+          }
+        }
+
+        if (propPerspective) {
+          controller.setPerspective(propPerspective);
         }
 
         // Kinetic GSAP entrance for HUD (slide from left)
@@ -357,27 +480,56 @@ export default function CesiumGlobeMap({
     }
   }, [polyline, activeTrail]);
 
-  // Sync markers & landmarks
+  // Sync markers & landmarks and preserve itinerary days
   useEffect(() => {
-    if (controllerRef.current?.isInitialized) {
-      controllerRef.current.clearMarkers();
-      const allMarkers: MapMarker[] = [...markers];
-      if (allLandmarks && allLandmarks.length > 0) {
-        allLandmarks.forEach((lm) => {
-          allMarkers.push({
-            id: lm.id,
-            position: { lat: lm.coordinates.lat, lng: lm.coordinates.lng, altitude: lm.elevation },
-            title: lm.name,
-            category: lm.category,
-            elevation: lm.elevation,
-          });
+    if (!controllerRef.current?.isInitialized) return;
+
+    const allMarkers: MapMarker[] = [...markers];
+    if (allLandmarks && allLandmarks.length > 0) {
+      allLandmarks.forEach((lm) => {
+        allMarkers.push({
+          id: lm.id,
+          position: { lat: lm.coordinates.lat, lng: lm.coordinates.lng, altitude: lm.elevation },
+          title: lm.name,
+          category: lm.category,
+          elevation: lm.elevation,
         });
-      }
-      if (allMarkers.length > 0) {
-        controllerRef.current.addMarkers(allMarkers);
-      }
+      });
     }
-  }, [markers, allLandmarks]);
+
+    if (itineraryDays && itineraryDays.length > 0 && activeTrail) {
+      const track = ROUTE_TRACKS[activeTrail.id];
+      const trackCoords = track?.coords || (activeTrail.routeCoordinates?.map((c) => [c[0], c[1]] as [number, number]) || []);
+      let runningKm = 0;
+      const totalDayKm = itineraryDays.reduce((acc, d) => acc + (d.distanceKm || 0), 0);
+
+      itineraryDays.forEach((day, idx) => {
+        if (idx === 0) {
+          runningKm = day.distanceKm > 0 ? day.distanceKm : 10;
+        } else {
+          runningKm += day.distanceKm > 0 ? day.distanceKm : (totalDayKm ? totalDayKm / itineraryDays.length : 12);
+        }
+        const ratio = totalDayKm > 0 ? Math.min(1, runningKm / totalDayKm) : Math.min(1, (idx + 1) / itineraryDays.length);
+        const targetIdx = trackCoords.length > 1
+          ? Math.min(trackCoords.length - 1, Math.floor(ratio * (trackCoords.length - 1)))
+          : 0;
+        const coord = trackCoords[targetIdx] || [28.0, 86.85];
+
+        allMarkers.push({
+          id: `itin-day-${day.day}`,
+          position: { lat: coord[0], lng: coord[1], altitude: (day.sleepingAltitude || 3500) + 120 },
+          title: `Day ${day.day}: ${day.title} (${day.sleepingAltitude}m)`,
+          category: 'Base Camp',
+          elevation: day.sleepingAltitude || 3500,
+        });
+      });
+    }
+
+    controllerRef.current.clearMarkers();
+    if (allMarkers.length > 0) {
+      controllerRef.current.addMarkers(allMarkers);
+    }
+  }, [markers, allLandmarks, itineraryDays, activeTrail]);
 
   // Sync scrubber point
   useEffect(() => {
@@ -424,7 +576,6 @@ export default function CesiumGlobeMap({
           title: p.name,
           elevation: 7500,
         }));
-        controllerRef.current.clearMarkers();
         controllerRef.current.addMarkers(poiMarkers);
       }
     }
@@ -609,6 +760,37 @@ export default function CesiumGlobeMap({
                 >
                   Wind & Clouds
                 </button>
+              </div>
+            </div>
+
+            {/* 3D Sun & Alpenglow Lighting Presets */}
+            <div data-slot="control" className="space-y-1 bg-black/60 border border-white/10 rounded-xl p-2 backdrop-blur-md">
+              <div className="flex items-center justify-between text-[10px] text-gray-400 font-bold px-0.5">
+                <span>3D Sun & Lighting:</span>
+                <span className="text-[#B68D40] uppercase font-mono text-[9px] font-bold">
+                  {currentTimeOfDay}
+                </span>
+              </div>
+              <div className="grid grid-cols-4 gap-1">
+                {(['sunrise', 'midday', 'sunset', 'night'] as const).map((time) => (
+                  <button
+                    key={time}
+                    type="button"
+                    data-slot="trigger"
+                    data-pressed={currentTimeOfDay === time}
+                    onClick={() => {
+                      setCurrentTimeOfDay(time);
+                      onTimeOfDayChange?.(time);
+                    }}
+                    className={`py-1 px-1 rounded-lg text-[9px] font-bold capitalize transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B68D40] ${
+                      currentTimeOfDay === time
+                        ? 'bg-[#B68D40] text-black shadow font-black'
+                        : 'bg-neutral-900/80 text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {time === 'sunrise' ? '🌅 Dawn' : time === 'midday' ? '☀️ Noon' : time === 'sunset' ? '🌄 Dusk' : '🌙 Night'}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -825,6 +1007,43 @@ export default function CesiumGlobeMap({
                       })}
                     </div>
                   </div>
+
+                  {/* 4. Quick Trail Selector (3D) */}
+                  {propTrails && propTrails.length > 0 && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">
+                        Quick Trail Selector (3D):
+                      </span>
+                      <div className="flex flex-wrap items-center gap-1.5 max-h-32 overflow-y-auto">
+                        {propTrails.map((t) => {
+                          const isSelected = activeTrail?.id === t.id;
+                          return (
+                            <button
+                              key={`cesium-hud-${t.id}`}
+                              type="button"
+                              data-slot="trigger"
+                              onClick={() => {
+                                onSelectTrail?.(t);
+                                const track = ROUTE_TRACKS[t.id];
+                                if (track && track.coords.length > 0) {
+                                  const mid = track.coords[Math.floor(track.coords.length / 2)];
+                                  controllerRef.current?.flyTo({ lat: mid[0], lng: mid[1] }, 14000, 2);
+                                }
+                              }}
+                              className={`px-2 py-1 rounded-xl text-[10px] font-semibold transition-all flex items-center gap-1 border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B68D40] ${
+                                isSelected
+                                  ? 'bg-[#B68D40] text-black border-[#B68D40] font-bold shadow'
+                                  : 'bg-neutral-900/80 hover:bg-neutral-800 text-gray-300 border-border/40 hover:border-[#B68D40]/40'
+                              }`}
+                            >
+                              <span>{t.name.replace(/\s+Trek$/i, '')}</span>
+                              <span className="text-[9px] font-mono opacity-80">{t.maxElevation}m</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Footer Controls & Navigation Tip */}
                   <div className="text-[10px] text-gray-400 flex flex-col gap-1 border-t border-border/30 pt-2">

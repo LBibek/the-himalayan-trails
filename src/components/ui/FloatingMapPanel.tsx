@@ -22,6 +22,8 @@ export interface FloatingMapPanelProps {
   initialMinimized?: boolean;
   initialMaximized?: boolean;
   onClose?: () => void;
+  footer?: React.ReactNode;
+  footerClassName?: string;
   className?: string;
   bodyClassName?: string;
   headerClassName?: string;
@@ -42,6 +44,7 @@ export default function FloatingMapPanel({
   icon,
   children,
   badge,
+  footer,
   initialPosition = { x: 0, y: 0 },
   initialSize,
   initialMinimized = false,
@@ -50,6 +53,7 @@ export default function FloatingMapPanel({
   className = '',
   bodyClassName = '',
   headerClassName = '',
+  footerClassName = '',
   allowDrag = true,
   allowResize = true,
   allowMinimize = true,
@@ -189,10 +193,10 @@ export default function FloatingMapPanel({
               height: size.height && !isMinimized ? `${size.height}px` : undefined,
             }
       }
-      className={`transition-shadow pointer-events-auto rounded-3xl border shadow-2xl backdrop-blur-2xl select-none overflow-hidden relative ${
+      className={`transition-shadow pointer-events-auto rounded-3xl border shadow-2xl backdrop-blur-xl select-none overflow-hidden relative ${
         theme === 'light'
-          ? 'bg-white/75 text-slate-900 border-black/15 shadow-xl'
-          : 'bg-slate-950/80 text-slate-100 border-[#B68D40]/30 shadow-2xl'
+          ? 'bg-white/80 text-slate-900 border-black/15 shadow-xl'
+          : 'bg-surface/75 text-surface-foreground border-border/40 shadow-2xl shadow-black/80'
       } ${
         isMaximized
           ? 'fixed inset-4 z-[9999] flex flex-col m-auto w-[calc(100%-2rem)] h-[calc(100%-2rem)]'
@@ -209,8 +213,8 @@ export default function FloatingMapPanel({
         onPointerUp={handlePointerUp}
         className={`flex items-center justify-between gap-3 px-4 py-3 border-b ${
           theme === 'light'
-            ? 'border-black/10 bg-white/60'
-            : 'border-slate-800/80 bg-slate-900/60'
+            ? 'border-black/10 bg-white/60 text-slate-900'
+            : 'border-border/40 bg-surface/80 text-surface-foreground'
         } ${
           allowDrag && !isMaximized ? 'cursor-grab active:cursor-grabbing' : ''
         } ${headerClassName}`}
@@ -235,9 +239,9 @@ export default function FloatingMapPanel({
           {allowMinimize && (
             <button
               type="button"
-              data-slot="minimize-btn"
+              data-slot="trigger"
               onClick={toggleMinimize}
-              className={`p-1.5 rounded-lg transition focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:outline-none ${
+              className={`p-1.5 rounded-lg transition focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none ${
                 theme === 'light'
                   ? 'bg-slate-200/80 hover:bg-slate-300 text-slate-700 hover:text-slate-900'
                   : 'bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white'
@@ -253,9 +257,9 @@ export default function FloatingMapPanel({
           {allowMaximize && (
             <button
               type="button"
-              data-slot="maximize-btn"
+              data-slot="trigger"
               onClick={toggleMaximize}
-              className={`p-1.5 rounded-lg transition focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:outline-none ${
+              className={`p-1.5 rounded-lg transition focus-visible:ring-2 focus-visible:ring-[#B68D40] focus-visible:outline-none ${
                 theme === 'light'
                   ? 'bg-slate-200/80 hover:bg-slate-300 text-slate-700 hover:text-slate-900'
                   : 'bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white'
@@ -263,7 +267,7 @@ export default function FloatingMapPanel({
               title={isMaximized ? 'Restore Size' : 'Maximize Window'}
               aria-label={isMaximized ? 'Restore' : 'Maximize'}
             >
-              {isMaximized ? <Minimize2 className="h-3.5 w-3.5 text-amber-500" /> : <Maximize2 className="h-3.5 w-3.5" />}
+              {isMaximized ? <Minimize2 className="h-3.5 w-3.5 text-[#B68D40]" /> : <Maximize2 className="h-3.5 w-3.5" />}
             </button>
           )}
 
@@ -271,7 +275,7 @@ export default function FloatingMapPanel({
           {allowClose && onClose && (
             <button
               type="button"
-              data-slot="close-btn"
+              data-slot="trigger"
               onClick={onClose}
               className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/30 text-rose-300 hover:text-rose-100 transition border border-rose-500/20 focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:outline-none ml-1"
               title="Close Panel"
@@ -292,6 +296,20 @@ export default function FloatingMapPanel({
           } ${bodyClassName}`}
         >
           {children}
+        </div>
+      )}
+
+      {/* WINDOW FOOTER CONTENT */}
+      {footer && !isMinimized && (
+        <div
+          data-slot="footer"
+          className={`px-4 py-3 border-t shrink-0 ${
+            theme === 'light'
+              ? 'border-black/10 bg-white/50 text-slate-800'
+              : 'border-border/40 bg-surface/60 text-surface-foreground'
+          } ${footerClassName}`}
+        >
+          {footer}
         </div>
       )}
 
