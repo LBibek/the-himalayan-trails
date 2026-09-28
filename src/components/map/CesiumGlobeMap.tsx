@@ -184,11 +184,11 @@ export default function CesiumGlobeMap({
         // Render all route tracks in 3D
         controller.setAllRouteTracks(ROUTE_TRACKS, activeTrail?.id);
 
-        // Kinetic GSAP entrance for HUD
+        // Kinetic GSAP entrance for HUD (slide from left)
         if (hudRef.current) {
           gsap.from(hudRef.current, {
             opacity: 0,
-            y: 40,
+            x: -30,
             duration: 0.9,
             ease: 'power3.out',
           });
@@ -386,18 +386,46 @@ export default function CesiumGlobeMap({
         </div>
       )}
 
-      {/* TOP FLOATING CONTROLS: Engine Badge, Range Selector, Perspective Switcher */}
+      {/* LEFT-SIDE FLOATING HUD DOCK: Top Controls + Scrollable Consoles / Range-Summit Navigator */}
       {!isLoading && !loadError && (
         <div
-          data-slot="header"
-          className="absolute top-4 left-4 right-4 z-10 flex flex-wrap items-center justify-between gap-2 pointer-events-none"
+          ref={hudRef}
+          data-slot="base"
+          className="absolute top-4 left-4 bottom-4 z-20 w-80 sm:w-[380px] max-w-[calc(100%-2rem)] flex flex-col gap-2.5 pointer-events-none"
         >
-          <div className="flex flex-wrap items-center gap-2 pointer-events-auto">
-            <GlassBadge variant="gold" pulse>
-              <Sparkles className="w-3.5 h-3.5 text-[#B68D40]" />
-              <span className="font-semibold">Cesium 3D Terrain Engine</span>
-            </GlassBadge>
+          {/* Header Controls: Cesium Engine Badge, 2D Switch, Perspective Presets */}
+          <div
+            data-slot="header"
+            className="p-2.5 bg-neutral-950/85 backdrop-blur-xl border border-border/40 rounded-2xl shadow-2xl flex flex-col gap-2 pointer-events-auto shrink-0"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <GlassBadge variant="gold" pulse>
+                <Sparkles className="w-3.5 h-3.5 text-[#B68D40]" />
+                <span className="font-semibold text-xs">Cesium 3D Terrain</span>
+              </GlassBadge>
 
+              <div className="flex items-center gap-1.5">
+                {onClose3D && (
+                  <button
+                    onClick={onClose3D}
+                    data-slot="trigger"
+                    className="px-2.5 py-1 rounded-xl text-[11px] font-semibold bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-border/30 backdrop-blur-xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B68D40]"
+                  >
+                    2D Map
+                  </button>
+                )}
+
+                <button
+                  onClick={() => controllerRef.current?.flyTo(initialCenter, 14000, 2)}
+                  className="p-1.5 rounded-xl text-gray-400 hover:text-[#E2C085] bg-white/5 hover:bg-white/10 border border-border/30 transition"
+                  title="Reset 3D Camera View"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Drone Fly-Through Quick Button if Trail Active */}
             {(activeTrail || polyline) && (
               <button
                 onClick={() => {
@@ -411,7 +439,7 @@ export default function CesiumGlobeMap({
                 }}
                 data-slot="trigger"
                 data-pressed={currentMode === 'drone-flight'}
-                className={`px-3 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1.5 border shadow-lg ${
+                className={`w-full px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 border shadow-lg ${
                   currentMode === 'drone-flight'
                     ? 'bg-amber-500 text-black border-amber-400 shadow-amber-500/30'
                     : 'bg-[#B68D40] text-black border-[#B68D40] shadow-[#B68D40]/25 hover:bg-[#d4a853]'
@@ -422,77 +450,64 @@ export default function CesiumGlobeMap({
               </button>
             )}
 
-            {onClose3D && (
-              <button
-                onClick={onClose3D}
-                data-slot="trigger"
-                className="px-3 py-1.5 rounded-full text-xs font-semibold bg-black/70 hover:bg-black/95 text-gray-300 hover:text-white border border-border/40 backdrop-blur-xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B68D40]"
-              >
-                Switch to 2D Map
-              </button>
-            )}
+            {/* Perspective Preset Buttons & Full Route Overview */}
+            <div className="flex items-center justify-between gap-1 bg-black/50 border border-border/30 rounded-xl p-1">
+              {polyline && polyline.points.length > 0 && (
+                <button
+                  onClick={() => {
+                    const mid = polyline.points[Math.floor(polyline.points.length / 2)];
+                    controllerRef.current?.flyTo(mid, 18000, 2.0);
+                    onFlyToFullRoute?.();
+                  }}
+                  data-slot="trigger"
+                  className="px-2 py-1 rounded-lg text-[10px] font-semibold text-gray-300 hover:text-white hover:bg-white/10 transition flex items-center gap-1"
+                  title="View Full Route from Orbit"
+                >
+                  <Eye className="w-3 h-3 text-[#B68D40]" />
+                  <span>Orbit</span>
+                </button>
+              )}
+              <div className="flex items-center gap-1 ml-auto">
+                <button
+                  onClick={() => handlePerspectiveChange('topo')}
+                  data-slot="trigger"
+                  className={`px-2 py-1 rounded-lg text-[10px] font-semibold transition ${
+                    perspective === 'topo' ? 'bg-[#B68D40] text-black font-bold' : 'text-gray-400 hover:text-white'
+                  }`}
+                  title="Top-down Topographic View"
+                >
+                  Topo
+                </button>
+                <button
+                  onClick={() => handlePerspectiveChange('ridge')}
+                  data-slot="trigger"
+                  className={`px-2 py-1 rounded-lg text-[10px] font-semibold transition ${
+                    perspective === 'ridge' ? 'bg-[#B68D40] text-black font-bold' : 'text-gray-400 hover:text-white'
+                  }`}
+                  title="45-degree Ridge Profile"
+                >
+                  Ridge (45°)
+                </button>
+                <button
+                  onClick={() => handlePerspectiveChange('summit')}
+                  data-slot="trigger"
+                  className={`px-2 py-1 rounded-lg text-[10px] font-semibold transition ${
+                    perspective === 'summit' ? 'bg-[#B68D40] text-black font-bold' : 'text-gray-400 hover:text-white'
+                  }`}
+                  title="Low-angle Summit Horizon View"
+                >
+                  Summit
+                </button>
+              </div>
+            </div>
           </div>
 
-          {/* Perspective Preset Buttons & Full Route Overview */}
-          <div className="flex items-center gap-1 bg-black/75 backdrop-blur-xl border border-border/40 rounded-xl p-1 pointer-events-auto">
-            {polyline && polyline.points.length > 0 && (
-              <button
-                onClick={() => {
-                  const mid = polyline.points[Math.floor(polyline.points.length / 2)];
-                  controllerRef.current?.flyTo(mid, 18000, 2.0);
-                  onFlyToFullRoute?.();
-                }}
-                data-slot="trigger"
-                className="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-gray-300 hover:text-white hover:bg-white/10 transition flex items-center gap-1"
-                title="View Full Route from Orbit"
-              >
-                <Eye className="w-3 h-3 text-[#B68D40]" />
-                <span>Full Route</span>
-              </button>
-            )}
-            <button
-              onClick={() => handlePerspectiveChange('topo')}
-              data-slot="trigger"
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
-                perspective === 'topo' ? 'bg-[#B68D40] text-black font-bold' : 'text-gray-400 hover:text-white'
-              }`}
-              title="Top-down Topographic View"
-            >
-              Topo
-            </button>
-            <button
-              onClick={() => handlePerspectiveChange('ridge')}
-              data-slot="trigger"
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
-                perspective === 'ridge' ? 'bg-[#B68D40] text-black font-bold' : 'text-gray-400 hover:text-white'
-              }`}
-              title="45-degree Ridge Profile"
-            >
-              Ridge (45°)
-            </button>
-            <button
-              onClick={() => handlePerspectiveChange('summit')}
-              data-slot="trigger"
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
-                perspective === 'summit' ? 'bg-[#B68D40] text-black font-bold' : 'text-gray-400 hover:text-white'
-              }`}
-              title="Low-angle Summit Horizon View"
-            >
-              Summit
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* BOTTOM FLOATING GLASSMORPHIC HUD / SUMMIT TOUR CONSOLE / DRONE FLIGHT CONSOLE */}
-      {!isLoading && !loadError && (
-        <div
-          ref={hudRef}
-          data-slot="body"
-          className="absolute bottom-4 left-4 right-4 z-10 pointer-events-none max-h-[85%] overflow-y-auto"
-        >
-          {currentMode === 'drone-flight' ? (
-            <div className="max-w-4xl mx-auto pointer-events-auto">
+          {/* Body: Scrollable Consoles / FloatingMapPanel */}
+          <div
+            data-slot="body"
+            className="flex-1 min-h-0 overflow-y-auto pointer-events-auto pr-0.5 space-y-2.5 scrollbar-thin scrollbar-thumb-amber-500/20"
+          >
+            {currentMode === 'drone-flight' ? (
               <DroneFlightConsole
                 controller={controllerRef.current}
                 trail={activeTrail}
@@ -505,166 +520,160 @@ export default function CesiumGlobeMap({
                 onTelemetryChange={onFlightTelemetry}
                 onSeekDistanceKm={onSeekDistanceKm}
               />
-            </div>
-          ) : currentMode === 'summit-tours' ? (
-            <div className="max-w-4xl mx-auto pointer-events-auto">
+            ) : currentMode === 'summit-tours' ? (
               <SummitTourConsole
                 controller={controllerRef.current}
                 initialSummitSlug={initialSummitSlug}
               />
-            </div>
-          ) : !hideHUD ? (
-            <FloatingMapPanel
-              id="cesium-hud-window"
-              title="Himalayan Mountain Ranges & Summit Fly-To"
-              icon={<Mountain className="w-4 h-4 text-[#B68D40]" />}
-              badge={
-                activeTrail ? (
-                  <span className="text-[10px] text-[#B68D40] font-mono px-2 py-0.5 rounded bg-amber-500/15 border border-[#B68D40]/30 truncate max-w-[150px]">
-                    {activeTrail.name}
-                  </span>
-                ) : undefined
-              }
-              allowDrag={true}
-              allowMinimize={true}
-              allowMaximize={true}
-              allowClose={false}
-              defaultWidth="max-w-3xl w-full mx-auto"
-            >
-              <div className="space-y-3">
-                {/* 0. Active Trail Drone Fly-Through Call to Action */}
-                {activeTrail && (
-                  <div className="p-2.5 rounded-xl bg-accent/15 border border-accent/40 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <Plane className="w-4 h-4 text-accent animate-pulse" />
-                      <div>
-                        <p className="text-xs font-bold text-white">Virtual Trail Simulation Available</p>
-                        <p className="text-[10px] text-gray-300">Fly a 3D camera along {activeTrail.name} with live HUD telemetry</p>
+            ) : !hideHUD ? (
+              <FloatingMapPanel
+                id="cesium-hud-window"
+                title="Himalayan Ranges & Summits"
+                icon={<Mountain className="w-4 h-4 text-[#B68D40]" />}
+                badge={
+                  activeTrail ? (
+                    <span className="text-[10px] text-[#B68D40] font-mono px-2 py-0.5 rounded bg-amber-500/15 border border-[#B68D40]/30 truncate max-w-[120px]">
+                      {activeTrail.name}
+                    </span>
+                  ) : undefined
+                }
+                allowDrag={false}
+                allowMinimize={true}
+                allowMaximize={false}
+                allowClose={false}
+                defaultWidth="w-full"
+              >
+                <div className="space-y-3">
+                  {/* 0. Active Trail Drone Fly-Through Call to Action */}
+                  {activeTrail && (
+                    <div className="p-2.5 rounded-xl bg-accent/15 border border-accent/40 flex flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        <Plane className="w-4 h-4 text-accent animate-pulse shrink-0" />
+                        <div>
+                          <p className="text-xs font-bold text-white">Virtual Trail Simulation</p>
+                          <p className="text-[10px] text-gray-300">Fly along {activeTrail.name}</p>
+                        </div>
                       </div>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setCurrentMode('drone-flight');
-                        controllerRef.current?.startDroneFlight({ speedMultiplier: 1, initialDistanceMeters: 0 });
-                      }}
-                      data-slot="trigger"
-                      className="px-3 py-1.5 rounded-xl bg-accent text-accent-foreground font-bold text-xs hover:bg-[#d4a853] transition shadow-lg shadow-amber-500/20 flex items-center gap-1.5 shrink-0"
-                    >
-                      <Plane className="w-3.5 h-3.5" />
-                      <span>Start Drone Fly-Through</span>
-                    </button>
-                  </div>
-                )}
-                {/* 1. Himalayan Ranges Navigator */}
-                {ranges.length > 0 && (
-                  <div className="space-y-1">
-                    <span className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">
-                      Explore Range Boundaries:
-                    </span>
-                    <div className="flex flex-wrap items-center gap-1.5">
                       <button
-                        onClick={() => handleSelectRange('All')}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
-                          selectedRange === 'All'
-                            ? 'bg-[#B68D40] text-black font-bold shadow'
-                            : 'bg-neutral-900/80 hover:bg-neutral-800 text-gray-300 border border-border/40'
-                        }`}
+                        onClick={() => {
+                          setCurrentMode('drone-flight');
+                          controllerRef.current?.startDroneFlight({ speedMultiplier: 1, initialDistanceMeters: 0 });
+                        }}
+                        data-slot="trigger"
+                        className="w-full px-3 py-1.5 rounded-xl bg-accent text-accent-foreground font-bold text-xs hover:bg-[#d4a853] transition shadow-lg shadow-amber-500/20 flex items-center justify-center gap-1.5"
                       >
-                        All Ranges
+                        <Plane className="w-3.5 h-3.5" />
+                        <span>Start Drone Fly-Through</span>
                       </button>
-                      {ranges.map((r) => {
-                        const isSelected = selectedRange.toLowerCase() === r.name.toLowerCase();
-                        return (
-                          <button
-                            key={r.name}
-                            onClick={() => handleSelectRange(r.name)}
-                            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition flex items-center gap-1 ${
-                              isSelected
-                                ? 'bg-[#B68D40] text-black font-bold shadow'
-                                : 'bg-neutral-900/80 hover:bg-neutral-800 text-gray-300 border border-border/40 hover:border-[#B68D40]/50'
-                            }`}
-                          >
-                            <Layers className="w-3 h-3 text-[#B68D40]" />
-                            <span>{r.name}</span>
-                          </button>
-                        );
-                      })}
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* 2. Landmarks Chips Row in 3D Mode */}
-                {allLandmarks && allLandmarks.length > 0 && (
-                  <div className="space-y-1">
-                    <span className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">
-                      Regional Landmarks:
-                    </span>
-                    <div className="flex flex-wrap items-center gap-1.5 max-h-24 overflow-y-auto">
-                      {allLandmarks.map((lm: Landmark) => {
-                        const isSelected = selectedLandmarkId === lm.id;
-                        return (
-                          <button
-                            key={lm.id}
-                            onClick={() => handleSelectLandmark(lm)}
-                            className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold transition-all flex items-center gap-1.5 border ${
-                              isSelected
-                                ? 'bg-accent text-accent-foreground border-accent shadow-lg shadow-amber-500/20 scale-105'
-                                : 'bg-neutral-900/80 hover:bg-neutral-800 text-gray-300 border border-border/40 hover:border-accent/40'
-                            }`}
-                          >
-                            <MapPin className="w-3 h-3 text-[#B68D40]" />
-                            <span>{lm.name}</span>
-                            <span className="text-[10px] font-mono opacity-80">{lm.elevation}m</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* 3. Summit Quick Fly-To */}
-                <div className="space-y-1">
-                  <span className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">
-                    Apex Summits:
-                  </span>
-                  <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                    {HIMALAYAN_SUMMITS.map((summit) => {
-                      const isActive = activeSummit === summit.name;
-                      return (
+                  {/* 1. Himalayan Ranges Navigator */}
+                  {ranges.length > 0 && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">
+                        Explore Range Boundaries:
+                      </span>
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <button
-                          key={summit.name}
-                          onClick={() => handleFlyToSummit(summit)}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                            isActive
-                              ? 'bg-[#B68D40] text-black font-bold shadow-lg shadow-[#B68D40]/30 scale-105'
-                              : 'bg-neutral-900/80 hover:bg-neutral-800 text-gray-300 border border-border/40 hover:border-[#B68D40]/40'
+                          onClick={() => handleSelectRange('All')}
+                          className={`px-2 py-1 rounded-lg text-[10px] font-semibold transition ${
+                            selectedRange === 'All'
+                              ? 'bg-[#B68D40] text-black font-bold shadow'
+                              : 'bg-neutral-900/80 hover:bg-neutral-800 text-gray-300 border border-border/40'
                           }`}
                         >
-                          <Compass className={`w-3 h-3 ${isActive ? 'text-black' : 'text-[#B68D40]'}`} />
-                          <span>{summit.name}</span>
-                          <span className={`text-[10px] font-mono ${isActive ? 'text-black/80' : 'text-gray-400'}`}>
-                            {summit.elevation}m
-                          </span>
+                          All Ranges
                         </button>
-                      );
-                    })}
+                        {ranges.map((r) => {
+                          const isSelected = selectedRange.toLowerCase() === r.name.toLowerCase();
+                          return (
+                            <button
+                              key={r.name}
+                              onClick={() => handleSelectRange(r.name)}
+                              className={`px-2 py-1 rounded-lg text-[10px] font-semibold transition flex items-center gap-1 ${
+                                isSelected
+                                  ? 'bg-[#B68D40] text-black font-bold shadow'
+                                  : 'bg-neutral-900/80 hover:bg-neutral-800 text-gray-300 border border-border/40 hover:border-[#B68D40]/50'
+                              }`}
+                            >
+                              <Layers className="w-3 h-3 text-[#B68D40]" />
+                              <span>{r.name}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 2. Landmarks Chips Row in 3D Mode */}
+                  {allLandmarks && allLandmarks.length > 0 && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">
+                        Regional Landmarks:
+                      </span>
+                      <div className="flex flex-wrap items-center gap-1.5 max-h-28 overflow-y-auto">
+                        {allLandmarks.map((lm: Landmark) => {
+                          const isSelected = selectedLandmarkId === lm.id;
+                          return (
+                            <button
+                              key={lm.id}
+                              onClick={() => handleSelectLandmark(lm)}
+                              className={`px-2 py-1 rounded-xl text-[10px] font-semibold transition-all flex items-center gap-1.5 border ${
+                                isSelected
+                                  ? 'bg-accent text-accent-foreground border-accent shadow-lg shadow-amber-500/20 scale-105'
+                                  : 'bg-neutral-900/80 hover:bg-neutral-800 text-gray-300 border border-border/40 hover:border-accent/40'
+                              }`}
+                            >
+                              <MapPin className="w-3 h-3 text-[#B68D40]" />
+                              <span>{lm.name}</span>
+                              <span className="text-[9px] font-mono opacity-80">{lm.elevation}m</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 3. Summit Quick Fly-To */}
+                  <div className="space-y-1">
+                    <span className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">
+                      Apex Summits:
+                    </span>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {HIMALAYAN_SUMMITS.map((summit) => {
+                        const isActive = activeSummit === summit.name;
+                        return (
+                          <button
+                            key={summit.name}
+                            onClick={() => handleFlyToSummit(summit)}
+                            className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold transition-all flex items-center gap-1.5 ${
+                              isActive
+                                ? 'bg-[#B68D40] text-black font-bold shadow-lg shadow-[#B68D40]/30 scale-105'
+                                : 'bg-neutral-900/80 hover:bg-neutral-800 text-gray-300 border border-border/40 hover:border-[#B68D40]/40'
+                            }`}
+                          >
+                            <Compass className={`w-3 h-3 ${isActive ? 'text-black' : 'text-[#B68D40]'}`} />
+                            <span>{summit.name}</span>
+                            <span className={`text-[9px] font-mono ${isActive ? 'text-black/80' : 'text-gray-400'}`}>
+                              {summit.elevation}m
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Footer Controls & Navigation Tip */}
+                  <div className="text-[10px] text-gray-400 flex flex-col gap-1 border-t border-border/30 pt-2">
+                    <span>• Left-Click + Drag: Pan</span>
+                    <span>• Right-Click + Drag: Orbit / Pitch</span>
+                    <span>• Mouse Wheel: Altitude Zoom</span>
                   </div>
                 </div>
-
-                {/* Footer Controls & Navigation Tip */}
-                <div className="text-[11px] text-gray-400 flex flex-wrap items-center justify-between border-t border-border/30 pt-2 gap-2">
-                  <span>Hold Left-Click to pan • Right-Click + Drag to orbit/tilt • Scroll to zoom</span>
-                  <button
-                    onClick={() => controllerRef.current?.flyTo(initialCenter, 14000, 2)}
-                    className="flex items-center gap-1 text-[#E2C085] hover:text-white transition font-medium"
-                  >
-                    <RotateCcw className="w-3 h-3" />
-                    <span>Reset View</span>
-                  </button>
-                </div>
-              </div>
-            </FloatingMapPanel>
-          ) : null}
+              </FloatingMapPanel>
+            ) : null}
+          </div>
         </div>
       )}
     </div>

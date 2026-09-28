@@ -76,43 +76,15 @@ export class CesiumController implements IMapController {
 
     // Configure Cesium Ion Access Token if provided in env
     const ionToken = process.env.NEXT_PUBLIC_CESIUM_ION_TOKEN;
-    const hasIonToken = Boolean(
-      ionToken &&
-      ionToken.trim().length > 20 &&
-      !ionToken.includes('placeholder') &&
-      !ionToken.includes('your-token')
-    );
+    if (ionToken && ionToken.trim().length > 20 && !ionToken.includes('placeholder') && !ionToken.includes('your-token')) {
+      if (this.Cesium.Ion) {
+        this.Cesium.Ion.defaultAccessToken = ionToken.trim();
+      }
+    }
 
-    let terrainProvider: any;
+    // 2. High-resolution satellite base layer (Esri World Imagery)
     let baseLayer: any;
-
-    if (hasIonToken && this.Cesium.Ion) {
-      this.Cesium.Ion.defaultAccessToken = ionToken;
-      try {
-        terrainProvider = await this.Cesium.createWorldTerrainAsync({
-          requestWaterMask: false,
-          requestVertexNormals: true,
-        });
-      } catch (terrainError) {
-        console.warn('Cesium World Terrain fallback to EllipsoidTerrainProvider:', terrainError);
-        terrainProvider = new this.Cesium.EllipsoidTerrainProvider();
-      }
-      try {
-        baseLayer = await this.Cesium.ImageryLayer.fromProviderAsync(
-          this.Cesium.createWorldImageryAsync()
-        );
-      } catch (imgError) {
-        baseLayer = new this.Cesium.ImageryLayer(
-          new this.Cesium.UrlTemplateImageryProvider({
-            url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-            maximumLevel: 19,
-            credit: 'Esri World Imagery',
-          })
-        );
-      }
-    } else {
-      // 100% Token-Free Open High-Resolution Satellite Imagery & Topography
-      terrainProvider = new this.Cesium.EllipsoidTerrainProvider();
+    try {
       baseLayer = new this.Cesium.ImageryLayer(
         new this.Cesium.UrlTemplateImageryProvider({
           url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
@@ -120,14 +92,41 @@ export class CesiumController implements IMapController {
           credit: 'Esri World Imagery',
         })
       );
+    } catch (imgError) {
+      console.warn('Esri World Imagery creation notice:', imgError);
+    }
+
+    // 3. 3D World Terrain matching Cesium Sandcastle: https://sandcastle.cesium.com/?id=terrain
+    let terrain: any = undefined;
+    let terrainProvider: any = undefined;
+
+    if (this.Cesium.Terrain && typeof this.Cesium.Terrain.fromWorldTerrain === 'function') {
+      try {
+        terrain = this.Cesium.Terrain.fromWorldTerrain({
+          requestWaterMask: true,
+          requestVertexNormals: true,
+        });
+      } catch (terrainError) {
+        console.warn('Cesium.Terrain.fromWorldTerrain notice:', terrainError);
+      }
+    }
+
+    if (!terrain && typeof this.Cesium.createWorldTerrainAsync === 'function') {
+      try {
+        terrainProvider = await this.Cesium.createWorldTerrainAsync({
+          requestWaterMask: true,
+          requestVertexNormals: true,
+        });
+      } catch (terrainError) {
+        console.warn('Cesium.createWorldTerrainAsync notice:', terrainError);
+      }
     }
 
     const defaultCenter = options?.center || { lat: 27.9881, lng: 86.9250, altitude: 9000 };
 
-    // 4. Initialize Cesium Viewer with explicit token-free baseLayer & terrain
-    this.viewer = new this.Cesium.Viewer(container, {
+    // 4. Initialize Cesium Viewer with authentic 3D World Terrain
+    const viewerOptions: any = {
       baseLayer,
-      terrainProvider,
       animation: false,
       baseLayerPicker: false,
       fullscreenButton: false,
@@ -146,8 +145,29 @@ export class CesiumController implements IMapController {
       maximumRenderTimeChange: Number.POSITIVE_INFINITY,
       msaaSamples: 2,
       skyAtmosphere: new this.Cesium.SkyAtmosphere(),
-    });
- 
+    };
+
+    if (terrain) {
+      viewerOptions.terrain = terrain;
+    } else if (terrainProvider) {
+      viewerOptions.terrainProvider = terrainProvider;
+    }
+
+    this.viewer = new this.Cesium.Viewer(container, viewerOptions);
+
+    // Asynchronous terrain fallback if not set during constructor
+    if (!terrain && !this.viewer.terrainProvider && typeof this.Cesium.createWorldTerrainAsync === 'function') {
+      this.Cesium.createWorldTerrainAsync({
+        requestWaterMask: true,
+        requestVertexNormals: true,
+      }).then((tp: any) => {
+        if (this.viewer && !this.viewer.isDestroyed()) {
+          this.viewer.terrainProvider = tp;
+          this.viewer.scene.requestRender();
+        }
+      }).catch((e: any) => console.warn('Delayed createWorldTerrainAsync notice:', e));
+    }
+
     // Suppress raw Cesium developer error popups & acceleration notices in production
     if (this.viewer?.cesiumWidget) {
       this.viewer.cesiumWidget.showErrorPanel = (title: string, message: string, error: any) => {
@@ -155,31 +175,11 @@ export class CesiumController implements IMapController {
       };
     }
 
-    // 5. Himalayan Lighting & Topographic Depth Tuning
+    // 5. Himalayan Lighting & Topographic 3D Depth Tuning
     const scene = this.viewer.scene;
     scene.globe.enableLighting = true;
     scene.globe.depthTestAgainstTerrain = true;
-    scene.globe.maximumScreenSpaceError = 2.0;
-
-    // Limit resolution scale on high-DPI displays to maintain 60 FPS
-    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-    this.viewer.resolutionScale = Math.min(dpr, 1.5);
-
-    // 5.5 Google Photorealistic 3D Tiles Integration (Cesium Sandcastle: google-photorealistic-3d-tiles)
-    try {
-      if (typeof this.Cesium.createGooglePhotorealistic3DTileset === 'function') {
-        const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-        const options = googleApiKey ? { key: googleApiKey } : undefined;
-        const googleTileset = await this.Cesium.createGooglePhotorealistic3DTileset(options);
-        this.viewer.scene.primitives.add(googleTileset);
-      } else if (this.Cesium.Cesium3DTileset?.fromIonAssetId) {
-        // Asset ID 2275207 is Google Photorealistic 3D Tiles on Cesium ion
-        const googleTileset = await this.Cesium.Cesium3DTileset.fromIonAssetId(2275207);
-        this.viewer.scene.primitives.add(googleTileset);
-      }
-    } catch (googleTilesetErr) {
-      console.info('Google Photorealistic 3D Tiles fallback to high-resolution satellite topography:', googleTilesetErr);
-    }
+    scene.globe.maximumScreenSpaceError = 1.33; // High terrain polygon density for Himalayan summits and ridges
 
     // Initial camera placement over default Himalayan center
     this.flyTo(defaultCenter, defaultCenter.altitude || 12000, 2);

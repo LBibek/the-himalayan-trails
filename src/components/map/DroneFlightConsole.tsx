@@ -197,7 +197,7 @@ export default function DroneFlightConsole({
         allowMinimize={true}
         allowMaximize={true}
         allowClose={Boolean(onClose)}
-        defaultWidth="w-full max-w-4xl mx-auto"
+        defaultWidth="w-full"
         className="shadow-2xl border border-accent/40 bg-neutral-950/95 backdrop-blur-2xl"
       >
         <div className="space-y-3.5">

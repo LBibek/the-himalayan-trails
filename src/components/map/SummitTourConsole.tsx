@@ -152,7 +152,7 @@ export default function SummitTourConsole({
       allowMinimize={true}
       allowMaximize={true}
       allowClose={false}
-      defaultWidth="w-full max-w-4xl mx-auto"
+      defaultWidth="w-full"
       className={className}
     >
       <div className="space-y-4">
