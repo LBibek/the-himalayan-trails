@@ -1626,7 +1626,7 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                 <div className="absolute bottom-0 left-0 right-0 z-[1000] pointer-events-none flex justify-center px-2 pb-2">
                   <div
                     data-slot="altitude-bar"
-                    className="pointer-events-auto w-full max-w-4xl rounded-2xl overflow-hidden backdrop-blur-xl bg-black/75 border border-white/10 shadow-2xl shadow-black/60"
+                    className="pointer-events-auto w-full max-w-xl sm:max-w-2xl rounded-2xl overflow-hidden backdrop-blur-xl bg-black/80 border border-white/10 shadow-2xl shadow-black/60"
                   >
                     <ElevationProfileChart
                       trail={activeTrail}

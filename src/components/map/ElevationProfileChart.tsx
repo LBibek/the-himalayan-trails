@@ -286,9 +286,14 @@ export default function ElevationProfileChart({
     });
   };
 
-  // Active highlighted point for the header HUD badge
+  const selectedLandmark = useMemo(() => {
+    if (!selectedLandmarkId) return null;
+    return landmarkMarkers.find((lm) => lm.id === selectedLandmarkId) || null;
+  }, [selectedLandmarkId, landmarkMarkers]);
+
+  // Active highlighted point for the compact header readout
   const activePt = hoveredDataPoint || (activeScrubberData ? {
-    label: '🚁 3D Drone Flight Position',
+    label: '🚁 Drone Position',
     distanceKm: activeScrubberData.distanceKm,
     elevation: activeScrubberData.elevation,
   } : null);
@@ -296,89 +301,110 @@ export default function ElevationProfileChart({
   return (
     <div
       data-slot="base"
-      className="w-full rounded-3xl bg-neutral-950/95 border border-border/40 backdrop-blur-2xl shadow-2xl overflow-hidden transition-all duration-300 text-foreground"
+      className="w-full rounded-2xl bg-neutral-950/90 border border-white/10 backdrop-blur-2xl shadow-2xl overflow-hidden transition-all duration-300 text-foreground"
     >
-      {/* 1. GLASSMORPHIC HEADER HUD TOOLBAR (Matching PlannerElevationChart logic & design) */}
+      {/* 1. SLIMLINE HEADER: Essential Trail Name + Vital Metrics + Current Scrubber */}
       <div
         data-slot="header"
-        className="px-4 py-3 bg-black/85 border-b border-border/30 backdrop-blur-xl flex flex-wrap items-center justify-between gap-3"
+        className="px-3 py-1.5 bg-black/80 border-b border-white/10 flex items-center justify-between gap-2 text-xs"
       >
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#B68D40] to-amber-600 text-black font-extrabold flex items-center justify-center shadow-lg shadow-amber-500/20 shrink-0">
-            <TrendingUp className="h-4 w-4 text-black" />
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-5 h-5 rounded-lg bg-gradient-to-br from-[#B68D40] to-amber-600 text-black flex items-center justify-center shrink-0 shadow">
+            <TrendingUp className="h-3 w-3 text-black" />
           </div>
-          <div>
-            <div className="text-xs font-extrabold text-white tracking-wider flex items-center gap-2">
-              <span className="truncate max-w-[200px] sm:max-w-xs">{trail.name}</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#B68D40]/20 text-[#B68D40] border border-[#B68D40]/40 font-mono font-bold shrink-0">
-                Altitude Profile
-              </span>
-            </div>
-            <div className="text-[10px] text-muted-foreground font-mono hidden sm:block">
-              Hover along altitude curve or click waypoint markers to focus 2D/3D map
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Route Elevation Badges */}
-        <div className="hidden md:flex items-center gap-3.5 text-xs font-mono text-muted-foreground border-l border-border/40 pl-3.5">
-          <span>
-            Apex: <strong className="text-amber-400">{maxElevation.toLocaleString()}m</strong>
+          <span className="font-extrabold text-white text-xs truncate max-w-[140px] sm:max-w-[200px]">
+            {trail.name}
           </span>
-          <span>
-            Min: <strong className="text-emerald-400">{minElevation.toLocaleString()}m</strong>
-          </span>
-          <span>
-            Climb: <strong className="text-cyan-400">+{totalClimb.toLocaleString()}m</strong>
-          </span>
-          <span>
-            Dist: <strong className="text-[#B68D40]">{trail.distanceKm} km</strong>
+          <span className="text-[10px] text-muted-foreground font-mono shrink-0 hidden sm:inline-block">
+            {trail.distanceKm}km • +{totalClimb.toLocaleString()}m
           </span>
         </div>
 
-        {/* Highlighted Active Point Indicator */}
-        {activePt && (
-          <div
-            data-slot="indicator"
-            className="flex items-center gap-2 px-3 py-1 rounded-xl bg-black/90 border border-[#B68D40]/60 backdrop-blur-md shadow-xl text-xs animate-in fade-in"
-          >
-            <span className="text-xs font-bold text-[#B68D40] truncate max-w-[140px]">{activePt.label}:</span>
-            <span className="font-mono text-gray-300 text-[11px]">{activePt.distanceKm}km</span>
-            <span className="font-mono font-bold text-amber-400">{activePt.elevation.toLocaleString()}m</span>
-          </div>
-        )}
+        {/* Live Scrubber / Hover Readout */}
+        <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+          {activePt ? (
+            <div
+              data-slot="indicator"
+              className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-amber-500/15 border border-[#B68D40]/40 text-[10px] font-mono"
+            >
+              <span className="text-[#B68D40] font-bold truncate max-w-[100px]">{activePt.label}:</span>
+              <span className="text-gray-300">{activePt.distanceKm}km</span>
+              <span className="font-bold text-amber-400">{activePt.elevation.toLocaleString()}m</span>
+            </div>
+          ) : (
+            <div className="text-[10px] text-muted-foreground font-mono hidden md:flex items-center gap-2">
+              <span>Max: <strong className="text-amber-400 font-bold">{maxElevation.toLocaleString()}m</strong></span>
+            </div>
+          )}
 
-        <div className="flex items-center gap-1.5 ml-auto">
           <button
             onClick={() => setIsExpanded(!isExpanded)}
             data-slot="trigger"
-            className="p-1.5 rounded-xl bg-neutral-900 border border-border/40 text-muted-foreground hover:text-foreground transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            className="p-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-muted-foreground hover:text-white transition"
             title={isExpanded ? 'Collapse Profile' : 'Expand Profile'}
           >
-            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
           </button>
 
           {onClose && (
             <button
               onClick={onClose}
               data-slot="trigger"
-              className="p-1.5 rounded-xl bg-neutral-900 border border-border/40 text-muted-foreground hover:text-red-400 transition"
+              className="p-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-muted-foreground hover:text-red-400 transition"
               title="Close Profile"
             >
-              <X className="h-4 w-4" />
+              <X className="h-3.5 w-3.5" />
             </button>
           )}
         </div>
       </div>
 
-      {/* 2. RECHARTS EXPANDED AREA GRAPH CANVAS */}
+      {/* 2. KEYPOINTS TOP NAVIGATION STRIP (Directly above line chart for seamless trail navigation) */}
+      {isExpanded && landmarkMarkers.length > 0 && (
+        <div
+          data-slot="keypoints-nav"
+          className="px-2.5 pt-1.5 pb-1 border-b border-white/5 bg-neutral-950/60 flex items-center gap-1.5 overflow-x-auto scrollbar-none"
+        >
+          <span className="text-[9px] uppercase font-bold tracking-wider text-[#B68D40] shrink-0 flex items-center gap-1 pr-1 border-r border-white/10">
+            <Mountain className="h-2.5 w-2.5 text-[#B68D40]" />
+            <span>Keypoints</span>
+          </span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {landmarkMarkers.map((lm) => {
+              const isSelected = selectedLandmarkId === lm.id;
+              return (
+                <button
+                  key={lm.id}
+                  onClick={() => handleLandmarkBadgeClick(lm)}
+                  data-slot="keypoint-chip"
+                  data-selected={isSelected}
+                  className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-all flex items-center gap-1 shrink-0 border cursor-pointer ${
+                    isSelected
+                      ? 'bg-[#B68D40] text-black border-amber-300 shadow-sm shadow-amber-500/20 font-bold scale-105'
+                      : 'bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border-white/10 hover:border-[#B68D40]/40'
+                  } focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#B68D40]`}
+                  title={`Navigate to ${lm.name} (${lm.elevation}m at KM ${lm.distanceKm})`}
+                >
+                  <span className="text-[10px]">{getCategoryIcon(lm.category)}</span>
+                  <span className="truncate max-w-[100px]">{lm.name}</span>
+                  <span className={`text-[9px] font-mono ${isSelected ? 'text-black/80' : 'text-gray-400'}`}>
+                    {lm.elevation}m
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 3. COMPACT RECHARTS AREA CHART CANVAS */}
       {isExpanded && (
-        <div data-slot="body" className="p-3.5 space-y-2.5">
-          <div data-slot="content" className="w-full h-44 sm:h-52">
+        <div data-slot="body" className="p-2 pt-1">
+          <div data-slot="content" className="w-full h-20 sm:h-24">
             {!mounted ? (
               <div
                 data-slot="indicator"
-                className="w-full h-full rounded-2xl bg-surface/40 animate-pulse border border-border/20"
+                className="w-full h-full rounded-xl bg-surface/40 animate-pulse border border-border/20"
               />
             ) : (
               <ResponsiveContainer width="100%" height="100%">
@@ -387,33 +413,34 @@ export default function ElevationProfileChart({
                   onMouseMove={handleMouseMove}
                   onMouseLeave={handleMouseLeave}
                   onClick={handleClick}
-                  margin={{ top: 15, right: 25, left: 10, bottom: 5 }}
+                  margin={{ top: 6, right: 10, left: -22, bottom: 0 }}
                 >
                   <defs>
                     <linearGradient id="elevationProfileGoldGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#B68D40" stopOpacity={0.45} />
+                      <stop offset="5%" stopColor="#B68D40" stopOpacity={0.4} />
                       <stop offset="95%" stopColor="#B68D40" stopOpacity={0.0} />
                     </linearGradient>
                   </defs>
 
-                  <CartesianGrid stroke="rgba(255, 255, 255, 0.07)" strokeDasharray="3 3" vertical={false} />
+                  <CartesianGrid stroke="rgba(255, 255, 255, 0.05)" strokeDasharray="2 2" vertical={false} />
 
                   <XAxis
                     dataKey="distanceKm"
-                    unit=" km"
+                    unit="km"
                     stroke="#71717a"
-                    fontSize={10}
+                    fontSize={9}
                     tickLine={false}
-                    axisLine={{ stroke: 'rgba(255,255,255,0.12)' }}
+                    axisLine={{ stroke: 'rgba(255,255,255,0.1)' }}
                   />
                   <YAxis
                     dataKey="elevation"
                     unit="m"
-                    domain={[minElevation - 100, maxElevation + 100]}
+                    domain={[minElevation - 80, maxElevation + 80]}
                     stroke="#71717a"
-                    fontSize={10}
+                    fontSize={9}
                     tickLine={false}
                     axisLine={false}
+                    tickCount={3}
                   />
 
                   <Tooltip content={<CustomRechartsTooltip />} />
@@ -426,15 +453,25 @@ export default function ElevationProfileChart({
                         key={lm.id}
                         x={lm.distanceKm}
                         y={lm.elevation}
-                        r={isSelected ? 7 : 5}
+                        r={isSelected ? 6 : 4}
                         fill={isSelected ? '#fbbf24' : '#B68D40'}
                         stroke="#ffffff"
-                        strokeWidth={isSelected ? 2.5 : 1.5}
+                        strokeWidth={isSelected ? 2 : 1}
                         className="cursor-pointer transition-all hover:scale-125"
                         onClick={() => handleLandmarkBadgeClick(lm)}
                       />
                     );
                   })}
+
+                  {/* Active Selected Landmark Vertical Guideline */}
+                  {selectedLandmark && (
+                    <ReferenceLine
+                      x={selectedLandmark.distanceKm}
+                      stroke="#fbbf24"
+                      strokeWidth={1.5}
+                      strokeDasharray="3 3"
+                    />
+                  )}
 
                   {/* Synchronized 3D Drone Flight Scrubber Marker & Reference Line */}
                   {activeScrubberData && (
@@ -442,16 +479,16 @@ export default function ElevationProfileChart({
                       <ReferenceLine
                         x={activeScrubberData.distanceKm}
                         stroke="#fbbf24"
-                        strokeWidth={2}
-                        strokeDasharray="4 2"
+                        strokeWidth={1.5}
+                        strokeDasharray="3 2"
                       />
                       <ReferenceDot
                         x={activeScrubberData.distanceKm}
                         y={activeScrubberData.elevation}
-                        r={7}
+                        r={6}
                         fill="#fbbf24"
                         stroke="#ffffff"
-                        strokeWidth={2.5}
+                        strokeWidth={2}
                       />
                     </>
                   )}
@@ -460,59 +497,31 @@ export default function ElevationProfileChart({
                     type="monotone"
                     dataKey="elevation"
                     stroke="#B68D40"
-                    strokeWidth={2.5}
+                    strokeWidth={2}
                     fillOpacity={1}
                     fill="url(#elevationProfileGoldGrad)"
-                    activeDot={{ r: 7, fill: '#f59e0b', stroke: '#ffffff', strokeWidth: 2 }}
+                    activeDot={{ r: 5, fill: '#f59e0b', stroke: '#ffffff', strokeWidth: 1.5 }}
                   />
                 </AreaChart>
               </ResponsiveContainer>
             )}
           </div>
-
-          {/* 3. ROUTE LANDMARK CHECKPOINTS FOOTER (Matching PlannerElevationChart Waypoint Stepper) */}
-          {landmarkMarkers.length > 0 && (
-            <div
-              data-slot="footer"
-              className="pt-2 border-t border-border/30 flex flex-wrap items-center justify-between gap-2 text-xs"
-            >
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] font-semibold text-accent mr-1 flex items-center gap-1">
-                  <Mountain className="h-3.5 w-3.5 text-[#B68D40]" />
-                  <span>Key Waypoints:</span>
-                </span>
-                {landmarkMarkers.map((lm) => {
-                  const isSelected = selectedLandmarkId === lm.id;
-                  return (
-                    <button
-                      key={lm.id}
-                      onClick={() => handleLandmarkBadgeClick(lm)}
-                      data-slot="landmark-pill"
-                      data-selected={isSelected}
-                      className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold transition-all flex items-center gap-1.5 border ${
-                        isSelected
-                          ? 'bg-[#B68D40] text-black border-white shadow-lg shadow-amber-500/20 scale-105 ring-2 ring-[#B68D40]'
-                          : 'bg-neutral-900/90 text-gray-300 border-border/40 hover:border-[#B68D40]/50 hover:text-white'
-                      } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent`}
-                    >
-                      <span>🏔️</span>
-                      <span>{lm.name}</span>
-                      <span className="text-[10px] font-mono opacity-80">{lm.elevation}m</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="text-[10px] text-muted-foreground font-mono flex items-center gap-1">
-                <Sparkles className="h-3 w-3 text-accent" />
-                <span>Click point to focus map directly</span>
-              </div>
-            </div>
-          )}
         </div>
       )}
     </div>
   );
+}
+
+function getCategoryIcon(category?: string): string {
+  if (!category) return '📍';
+  const c = category.toLowerCase();
+  if (c.includes('summit') || c.includes('peak')) return '🏔️';
+  if (c.includes('pass')) return '⛰️';
+  if (c.includes('camp') || c.includes('base') || c.includes('village') || c.includes('settlement')) return '⛺';
+  if (c.includes('monastery') || c.includes('temple') || c.includes('gompa')) return '🛕';
+  if (c.includes('view') || c.includes('ridge')) return '🔭';
+  if (c.includes('lake')) return '💧';
+  return '📍';
 }
 
 function CustomRechartsTooltip({ active, payload }: any) {
@@ -522,29 +531,18 @@ function CustomRechartsTooltip({ active, payload }: any) {
     return (
       <div
         data-slot="tooltip"
-        className="backdrop-blur-2xl bg-neutral-950/95 border border-[#B68D40]/60 shadow-2xl rounded-2xl p-3 text-white text-xs space-y-2 max-w-xs"
+        className="backdrop-blur-xl bg-neutral-950/95 border border-[#B68D40]/50 shadow-2xl rounded-xl px-2.5 py-1.5 text-white text-xs space-y-1 max-w-[200px]"
       >
-        <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-1.5">
-          <span className="font-extrabold text-[#B68D40] truncate max-w-[180px]">{item.label}</span>
-          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0">
-            KM {item.distanceKm}
+        <div className="flex items-center justify-between gap-1.5 border-b border-white/10 pb-1">
+          <span className="font-extrabold text-[#B68D40] text-[11px] truncate max-w-[120px]">{item.label}</span>
+          <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0">
+            {item.distanceKm} km
           </span>
         </div>
 
         <div className="flex items-baseline justify-between">
-          <p className="text-base font-mono font-extrabold text-amber-400">{item.elevation.toLocaleString()} m</p>
-          <span className="text-emerald-400 font-mono text-[11px]">Altitude</span>
-        </div>
-
-        {item.lat && item.lng && (
-          <div className="text-[10px] text-gray-400 font-mono pt-1 border-t border-white/10">
-            GPS: {item.lat.toFixed(4)}°N, {item.lng.toFixed(4)}°E
-          </div>
-        )}
-
-        <div className="pt-1 border-t border-white/10 flex items-center gap-1 text-[10px] text-[#B68D40]">
-          <Sparkles className="h-3 w-3" />
-          <span>Click to focus 2D & 3D map camera</span>
+          <p className="text-sm font-mono font-extrabold text-amber-400">{item.elevation.toLocaleString()} m</p>
+          <span className="text-emerald-400 font-mono text-[10px]">Elevation</span>
         </div>
       </div>
     );
