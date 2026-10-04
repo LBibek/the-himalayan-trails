@@ -13,6 +13,7 @@ import {
   CloudSun,
   BookOpen,
   User,
+  Users,
   ShieldCheck,
   Search,
   PhoneCall,
@@ -44,6 +45,12 @@ const exploreGroup = {
       href: '/map?engine=3d',
       icon: Globe,
       description: 'Cesium Himalayan terrain, summit drone fly-throughs',
+    },
+    {
+      label: 'Sherpa Guides & Porters',
+      href: '/guides',
+      icon: Users,
+      description: 'Certified IFMGA guides & ethical porter logistics',
     },
     {
       label: 'Trekker Stories',
@@ -100,6 +107,7 @@ const mobileNavLinks = [
   { label: 'Alpine Gateway',   href: '/',                   icon: Mountain,       description: 'Expedition Matrix & Live Regional Map' },
   { label: 'Explore & Trails', href: '/map',                icon: MapIcon,        description: 'AllTrails interactive topo & GPS tracks' },
   { label: '3D Globe Map',     href: '/map?engine=3d',      icon: Globe,          description: 'Himalayan massifs & summit drone tours' },
+  { label: 'Sherpa Guides & Porters', href: '/guides',      icon: Users,          description: 'Certified IFMGA guides & ethical porter logistics' },
   { label: 'Itinerary Studio', href: '/itinerary/planner',  icon: Calendar,       description: 'Interactive pacing, DnD days & waypoints' },
   { label: 'Offline Wilderness', href: '/offline',          icon: WifiOff,        description: 'Cached GPS route packs & emergency SOS guides' },
   { label: 'Weather Office',   href: '/weather',            icon: CloudSun,       description: 'Avalanche risk, summit temps & lapse rates' },
@@ -109,6 +117,7 @@ const mobileNavLinks = [
 ];
 
 const secondaryLinks = [
+  { label: 'Sherpa Guides & Porters', href: '/guides' },
   { label: 'Landmark Guide',    href: '/landmarks' },
   { label: 'About Us',          href: '/about' },
   { label: 'Contact Support',   href: '/contact' },

@@ -1,8 +1,14 @@
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import fs from 'node:fs';
-import type { Trail, Landmark, Itinerary, ItineraryDay, Story, WeatherReport, Booking, ContactMessage, Inquiry, SharedTrail, User, HimalayanRange } from '../types';
-import { hashPassword } from './auth';
+import type { Trail, Landmark, Itinerary, ItineraryDay, Story, WeatherReport, Booking, ContactMessage, Inquiry, SharedTrail, User, HimalayanRange, Guide } from '../types';
+import crypto from 'node:crypto';
+
+function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derivedKey = crypto.scryptSync(password, salt, 64);
+  return `${salt}:${derivedKey.toString('hex')}`;
+}
 
 // Ensure data directory exists with Vercel serverless support
 const isVercel = process.env.VERCEL === '1';
@@ -181,6 +187,27 @@ export function initializeSchema(db: DatabaseSync) {
     ]), now);
   } catch {}
 
+  // Guides table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS guides (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      sherpa_clan TEXT,
+      certification TEXT NOT NULL,
+      license_number TEXT UNIQUE NOT NULL,
+      summit_count INTEGER NOT NULL DEFAULT 0,
+      specialties TEXT NOT NULL, -- JSON array
+      languages TEXT NOT NULL, -- JSON array
+      daily_rate_usd REAL NOT NULL,
+      rating REAL NOT NULL DEFAULT 5.0,
+      reviews_count INTEGER NOT NULL DEFAULT 0,
+      avatar_image TEXT NOT NULL,
+      bio TEXT NOT NULL,
+      is_available INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL
+    );
+  `);
+
   // Bookings table
   db.exec(`
     CREATE TABLE IF NOT EXISTS bookings (
@@ -204,8 +231,12 @@ export function initializeSchema(db: DatabaseSync) {
       receipt_number TEXT,
       invoice_breakdown TEXT,
       emergency_contact TEXT,
+      guide_id TEXT,
+      porter_count INTEGER DEFAULT 0,
+      total_gear_weight_kg REAL DEFAULT 0,
       created_at TEXT NOT NULL,
-      FOREIGN KEY (trail_id) REFERENCES trails(id) ON DELETE CASCADE
+      FOREIGN KEY (trail_id) REFERENCES trails(id) ON DELETE CASCADE,
+      FOREIGN KEY (guide_id) REFERENCES guides(id) ON DELETE SET NULL
     );
   `);
 
@@ -219,7 +250,10 @@ export function initializeSchema(db: DatabaseSync) {
     "ALTER TABLE bookings ADD COLUMN tax_amount REAL DEFAULT 0;",
     "ALTER TABLE bookings ADD COLUMN receipt_number TEXT;",
     "ALTER TABLE bookings ADD COLUMN invoice_breakdown TEXT;",
-    "ALTER TABLE bookings ADD COLUMN emergency_contact TEXT;"
+    "ALTER TABLE bookings ADD COLUMN emergency_contact TEXT;",
+    "ALTER TABLE bookings ADD COLUMN guide_id TEXT;",
+    "ALTER TABLE bookings ADD COLUMN porter_count INTEGER DEFAULT 0;",
+    "ALTER TABLE bookings ADD COLUMN total_gear_weight_kg REAL DEFAULT 0;"
   ];
   for (const colSql of bookingCols) {
     try {
@@ -410,6 +444,16 @@ export function initializeSchema(db: DatabaseSync) {
   }
 
   seedInitialDataIfEmpty(db);
+
+  // Ensure official guides are seeded if table is empty
+  try {
+    const guideCount = db.prepare('SELECT COUNT(*) as count FROM guides').get() as { count: number };
+    if (!guideCount || guideCount.count === 0) {
+      seedOfficialGuides(db);
+    }
+  } catch {
+    // ignore
+  }
 }
 
 function seedInitialDataIfEmpty(db: DatabaseSync) {
@@ -1776,6 +1820,9 @@ export function createBooking(data: {
   receiptNumber?: string;
   invoiceBreakdown?: string;
   emergencyContact?: string;
+  guideId?: string;
+  porterCount?: number;
+  totalGearWeightKg?: number;
 }): Booking {
   const db = getDatabase();
   const id = `bkg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -1790,14 +1837,17 @@ export function createBooking(data: {
   const receiptNumber = data.receiptNumber || `REC-2026-${randomFive}`;
   const invoiceBreakdown = data.invoiceBreakdown || null;
   const emergencyContact = data.emergencyContact || null;
+  const guideId = data.guideId || null;
+  const porterCount = data.porterCount ?? 0;
+  const totalGearWeightKg = data.totalGearWeightKg ?? 0;
 
   db.prepare(`
     INSERT INTO bookings (
       id, trail_id, user_id, full_name, email, phone, start_date, travelers,
       special_requests, total_price, status, payment_option, deposit_amount,
       remaining_balance, base_price, permit_fee, tax_amount, receipt_number,
-      invoice_breakdown, emergency_contact, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMED', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      invoice_breakdown, emergency_contact, guide_id, porter_count, total_gear_weight_kg, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMED', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     data.trailId,
@@ -1818,6 +1868,9 @@ export function createBooking(data: {
     receiptNumber,
     invoiceBreakdown,
     emergencyContact,
+    guideId,
+    porterCount,
+    totalGearWeightKg,
     now
   );
 
@@ -1841,6 +1894,9 @@ export function createBooking(data: {
     receiptNumber,
     invoiceBreakdown: invoiceBreakdown || undefined,
     emergencyContact: data.emergencyContact,
+    guideId: data.guideId,
+    porterCount,
+    totalGearWeightKg,
     status: 'CONFIRMED',
     createdAt: now
   };
@@ -1869,6 +1925,9 @@ export function getBookings(): Booking[] {
     receiptNumber: (r.receipt_number as string) || undefined,
     invoiceBreakdown: (r.invoice_breakdown as string) || undefined,
     emergencyContact: (r.emergency_contact as string) || undefined,
+    guideId: (r.guide_id as string) || undefined,
+    porterCount: Number(r.porter_count || 0),
+    totalGearWeightKg: Number(r.total_gear_weight_kg || 0),
     status: r.status as 'CONFIRMED' | 'PENDING' | 'CANCELLED',
     createdAt: r.created_at as string
   }));
@@ -1904,6 +1963,9 @@ export function getBookingsByUserId(userId: string): (Booking & { trailName?: st
     receiptNumber: (r.receipt_number as string) || undefined,
     invoiceBreakdown: (r.invoice_breakdown as string) || undefined,
     emergencyContact: (r.emergency_contact as string) || undefined,
+    guideId: (r.guide_id as string) || undefined,
+    porterCount: Number(r.porter_count || 0),
+    totalGearWeightKg: Number(r.total_gear_weight_kg || 0),
     status: r.status as 'CONFIRMED' | 'PENDING' | 'CANCELLED',
     createdAt: r.created_at as string,
     trailName: (r.trail_name as string) || undefined,
@@ -1920,6 +1982,10 @@ export function getBookingById(id: string): (Booking & {
   durationDays?: number;
   maxElevation?: number;
   image?: string;
+  guideName?: string;
+  guideLicense?: string;
+  guideCertification?: string;
+  guideAvatar?: string;
 }) | null {
   const db = getDatabase();
   const row = db.prepare(`
@@ -1931,9 +1997,14 @@ export function getBookingById(id: string): (Booking & {
            t.end_point as trail_end_point,
            t.duration_days as trail_duration_days,
            t.max_elevation as trail_max_elevation,
-           t.image as trail_image
+           t.image as trail_image,
+           g.name as guide_name,
+           g.license_number as guide_license,
+           g.certification as guide_certification,
+           g.avatar_image as guide_avatar
     FROM bookings b
     LEFT JOIN trails t ON b.trail_id = t.id
+    LEFT JOIN guides g ON b.guide_id = g.id
     WHERE b.id = ? OR b.receipt_number = ?
   `).get(id, id) as Record<string, unknown> | undefined;
 
@@ -1959,6 +2030,9 @@ export function getBookingById(id: string): (Booking & {
     receiptNumber: (row.receipt_number as string) || undefined,
     invoiceBreakdown: (row.invoice_breakdown as string) || undefined,
     emergencyContact: (row.emergency_contact as string) || undefined,
+    guideId: (row.guide_id as string) || undefined,
+    porterCount: Number(row.porter_count || 0),
+    totalGearWeightKg: Number(row.total_gear_weight_kg || 0),
     status: row.status as 'CONFIRMED' | 'PENDING' | 'CANCELLED',
     createdAt: row.created_at as string,
     trailName: (row.trail_name as string) || undefined,
@@ -1968,7 +2042,11 @@ export function getBookingById(id: string): (Booking & {
     endPoint: (row.trail_end_point as string) || undefined,
     durationDays: row.trail_duration_days ? Number(row.trail_duration_days) : undefined,
     maxElevation: row.trail_max_elevation ? Number(row.trail_max_elevation) : undefined,
-    image: (row.trail_image as string) || undefined
+    image: (row.trail_image as string) || undefined,
+    guideName: (row.guide_name as string) || undefined,
+    guideLicense: (row.guide_license as string) || undefined,
+    guideCertification: (row.guide_certification as string) || undefined,
+    guideAvatar: (row.guide_avatar as string) || undefined
   };
 }
 
@@ -2212,4 +2290,224 @@ export function deleteInquiry(id: string): boolean {
   const result = db.prepare('DELETE FROM inquiries WHERE id = ?').run(id);
   return result.changes > 0;
 }
+
+// ───────────────────────────────────────────────────────────────
+// Certified Sherpa Guides Catalog & Persistence
+// ───────────────────────────────────────────────────────────────
+
+function mapGuideRow(r: Record<string, unknown>): Guide {
+  return {
+    id: r.id as string,
+    name: r.name as string,
+    sherpaClan: (r.sherpa_clan as string) || undefined,
+    certification: r.certification as string,
+    licenseNumber: r.license_number as string,
+    summitCount: Number(r.summit_count || 0),
+    specialties: JSON.parse((r.specialties as string) || '[]'),
+    languages: JSON.parse((r.languages as string) || '[]'),
+    dailyRateUsd: Number(r.daily_rate_usd),
+    rating: Number(r.rating || 5.0),
+    reviewsCount: Number(r.reviews_count || 0),
+    avatarImage: r.avatar_image as string,
+    bio: r.bio as string,
+    isAvailable: Number(r.is_available) === 1,
+    createdAt: r.created_at as string
+  };
+}
+
+export function getGuides(filters?: {
+  certification?: string;
+  region?: string;
+  isAvailable?: boolean;
+}): Guide[] {
+  const db = getDatabase();
+  let query = 'SELECT * FROM guides WHERE 1=1';
+  const params: (string | number)[] = [];
+
+  if (filters?.certification && filters.certification !== 'All') {
+    query += ' AND certification LIKE ?';
+    params.push(`%${filters.certification}%`);
+  }
+
+  if (filters?.region && filters.region !== 'All') {
+    query += ' AND (specialties LIKE ? OR sherpa_clan LIKE ?)';
+    params.push(`%${filters.region}%`, `%${filters.region}%`);
+  }
+
+  if (filters?.isAvailable !== undefined) {
+    query += ' AND is_available = ?';
+    params.push(filters.isAvailable ? 1 : 0);
+  }
+
+  query += ' ORDER BY rating DESC, summit_count DESC';
+
+  const rows = db.prepare(query).all(...params) as Record<string, unknown>[];
+  return rows.map(mapGuideRow);
+}
+
+export function getGuideById(id: string): Guide | null {
+  const db = getDatabase();
+  const row = db.prepare('SELECT * FROM guides WHERE id = ? OR license_number = ?').get(id, id) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  return mapGuideRow(row);
+}
+
+export function createGuide(data: Omit<Guide, 'rating' | 'reviewsCount'> & {
+  rating?: number;
+  reviewsCount?: number;
+}): Guide {
+  const db = getDatabase();
+  const id = data.id || `guide-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const now = new Date().toISOString();
+  const rating = data.rating ?? 5.0;
+  const reviewsCount = data.reviewsCount ?? 0;
+  const isAvailable = data.isAvailable ? 1 : 0;
+
+  db.prepare(`
+    INSERT INTO guides (
+      id, name, sherpa_clan, certification, license_number, summit_count,
+      specialties, languages, daily_rate_usd, rating, reviews_count,
+      avatar_image, bio, is_available, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    data.name,
+    data.sherpaClan || null,
+    data.certification,
+    data.licenseNumber,
+    data.summitCount,
+    JSON.stringify(data.specialties),
+    JSON.stringify(data.languages),
+    data.dailyRateUsd,
+    rating,
+    reviewsCount,
+    data.avatarImage,
+    data.bio,
+    isAvailable,
+    now
+  );
+
+  return {
+    ...data,
+    id,
+    rating,
+    reviewsCount,
+    createdAt: now
+  };
+}
+
+export function seedOfficialGuides(db: DatabaseSync) {
+  const insertGuide = db.prepare(`
+    INSERT OR IGNORE INTO guides (
+      id, name, sherpa_clan, certification, license_number, summit_count,
+      specialties, languages, daily_rate_usd, rating, reviews_count,
+      avatar_image, bio, is_available, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const now = new Date().toISOString();
+  const guides = [
+    {
+      id: 'guide-pasang-dawa',
+      name: 'Pasang Dawa Sherpa',
+      sherpaClan: 'Khumbu Sherpa',
+      certification: 'IFMGA / UIAGM',
+      licenseNumber: 'IFMGA-NP-012',
+      summitCount: 18,
+      specialties: ['Everest & Khumbu High Passes', 'High-Altitude Rescue', 'Glacier Navigation'],
+      languages: ['Sherpa', 'Nepali', 'English', 'French'],
+      dailyRateUsd: 120,
+      rating: 5.0,
+      reviewsCount: 48,
+      avatarImage: 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=400&q=80',
+      bio: 'Senior IFMGA/UIAGM mountain guide from Pangboche with 18 successful Everest ascents. Renowned for icefall navigation and high-altitude emergency safety across the Mahalangur Himal.',
+      isAvailable: 1
+    },
+    {
+      id: 'guide-dawa-yangzum',
+      name: 'Dawa Yangzum Sherpa',
+      sherpaClan: 'Rolwaling Sherpa',
+      certification: 'IFMGA / UIAGM',
+      licenseNumber: 'IFMGA-NP-018',
+      summitCount: 14,
+      specialties: ['Makalu & K2 Technical Alpine', 'High-Altitude Leadership', 'Female Alpinist Mentorship'],
+      languages: ['Sherpa', 'Nepali', 'English', 'Spanish'],
+      dailyRateUsd: 135,
+      rating: 5.0,
+      reviewsCount: 56,
+      avatarImage: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=400&q=80',
+      bio: 'Nepal’s premier female IFMGA certified guide from the Rolwaling Valley. Climbed Everest, K2, Annapurna, and Makalu, specializing in technical mixed climbs and expedition leadership.',
+      isAvailable: 1
+    },
+    {
+      id: 'guide-mingma-dorchi',
+      name: 'Mingma Dorchi Sherpa',
+      sherpaClan: 'Solu Sherpa',
+      certification: 'IFMGA / UIAGM',
+      licenseNumber: 'IFMGA-NP-024',
+      summitCount: 21,
+      specialties: ['Speed Ascents & Ridge Traverses', 'Annapurna & Dhaulagiri Expeditions', 'Extreme Weather Tactics'],
+      languages: ['Sherpa', 'Nepali', 'English', 'German'],
+      dailyRateUsd: 130,
+      rating: 4.9,
+      reviewsCount: 42,
+      avatarImage: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80',
+      bio: 'Guinness World Record holder for speed climbs between Everest and Lhotse. Decades of elite guiding experience on technical 8000m peaks and the high passes of Annapurna and Dhaulagiri.',
+      isAvailable: 1
+    },
+    {
+      id: 'guide-lakpa-nuru',
+      name: 'Lakpa Nuru Sherpa',
+      sherpaClan: 'Rolwaling Sherpa',
+      certification: 'NNMGA Certified Alpine Guide',
+      licenseNumber: 'NNMGA-G-2018',
+      summitCount: 9,
+      specialties: ['Rolwaling & Manaslu Circuit', 'Wilderness First Responder (WFR)', 'Crevasse Rescue'],
+      languages: ['Sherpa', 'Nepali', 'English'],
+      dailyRateUsd: 95,
+      rating: 4.9,
+      reviewsCount: 38,
+      avatarImage: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=80',
+      bio: 'NNMGA Certified Alpine Guide and certified Wilderness First Responder with extensive route-finding expertise across the rugged Larkya La and Tashi Lapcha high passes.',
+      isAvailable: 1
+    },
+    {
+      id: 'guide-pemba-tshering',
+      name: 'Pemba Tshering Sherpa',
+      sherpaClan: 'Solu Sherpa',
+      certification: 'NMA National Guide',
+      licenseNumber: 'NMA-GL-1042',
+      summitCount: 6,
+      specialties: ['Langtang Valley & Gosainkunda', 'Upper Mustang Cultural Heritage', 'High Altitude Flora & Ecology'],
+      languages: ['Sherpa', 'Nepali', 'English', 'Tibetan'],
+      dailyRateUsd: 80,
+      rating: 4.8,
+      reviewsCount: 31,
+      avatarImage: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=400&q=80',
+      bio: 'Veteran NMA National Guide and cultural scholar specializing in the sacred hidden valleys of Langtang and Mustang. Deep knowledge of Tibetan Buddhist monasteries and alpine ecology.',
+      isAvailable: 1
+    }
+  ];
+
+  for (const g of guides) {
+    insertGuide.run(
+      g.id,
+      g.name,
+      g.sherpaClan,
+      g.certification,
+      g.licenseNumber,
+      g.summitCount,
+      JSON.stringify(g.specialties),
+      JSON.stringify(g.languages),
+      g.dailyRateUsd,
+      g.rating,
+      g.reviewsCount,
+      g.avatarImage,
+      g.bio,
+      g.isAvailable,
+      now
+    );
+  }
+}
+
 

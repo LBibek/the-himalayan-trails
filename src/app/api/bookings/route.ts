@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createBooking, getBookings, getTrailBySlug } from '@/lib/db';
+import { createBooking, getBookings, getTrailBySlug, getGuideById } from '@/lib/db';
 
 export async function GET() {
   try {
@@ -18,7 +18,18 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    const { trailId, fullName, email, phone, startDate, travelers, specialRequests } = body;
+    const {
+      trailId,
+      fullName,
+      email,
+      phone,
+      startDate,
+      travelers,
+      specialRequests,
+      guideId,
+      porterCount,
+      totalGearWeightKg
+    } = body;
 
     if (!trailId || !fullName || !email || !phone || !startDate || !travelers) {
       return NextResponse.json(
@@ -39,6 +50,19 @@ export async function POST(request: NextRequest) {
     const basePricePerPerson = 850; // default base price
     const totalPrice = body.totalPrice || (travelers * basePricePerPerson);
 
+    // Validate guide if requested
+    let validGuideId: string | undefined = undefined;
+    if (guideId && typeof guideId === 'string' && guideId.trim() !== '') {
+      const guide = getGuideById(guideId.trim());
+      if (!guide) {
+        return NextResponse.json(
+          { error: `Requested Sherpa Guide '${guideId}' was not found in certified registry` },
+          { status: 404 }
+        );
+      }
+      validGuideId = guide.id;
+    }
+
     const booking = createBooking({
       trailId: trail ? trail.id : trailId,
       fullName: fullName.trim(),
@@ -47,7 +71,10 @@ export async function POST(request: NextRequest) {
       startDate,
       travelers: Number(travelers),
       specialRequests: specialRequests ? specialRequests.trim() : undefined,
-      totalPrice: Number(totalPrice)
+      totalPrice: Number(totalPrice),
+      guideId: validGuideId,
+      porterCount: porterCount ? Number(porterCount) : undefined,
+      totalGearWeightKg: totalGearWeightKg ? Number(totalGearWeightKg) : undefined
     });
 
     return NextResponse.json(

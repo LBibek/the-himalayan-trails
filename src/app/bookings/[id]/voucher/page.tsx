@@ -74,6 +74,18 @@ interface VoucherData {
     sarHotline: string;
     liaisonNotice: string;
   };
+  assignedGuide?: {
+    id: string;
+    name: string;
+    licenseNumber: string;
+    certification: string;
+    avatarImage?: string;
+  } | null;
+  porterLogistics?: {
+    porterCount: number;
+    totalGearWeightKg: number;
+    ippgCompliance: string;
+  };
 }
 
 export default function ExpeditionVoucherPage() {
@@ -412,6 +424,79 @@ export default function ExpeditionVoucherPage() {
             </div>
           </div>
         </div>
+
+        {/* 2.5 Assigned Sherpa Guide & Porter Logistics Team Clearance */}
+        {(voucher.assignedGuide || (voucher.porterLogistics && voucher.porterLogistics.porterCount > 0)) && (
+          <div data-slot="body" className="p-6 rounded-2xl bg-neutral-950/80 border border-neutral-800 space-y-4 print-card break-inside-avoid relative z-10">
+            <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+              <div className="flex items-center gap-2 text-white font-extrabold text-sm uppercase tracking-wider print-text-dark">
+                <ShieldCheck className="w-4 h-4 text-[#B68D40]" />
+                <span>Verified Alpine Expedition Leadership &amp; Porter Logistics</span>
+              </div>
+              <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+                IPPG &amp; NTB Certified
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Sherpa Guide Block */}
+              {voucher.assignedGuide ? (
+                <div className="p-4 rounded-xl bg-neutral-900/60 border border-neutral-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider print-text-muted">Lead Sherpa Mountain Guide</span>
+                    <span className="text-[10px] font-bold text-[#B68D40] bg-[#B68D40]/10 px-2 py-0.5 rounded-full border border-[#B68D40]/30">
+                      {voucher.assignedGuide.certification}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 pt-1">
+                    {voucher.assignedGuide.avatarImage && (
+                      <img
+                        src={voucher.assignedGuide.avatarImage}
+                        alt={voucher.assignedGuide.name}
+                        className="w-10 h-10 rounded-full object-cover border border-[#B68D40]/40 shrink-0"
+                      />
+                    )}
+                    <div>
+                      <h4 className="font-bold text-white text-sm print-text-dark">{voucher.assignedGuide.name}</h4>
+                      <p className="text-[11px] font-mono text-gray-400 print-text-muted">License: {voucher.assignedGuide.licenseNumber}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 rounded-xl bg-neutral-900/60 border border-neutral-800 space-y-2">
+                  <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider print-text-muted">Expedition Guide</span>
+                  <p className="text-xs text-gray-300 font-medium">Standard Licensed Group Leader Assigned at Kathmandu Briefing</p>
+                </div>
+              )}
+
+              {/* Porter Logistics Block */}
+              {voucher.porterLogistics && (
+                <div className="p-4 rounded-xl bg-neutral-900/60 border border-neutral-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider print-text-muted">Allocated Porter Logistics</span>
+                    <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                      {voucher.porterLogistics.ippgCompliance}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 pt-1 text-xs">
+                    <div>
+                      <span className="text-[10px] text-gray-400 block print-text-muted">Porter Crew</span>
+                      <span className="font-bold text-white print-text-dark">
+                        {voucher.porterLogistics.porterCount} Dedicated Porter{voucher.porterLogistics.porterCount === 1 ? '' : 's'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-gray-400 block print-text-muted">Gear Weight</span>
+                      <span className="font-bold text-white print-text-dark">
+                        {voucher.porterLogistics.totalGearWeightKg > 0 ? `${voucher.porterLogistics.totalGearWeightKg} kg Total` : 'Standard Allocation'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* 3. Itemized Financial Statement */}
         <div data-slot="body" className="p-6 rounded-2xl bg-neutral-950/80 border border-neutral-800 space-y-4 print-card break-inside-avoid">

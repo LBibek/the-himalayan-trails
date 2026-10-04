@@ -99,6 +99,20 @@ export async function GET(
         mandatoryInsurance: 'Mandatory travel insurance with $6,000m helicopter evacuation rider',
         sarHotline: '+977-1-4123456',
         liaisonNotice: 'Show this voucher and your original passport at Bhrikutimandap Tourist Service Center for permit issuance.'
+      },
+      assignedGuide: booking.guideName ? {
+        id: booking.guideId,
+        name: booking.guideName,
+        licenseNumber: booking.guideLicense,
+        certification: booking.guideCertification,
+        avatarImage: booking.guideAvatar
+      } : null,
+      porterLogistics: {
+        porterCount: booking.porterCount || 0,
+        totalGearWeightKg: booking.totalGearWeightKg || 0,
+        ippgCompliance: (booking.porterCount && booking.porterCount > 0 && booking.totalGearWeightKg)
+          ? ((booking.totalGearWeightKg / booking.porterCount) <= 25 ? 'Optimal (<25kg/porter)' : (booking.totalGearWeightKg / booking.porterCount) <= 30 ? 'Legal Maximum (25-30kg)' : 'Overloaded')
+          : (booking.porterCount && booking.porterCount > 0 ? 'IPPG Certified Allocation' : 'Independent / Trekker Carried')
       }
     };
 

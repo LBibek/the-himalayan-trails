@@ -132,6 +132,13 @@ export interface Booking {
   receiptNumber?: string;
   invoiceBreakdown?: string;
   emergencyContact?: string;
+  guideId?: string;
+  porterCount?: number;
+  totalGearWeightKg?: number;
+  guideName?: string;
+  guideLicense?: string;
+  guideCertification?: string;
+  guideAvatar?: string;
   createdAt: string;
 }
 
@@ -300,5 +307,49 @@ export interface OfflineTrailPack {
   savedAt: string;
   packSizeBytes: number;
   version: number;
+}
+
+export interface Guide {
+  id: string;
+  name: string;
+  sherpaClan?: string;
+  certification: 'IFMGA / UIAGM' | 'NNMGA Certified Alpine Guide' | 'NMA National Guide' | string;
+  licenseNumber: string;
+  summitCount: number;
+  specialties: string[];
+  languages: string[];
+  dailyRateUsd: number;
+  rating: number;
+  reviewsCount: number;
+  avatarImage: string;
+  bio: string;
+  isAvailable: boolean;
+  createdAt: string;
+}
+
+export interface PorterCalculationRequest {
+  groupSize: number;
+  durationDays: number;
+  totalGearWeightKg?: number;
+  personalGearWeightPerPersonKg?: number;
+  groupCampingEquipmentKg?: number;
+}
+
+export interface PorterCalculationResult {
+  groupSize: number;
+  durationDays: number;
+  totalGearWeightKg: number;
+  recommendedPorters: number;
+  weightPerPorterKg: number;
+  complianceStatus: 'OPTIMAL' | 'LEGAL_MAXIMUM' | 'OVERLOADED';
+  complianceLabel: string;
+  dailyRatePerPorterUsd: number;
+  insurancePerPorterUsd: number;
+  equipmentAllowancePerPorterUsd: number;
+  totalBaseWagesUsd: number;
+  totalInsuranceUsd: number;
+  totalEquipmentUsd: number;
+  totalPorterCostUsd: number;
+  guidelinesSummary: string;
 }
 

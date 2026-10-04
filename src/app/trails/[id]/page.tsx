@@ -17,7 +17,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceDot
 } from 'recharts';
-import { Trail, Itinerary, Landmark } from '@/types';
+import { Trail, Itinerary, Landmark, Guide } from '@/types';
 import { submitTrekInquiry } from '@/app/actions/inquiry';
 import { calculateBookingBreakdown } from '@/lib/pricing';
 import ElevationProfileChart from '@/components/map/ElevationProfileChart';
@@ -141,6 +141,7 @@ export default function TrailDetailPage() {
 
   // ── Work Package 6.4: Payment Gateway & Voucher State ──
   const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
+  const [availableGuides, setAvailableGuides] = useState<Guide[]>([]);
   const [bookingFormData, setBookingFormData] = useState({
     fullName: '',
     email: '',
@@ -148,7 +149,10 @@ export default function TrailDetailPage() {
     startDate: '',
     travelers: 2,
     emergencyContact: '',
-    specialRequests: ''
+    specialRequests: '',
+    guideId: '',
+    porterCount: 0,
+    totalGearWeightKg: 0
   });
   const [paymentCardData, setPaymentCardData] = useState({
     cardHolder: '',
@@ -284,12 +288,14 @@ export default function TrailDetailPage() {
       fetch('/api/itineraries').then(r => r.ok ? r.json() : []),
       fetch(`/api/landmarks?trailId=${trailParam}`).then(r => r.ok ? r.json() : []).catch(() => []),
       fetch(`/api/trails/${trailParam}/reviews`).then(r => r.ok ? r.json() : { reviews: [], stats: { total: 0, avg_rating: 0, avg_difficulty: 0, avg_scenery: 0, avg_safety: 0 } }).catch(() => ({ reviews: [], stats: { total: 0, avg_rating: 0 } })),
-    ]).then(([trailData, itineraries, lm, revData]) => {
+      fetch('/api/guides').then(r => r.ok ? r.json() : { guides: [] }).catch(() => ({ guides: [] })),
+    ]).then(([trailData, itineraries, lm, revData, guideData]) => {
       if (!mounted) return;
       setTrail(trailData);
       setLandmarks(Array.isArray(lm) ? lm : []);
       setReviews(revData.reviews || []);
       setReviewStats(revData.stats || { total: 0, avg_rating: 0, avg_difficulty: 0, avg_scenery: 0, avg_safety: 0 });
+      setAvailableGuides(guideData?.guides || []);
       const matched = itineraries.find((it: Itinerary) =>
         it.trailName.toLowerCase().includes(trailData.name.toLowerCase()) ||
         trailData.name.toLowerCase().includes(it.trailName.toLowerCase())
@@ -408,12 +414,18 @@ export default function TrailDetailPage() {
     return { ...pt, grade: Math.round(grade * 10) / 10, fill: grade > 11 ? '#f43f5e' : grade > 6 ? '#f59e0b' : '#10b981' };
   }) || [];
 
-  // Pricing calc with real tiered discounts (0% for 1, 5% for 2-3, 10% for 4-7, 15% for 8+)
+  // Pricing calc with real tiered discounts, optional Sherpa guide fees & porter logistics
   const activeTravelers = bookingTab === 'booking' ? (bookingFormData.travelers || 2) : (formData.groupSize || 2);
+  const selectedGuideObj = availableGuides.find((g) => g.id === bookingFormData.guideId);
+  const guideDailyRate = selectedGuideObj?.dailyRateUsd;
   const liveBreakdown = calculateBookingBreakdown({
     basePricePerPerson: estimatedCost,
     travelers: activeTravelers,
-    paymentOption: depositMode ? 'DEPOSIT' : 'FULL'
+    paymentOption: depositMode ? 'DEPOSIT' : 'FULL',
+    guideDailyRate,
+    durationDays: trail?.durationDays || 12,
+    porterCount: bookingFormData.porterCount,
+    totalGearWeightKg: bookingFormData.totalGearWeightKg
   });
   const basePrice = liveBreakdown.baseTotal;
   const groupDiscount = liveBreakdown.discountAmount;
@@ -1075,6 +1087,18 @@ export default function TrailDetailPage() {
                     <span>Regional permits (TIMS $20 + Conservation $30 × {activeTravelers})</span>
                     <span className="font-bold text-white">${liveBreakdown.permitFeesTotal.toLocaleString()}</span>
                   </div>
+                  {liveBreakdown.guideFee && liveBreakdown.guideFee > 0 && (
+                    <div className="flex justify-between text-[#B68D40] font-semibold">
+                      <span>Sherpa Guide ({selectedGuideObj?.name?.split(' ')[0]} - {trail?.durationDays || 12}d)</span>
+                      <span>+${liveBreakdown.guideFee.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {liveBreakdown.porterFee && liveBreakdown.porterFee > 0 && (
+                    <div className="flex justify-between text-blue-400 font-semibold">
+                      <span>Porter Logistics ({liveBreakdown.porterCount} porters + insurance)</span>
+                      <span>+${liveBreakdown.porterFee.toLocaleString()}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-slate-300">
                     <span>Nepal VAT (13%)</span>
                     <span className="font-bold text-white">+${liveBreakdown.vatAmount.toLocaleString()}</span>
@@ -1241,6 +1265,50 @@ export default function TrailDetailPage() {
                           onChange={(e) => setBookingFormData({ ...bookingFormData, phone: e.target.value })}
                           className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#B68D40]"
                         />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 pt-1">
+                      <div>
+                        <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block mb-1">
+                          Sherpa Mountain Guide
+                        </label>
+                        <select
+                          value={bookingFormData.guideId}
+                          onChange={(e) => setBookingFormData({ ...bookingFormData, guideId: e.target.value })}
+                          className="w-full px-2.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-[11px] text-white focus:outline-none focus:border-[#B68D40]"
+                        >
+                          <option value="">Standard Group Guide</option>
+                          {availableGuides.map((g) => (
+                            <option key={g.id} value={g.id}>
+                              {g.name} ({g.certification.split(' ')[0]} • ${g.dailyRateUsd}/d)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block mb-1">
+                          Porter Team (IPPG)
+                        </label>
+                        <select
+                          value={bookingFormData.porterCount}
+                          onChange={(e) => {
+                            const count = Number(e.target.value);
+                            setBookingFormData({
+                              ...bookingFormData,
+                              porterCount: count,
+                              totalGearWeightKg: count * 22
+                            });
+                          }}
+                          className="w-full px-2.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-[11px] text-white focus:outline-none focus:border-[#B68D40]"
+                        >
+                          <option value={0}>0 Porters (Self-Carry)</option>
+                          <option value={1}>1 Porter (&lt;25kg)</option>
+                          <option value={2}>2 Porters (&lt;50kg)</option>
+                          <option value={3}>3 Porters (&lt;75kg)</option>
+                          <option value={4}>4 Porters (Expedition)</option>
+                        </select>
                       </div>
                     </div>
 
@@ -1411,6 +1479,18 @@ export default function TrailDetailPage() {
                 <span>Departure: {bookingFormData.startDate}</span>
                 <span>{activeTravelers} {activeTravelers === 1 ? 'Trekker' : 'Trekkers'} ({depositMode ? '25% Deposit' : 'Full Payment'})</span>
               </div>
+              {selectedGuideObj && (
+                <div className="flex justify-between text-[#B68D40] text-[11px] font-semibold border-t border-neutral-900 pt-1.5">
+                  <span>Assigned Sherpa Guide:</span>
+                  <span>{selectedGuideObj.name} ({selectedGuideObj.certification.split(' ')[0]})</span>
+                </div>
+              )}
+              {bookingFormData.porterCount > 0 && (
+                <div className="flex justify-between text-blue-400 text-[11px] font-semibold border-t border-neutral-900 pt-1.5">
+                  <span>Allocated Porter Logistics:</span>
+                  <span>{bookingFormData.porterCount} Porter{bookingFormData.porterCount > 1 ? 's' : ''} (IPPG &lt;25kg)</span>
+                </div>
+              )}
               {depositMode && remainingBalance > 0 && (
                 <div className="pt-2 border-t border-neutral-800 text-[11px] text-amber-300">
                   Remaining balance of <strong>${remainingBalance.toLocaleString()}</strong> payable upon arrival in Kathmandu.
@@ -1447,7 +1527,10 @@ export default function TrailDetailPage() {
                     paymentOption: depositMode ? 'DEPOSIT' : 'FULL',
                     emergencyContact: bookingFormData.emergencyContact?.trim(),
                     specialRequests: bookingFormData.specialRequests?.trim(),
-                    basePricePerPerson: estimatedCost
+                    basePricePerPerson: estimatedCost,
+                    guideId: bookingFormData.guideId || undefined,
+                    porterCount: bookingFormData.porterCount || undefined,
+                    totalGearWeightKg: bookingFormData.totalGearWeightKg || undefined
                   })
                 });
 

@@ -7,11 +7,20 @@ import { scryptSync, randomBytes, timingSafeEqual, createHmac } from 'node:crypt
 import { CesiumController } from '../src/lib/map/CesiumController.ts';
 import {
   calculateBookingBreakdown,
+  calculatePorterLogistics,
   createCheckoutSessionToken,
   verifyCheckoutSessionToken,
   generateReceiptNumber,
   generateVoucherAuthenticityHash
 } from '../src/lib/pricing.ts';
+import {
+  getGuides,
+  getGuideById,
+  createGuide,
+  createBooking,
+  getBookingById,
+  initializeSchema
+} from '../src/lib/db.ts';
 
 describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () => {
   let db;
@@ -20,6 +29,7 @@ describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () =>
   before(() => {
     assert.ok(fs.existsSync(dbPath), `Database file must exist at ${dbPath}`);
     db = new DatabaseSync(dbPath);
+    initializeSchema(db);
     const migrations = [
       "ALTER TABLE contact_messages ADD COLUMN status TEXT DEFAULT 'UNREAD';",
       "ALTER TABLE bookings ADD COLUMN payment_option TEXT DEFAULT 'FULL';",
@@ -31,6 +41,9 @@ describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () =>
       "ALTER TABLE bookings ADD COLUMN receipt_number TEXT;",
       "ALTER TABLE bookings ADD COLUMN invoice_breakdown TEXT;",
       "ALTER TABLE bookings ADD COLUMN emergency_contact TEXT;",
+      "ALTER TABLE bookings ADD COLUMN guide_id TEXT;",
+      "ALTER TABLE bookings ADD COLUMN porter_count INTEGER DEFAULT 0;",
+      "ALTER TABLE bookings ADD COLUMN total_gear_weight_kg REAL DEFAULT 0;",
       "ALTER TABLE reviews ADD COLUMN reviewer_name TEXT;",
       "ALTER TABLE reviews ADD COLUMN scenery_rating INTEGER;",
       "ALTER TABLE reviews ADD COLUMN condition_tags TEXT;"
@@ -2884,7 +2897,7 @@ describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () =>
       }
 
       const freshTables = freshDb.prepare("SELECT name FROM sqlite_master WHERE type='table';").all().map(t => t.name);
-      assert.equal(freshTables.length, 13, 'Cold boot in-memory database must have exactly 13 tables');
+      assert.ok(freshTables.length >= 14 && freshTables.includes('guides'), 'Cold boot in-memory database must have at least 14 tables including guides');
       freshDb.close();
     });
 
@@ -3674,7 +3687,296 @@ describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () =>
       assert.ok(adminPageSrc.includes('/bookings/'), 'Admin page must link to official voucher');
     });
   });
+
+  describe('29. Work Package 6.5: Verified Sherpa Guide & Porter Logistics Marketplace', () => {
+    test('Database Schema: guides table and bookings columns integrity', () => {
+      // 1. Guides table existence
+      const tableCheck = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='guides';").get();
+      assert.ok(tableCheck, 'guides table must exist in SQLite database');
+
+      // 2. Guides table columns
+      const cols = db.prepare("PRAGMA table_info(guides);").all().map(c => c.name);
+      const expectedGuideCols = [
+        'id', 'name', 'sherpa_clan', 'certification', 'license_number',
+        'summit_count', 'specialties', 'languages', 'daily_rate_usd',
+        'rating', 'reviews_count', 'avatar_image', 'bio', 'is_available', 'created_at'
+      ];
+      for (const col of expectedGuideCols) {
+        assert.ok(cols.includes(col), `guides table must have column "${col}"`);
+      }
+
+      // 3. Bookings table guide and porter columns
+      const bookingCols = db.prepare("PRAGMA table_info(bookings);").all().map(c => c.name);
+      assert.ok(bookingCols.includes('guide_id'), 'bookings table must have guide_id column');
+      assert.ok(bookingCols.includes('porter_count'), 'bookings table must have porter_count column');
+      assert.ok(bookingCols.includes('total_gear_weight_kg'), 'bookings table must have total_gear_weight_kg column');
+
+      // 4. Seeded authentic Sherpa guides verification
+      const guides = db.prepare("SELECT * FROM guides;").all();
+      assert.ok(guides.length >= 5, `Expected at least 5 seeded Sherpa guides, found ${guides.length}`);
+
+      const names = guides.map(g => g.name);
+      assert.ok(names.includes('Pasang Dawa Sherpa'), 'Pasang Dawa Sherpa must be seeded');
+      assert.ok(names.includes('Dawa Yangzum Sherpa'), 'Dawa Yangzum Sherpa must be seeded');
+      assert.ok(names.includes('Mingma Dorchi Sherpa'), 'Mingma Dorchi Sherpa must be seeded');
+      assert.ok(names.includes('Lakpa Nuru Sherpa'), 'Lakpa Nuru Sherpa must be seeded');
+      assert.ok(names.includes('Pemba Tshering Sherpa'), 'Pemba Tshering Sherpa must be seeded');
+
+      // Verify authentic IFMGA licenses and summit counts
+      const pasang = guides.find(g => g.name === 'Pasang Dawa Sherpa');
+      assert.equal(pasang.certification, 'IFMGA / UIAGM');
+      assert.equal(pasang.license_number, 'IFMGA-NP-012');
+      assert.ok(pasang.summit_count >= 18);
+    });
+
+    test('Database helper functions: getGuides, getGuideById, createGuide', () => {
+      // getGuides all
+      const allGuides = getGuides();
+      assert.ok(allGuides.length >= 5, 'getGuides should return all seeded guides');
+
+      // getGuides by certification
+      const ifmgaGuides = getGuides({ certification: 'IFMGA' });
+      assert.ok(ifmgaGuides.length >= 3, 'Expected at least 3 IFMGA guides');
+      for (const g of ifmgaGuides) {
+        assert.ok(g.certification.includes('IFMGA'));
+      }
+
+      // getGuides by region
+      const khumbuGuides = getGuides({ region: 'Khumbu' });
+      assert.ok(khumbuGuides.length >= 1, 'Expected at least 1 Khumbu specialist guide');
+
+      // getGuideById
+      const dawa = getGuideById('guide-dawa-yangzum');
+      assert.ok(dawa, 'Guide by ID guide-dawa-yangzum must exist');
+      assert.equal(dawa.name, 'Dawa Yangzum Sherpa');
+      assert.equal(dawa.licenseNumber, 'IFMGA-NP-018');
+      assert.ok(Array.isArray(dawa.specialties));
+      assert.ok(Array.isArray(dawa.languages));
+
+      // createGuide
+      const testGuideId = `guide-test-${Date.now()}`;
+      const newGuide = createGuide({
+        id: testGuideId,
+        name: 'Tenzing Norgay Jr.',
+        sherpaClan: 'Khumbu Sherpa',
+        certification: 'IFMGA / UIAGM',
+        licenseNumber: `IFMGA-NP-TEST-${Date.now()}`,
+        summitCount: 7,
+        specialties: ['Everest South Col', 'Glaciology'],
+        languages: ['Sherpa', 'Nepali', 'English'],
+        dailyRateUsd: 110,
+        avatarImage: 'https://images.unsplash.com/photo-1544735716-392fe2489ffa',
+        bio: 'Expert Khumbu high-altitude route specialist.',
+        isAvailable: true,
+        createdAt: new Date().toISOString()
+      });
+      assert.equal(newGuide.id, testGuideId);
+      assert.equal(newGuide.name, 'Tenzing Norgay Jr.');
+      assert.equal(newGuide.summitCount, 7);
+
+      const retrieved = getGuideById(testGuideId);
+      assert.ok(retrieved);
+      assert.equal(retrieved.name, 'Tenzing Norgay Jr.');
+    });
+
+    test('Pricing engine calculation with optional Sherpa guide fees and porter logistics', () => {
+      // 1. Without guide/porter (strict backward compatibility)
+      const standard = calculateBookingBreakdown({
+        basePricePerPerson: 1000,
+        travelers: 2,
+        paymentOption: 'FULL'
+      });
+      assert.equal(standard.baseTotal, 2000);
+      assert.equal(standard.discountPercent, 5);
+      assert.equal(standard.discountAmount, 100);
+      assert.equal(standard.discountedBaseTotal, 1900);
+      assert.equal(standard.timsFee, 40);
+      assert.equal(standard.conservationFee, 60);
+      assert.equal(standard.permitFeesTotal, 100);
+      assert.equal(standard.vatAmount, 247); // 1900 * 0.13
+      assert.equal(standard.totalAmount, 2247);
+
+      // 2. With guide: $120/day for 14 days = $1680
+      const withGuide = calculateBookingBreakdown({
+        basePricePerPerson: 1000,
+        travelers: 2,
+        paymentOption: 'FULL',
+        guideDailyRate: 120,
+        durationDays: 14
+      });
+      assert.equal(withGuide.guideFee, 1680);
+      // Taxable subtotal: 1900 + 1680 = 3580. VAT = 3580 * 0.13 = 465.4. Total = 3580 + 100 + 465.4 = 4145.4
+      assert.equal(withGuide.vatAmount, 465.4);
+      assert.equal(withGuide.totalAmount, 4145.4);
+
+      // 3. With 2 Porters: 2 porters * $25/day * 14 days ($700) + (2 * $15 insurance = $30) + (2 * $10 equipment = $20) = $750
+      const withPorter = calculateBookingBreakdown({
+        basePricePerPerson: 1000,
+        travelers: 2,
+        paymentOption: 'FULL',
+        porterCount: 2,
+        durationDays: 14
+      });
+      assert.equal(withPorter.porterFee, 750);
+      assert.equal(withPorter.porterCount, 2);
+
+      // 4. Booking creation with guide & porters and getBookingById join verification
+      const bookingWithGuide = createBooking({
+        trailId: 'ebc-trek',
+        fullName: 'Dr. Jane Alpinist',
+        email: 'jane@himalayan.org',
+        phone: '+977-9812345678',
+        startDate: '2026-11-01',
+        travelers: 2,
+        totalPrice: withPorter.totalAmount,
+        guideId: 'guide-pasang-dawa',
+        porterCount: 2,
+        totalGearWeightKg: 44
+      });
+      assert.ok(bookingWithGuide.id);
+      assert.equal(bookingWithGuide.guideId, 'guide-pasang-dawa');
+      assert.equal(bookingWithGuide.porterCount, 2);
+      assert.equal(bookingWithGuide.totalGearWeightKg, 44);
+
+      const retrievedBooking = getBookingById(bookingWithGuide.id);
+      assert.ok(retrievedBooking);
+      assert.equal(retrievedBooking.guideName, 'Pasang Dawa Sherpa');
+      assert.equal(retrievedBooking.guideLicense, 'IFMGA-NP-012');
+      assert.equal(retrievedBooking.guideCertification, 'IFMGA / UIAGM');
+      assert.equal(retrievedBooking.porterCount, 2);
+      assert.equal(retrievedBooking.totalGearWeightKg, 44);
+    });
+
+    test('IPPG Porter load calculations and fair compensation API contract', () => {
+      // 1. Direct algorithmic verification: Optimal / Ethical (<25kg)
+      const optimalRes = calculatePorterLogistics({
+        groupSize: 2,
+        durationDays: 14
+      });
+      assert.equal(optimalRes.groupSize, 2);
+      assert.equal(optimalRes.durationDays, 14);
+      assert.equal(optimalRes.totalGearWeightKg, 34); // 2 * 12 + 10
+      assert.equal(optimalRes.recommendedPorters, 2); // ceil(34 / 25)
+      assert.equal(optimalRes.weightPerPorterKg, 17);
+      assert.equal(optimalRes.complianceStatus, 'OPTIMAL');
+      assert.equal(optimalRes.dailyRatePerPorterUsd, 25);
+      assert.equal(optimalRes.insurancePerPorterUsd, 15);
+      assert.equal(optimalRes.equipmentAllowancePerPorterUsd, 10);
+      assert.equal(optimalRes.totalBaseWagesUsd, 700); // 2 * 25 * 14
+      assert.equal(optimalRes.totalInsuranceUsd, 30); // 2 * 15
+      assert.equal(optimalRes.totalEquipmentUsd, 20); // 2 * 10
+      assert.equal(optimalRes.totalPorterCostUsd, 750); // 700 + 30 + 20
+
+      // 2. Legal Maximum Threshold (25kg - 30kg)
+      const legalMaxRes = calculatePorterLogistics({
+        groupSize: 2,
+        durationDays: 10,
+        totalGearWeightKg: 56,
+        customPorterCount: 2
+      });
+      assert.equal(legalMaxRes.weightPerPorterKg, 28);
+      assert.equal(legalMaxRes.complianceStatus, 'LEGAL_MAXIMUM');
+      assert.equal(legalMaxRes.totalBaseWagesUsd, 500); // 2 * 25 * 10
+      assert.equal(legalMaxRes.totalInsuranceUsd, 30);
+      assert.equal(legalMaxRes.totalEquipmentUsd, 20);
+      assert.equal(legalMaxRes.totalPorterCostUsd, 550);
+
+      // 3. Overloaded Condition (>30kg)
+      const overloadedRes = calculatePorterLogistics({
+        groupSize: 2,
+        durationDays: 10,
+        totalGearWeightKg: 70,
+        customPorterCount: 2
+      });
+      assert.equal(overloadedRes.weightPerPorterKg, 35);
+      assert.equal(overloadedRes.complianceStatus, 'OVERLOADED');
+      assert.ok(overloadedRes.recommendedPorters >= 3, 'Must suggest at least 3 porters for 70kg');
+
+      // 4. Edge cases & NaN resilience: negative, non-numeric strings, clamped boundaries
+      const resilientRes = calculatePorterLogistics({
+        groupSize: -3,
+        durationDays: -5,
+        totalGearWeightKg: -50,
+        personalGearWeightPerPersonKg: NaN,
+      });
+      assert.equal(resilientRes.groupSize, 1);
+      assert.equal(resilientRes.durationDays, 1);
+      assert.ok(!isNaN(resilientRes.totalGearWeightKg) && resilientRes.totalGearWeightKg > 0);
+      assert.ok(!isNaN(resilientRes.totalPorterCostUsd) && resilientRes.totalPorterCostUsd > 0);
+      assert.equal(resilientRes.complianceStatus, 'OPTIMAL');
+
+      // 5. Code inspection contract
+      const calcRouteSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'api', 'logistics', 'porter-calc', 'route.ts'), 'utf8');
+      assert.ok(calcRouteSrc.includes('POST'), 'porter-calc route must export POST');
+      assert.ok(calcRouteSrc.includes('calculatePorterLogistics'), 'porter-calc route must call calculatePorterLogistics');
+    });
+
+    test('API Route Handlers contract verification for guides directory and individual guide profile', () => {
+      const guidesRouteSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'api', 'guides', 'route.ts'), 'utf8');
+      const guideIdRouteSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'api', 'guides', '[id]', 'route.ts'), 'utf8');
+      const sessionRouteSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'api', 'checkout', 'session', 'route.ts'), 'utf8');
+      const voucherRouteSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'api', 'bookings', '[id]', 'voucher', 'route.ts'), 'utf8');
+
+      // GET /api/guides
+      assert.ok(guidesRouteSrc.includes('GET'), 'guides route must export GET');
+      assert.ok(guidesRouteSrc.includes('getGuides'), 'guides route must call getGuides');
+
+      // GET /api/guides/[id]
+      assert.ok(guideIdRouteSrc.includes('GET'), 'guide profile route must export GET');
+      assert.ok(guideIdRouteSrc.includes('getGuideById'), 'guide profile route must call getGuideById');
+
+      // Checkout Session API supports guide and porter options
+      assert.ok(sessionRouteSrc.includes('guideId'), 'checkout session must accept guideId');
+      assert.ok(sessionRouteSrc.includes('porterCount'), 'checkout session must accept porterCount');
+      assert.ok(sessionRouteSrc.includes('totalGearWeightKg'), 'checkout session must accept totalGearWeightKg');
+
+      // Voucher API includes assignedGuide and porterLogistics
+      assert.ok(voucherRouteSrc.includes('assignedGuide'), 'voucher route must include assignedGuide');
+      assert.ok(voucherRouteSrc.includes('porterLogistics'), 'voucher route must include porterLogistics');
+    });
+
+    test('UI Integration: Guides Directory Page, Porter Weight Calculator, Navbar & Voucher clearance', () => {
+      const guidesPageSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'guides', 'page.tsx'), 'utf8');
+      const porterCalcSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'logistics', 'PorterWeightCalculator.tsx'), 'utf8');
+      const navbarSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'layout', 'Navbar.tsx'), 'utf8');
+      const trailPageSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'trails', '[id]', 'page.tsx'), 'utf8');
+      const voucherPageSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'bookings', '[id]', 'voucher', 'page.tsx'), 'utf8');
+
+      // Guides Directory Page
+      assert.ok(guidesPageSrc.includes('data-slot="base"'), 'Guides page must use HeroUI compound slot architecture');
+      assert.ok(guidesPageSrc.includes('Certified Sherpa Guide Registry'), 'Guides page must render registry title');
+      assert.ok(guidesPageSrc.includes('PorterWeightCalculator'), 'Guides page must embed PorterWeightCalculator');
+      assert.ok(guidesPageSrc.includes('Verify License'), 'Guides page must feature license verification');
+
+      // PorterWeightCalculator Component
+      assert.ok(porterCalcSrc.includes('data-slot="base"'), 'PorterWeightCalculator must use HeroUI compound slot architecture');
+      assert.ok(porterCalcSrc.includes('International Porter Protection Group (IPPG)'), 'PorterWeightCalculator must reference IPPG');
+      assert.ok(porterCalcSrc.includes('OPTIMAL'), 'PorterWeightCalculator must support optimal status');
+      assert.ok(porterCalcSrc.includes('LEGAL_MAXIMUM'), 'PorterWeightCalculator must support legal maximum status');
+      assert.ok(porterCalcSrc.includes('OVERLOADED'), 'PorterWeightCalculator must support overloaded status');
+      assert.ok(porterCalcSrc.includes('Itemized Fair Porter Compensation'), 'PorterWeightCalculator must render itemized fair wages');
+
+      // Navbar
+      assert.ok(navbarSrc.includes('/guides'), 'Navbar must link to /guides');
+      assert.ok(navbarSrc.includes('Sherpa Guides & Porters'), 'Navbar must label link as Sherpa Guides & Porters');
+
+      // Trail Detail Booking Card
+      assert.ok(trailPageSrc.includes('Sherpa Mountain Guide'), 'Trail booking form must feature Sherpa guide selector');
+      assert.ok(trailPageSrc.includes('Porter Team (IPPG)'), 'Trail booking form must feature Porter team selector');
+      assert.ok(trailPageSrc.includes('guideDailyRate'), 'Trail booking must calculate guide fees');
+
+      // Voucher Page
+      assert.ok(voucherPageSrc.includes('assignedGuide'), 'Voucher page must support assignedGuide');
+      assert.ok(voucherPageSrc.includes('porterLogistics'), 'Voucher page must support porterLogistics');
+      assert.ok(
+        voucherPageSrc.includes('Verified Alpine Expedition Leadership &amp; Porter Logistics') ||
+        voucherPageSrc.includes('Verified Alpine Expedition Leadership & Porter Logistics'),
+        'Voucher page must render guide and porter clearance card'
+      );
+    });
+  });
 });
+
 
 
 

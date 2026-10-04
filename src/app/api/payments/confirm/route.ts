@@ -130,7 +130,10 @@ export async function POST(request: NextRequest) {
       permitFee: sessionData.breakdown.permitFeesTotal,
       taxAmount: sessionData.breakdown.vatAmount,
       receiptNumber: receiptNumber,
-      invoiceBreakdown: JSON.stringify(sessionData.breakdown)
+      invoiceBreakdown: JSON.stringify(sessionData.breakdown),
+      guideId: sessionData.guideId,
+      porterCount: sessionData.porterCount,
+      totalGearWeightKg: sessionData.totalGearWeightKg
     });
 
     return NextResponse.json({

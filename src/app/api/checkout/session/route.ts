@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes } from 'node:crypto';
-import { getTrailById, getTrailBySlug, getAllItineraries } from '@/lib/db';
+import { getTrailById, getTrailBySlug, getAllItineraries, getGuideById } from '@/lib/db';
 import { calculateBookingBreakdown, createCheckoutSessionToken } from '@/lib/pricing';
 
 export async function POST(request: NextRequest) {
@@ -16,7 +16,10 @@ export async function POST(request: NextRequest) {
       paymentOption,
       specialRequests,
       emergencyContact,
-      basePricePerPerson: inputBasePrice
+      basePricePerPerson: inputBasePrice,
+      guideId,
+      porterCount,
+      totalGearWeightKg
     } = body;
 
     // Validate required fields
@@ -62,11 +65,32 @@ export async function POST(request: NextRequest) {
       basePricePerPerson = matchedItinerary?.estimatedCostUSD || 850;
     }
 
+    // Optional Guide & Porter lookup
+    let assignedGuide = null;
+    let guideDailyRate: number | undefined = undefined;
+    if (guideId && typeof guideId === 'string' && guideId.trim() !== '') {
+      assignedGuide = getGuideById(guideId.trim());
+      if (!assignedGuide) {
+        return NextResponse.json(
+          { error: `Requested Sherpa Guide '${guideId}' was not found in certified registry` },
+          { status: 404 }
+        );
+      }
+      guideDailyRate = assignedGuide.dailyRateUsd;
+    }
+
+    const requestedPorters = porterCount ? Math.max(0, Math.floor(Number(porterCount))) : undefined;
+    const requestedWeight = totalGearWeightKg ? Math.max(0, Number(totalGearWeightKg)) : undefined;
+
     // Calculate full itemized breakdown
     const breakdown = calculateBookingBreakdown({
       basePricePerPerson,
       travelers: numTravelers,
-      paymentOption: paymentOption === 'DEPOSIT' ? 'DEPOSIT' : 'FULL'
+      paymentOption: paymentOption === 'DEPOSIT' ? 'DEPOSIT' : 'FULL',
+      guideDailyRate,
+      durationDays: trail.durationDays,
+      porterCount: requestedPorters,
+      totalGearWeightKg: requestedWeight
     });
 
     // Generate secure session ID and cryptographic token
@@ -85,6 +109,10 @@ export async function POST(request: NextRequest) {
       phone: phone.trim(),
       emergencyContact: emergencyContact ? emergencyContact.trim() : undefined,
       specialRequests: specialRequests ? specialRequests.trim() : undefined,
+      guideId: assignedGuide?.id,
+      guideName: assignedGuide?.name,
+      porterCount: requestedPorters,
+      totalGearWeightKg: requestedWeight,
       breakdown,
       expiresAt
     });
