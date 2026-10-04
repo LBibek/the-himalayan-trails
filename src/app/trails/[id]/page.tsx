@@ -9,7 +9,8 @@ import {
   XCircle, ShieldCheck, Users, ChevronDown, ChevronUp, ArrowLeft, Star,
   Share2, Send, AlertCircle, Sparkles, PhoneCall, Loader2, Camera,
   Route, Thermometer, Eye, Flag, X, ChevronLeft, ChevronRight,
-  MessageSquare, ThumbsUp, Footprints, TreePine, Plane
+  MessageSquare, ThumbsUp, Footprints, TreePine, Plane,
+  WifiOff, Download, Trash2, HardDrive, Radio
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -18,6 +19,13 @@ import {
 import { Trail, Itinerary, Landmark } from '@/types';
 import { submitTrekInquiry } from '@/app/actions/inquiry';
 import ElevationProfileChart from '@/components/map/ElevationProfileChart';
+import {
+  saveTrailOffline,
+  getOfflineTrail,
+  deleteOfflineTrail,
+  calculatePackSize,
+  generateEmergencyGuide,
+} from '@/lib/offline/trailStorage';
 
 const CesiumGlobeMap = dynamic(() => import('@/components/map/CesiumGlobeMap'), {
   ssr: false,
@@ -134,6 +142,87 @@ export default function TrailDetailPage() {
   const [theaterDistanceKm, setTheaterDistanceKm] = useState<number | null>(null);
   const [theaterTelemetry, setTheaterTelemetry] = useState<any>(null);
 
+  // ── Offline Wilderness Route Pack State ──
+  const [isOfflineSaved, setIsOfflineSaved] = useState(false);
+  const [offlinePackSize, setOfflinePackSize] = useState<number | null>(null);
+  const [offlinePackaging, setOfflinePackaging] = useState(false);
+  const [offlineActionSuccess, setOfflineActionSuccess] = useState<string | null>(null);
+  const [showOfflineDeleteConfirm, setShowOfflineDeleteConfirm] = useState(false);
+
+  useEffect(() => {
+    if (!trail) return;
+    let isMounted = true;
+    getOfflineTrail(trail.id).then((pack) => {
+      if (isMounted) {
+        if (pack) {
+          setIsOfflineSaved(true);
+          setOfflinePackSize(pack.packSizeBytes);
+        } else {
+          setIsOfflineSaved(false);
+          setOfflinePackSize(null);
+        }
+      }
+    });
+    return () => { isMounted = false; };
+  }, [trail]);
+
+  const handleDownloadOfflinePack = async () => {
+    if (!trail) return;
+    setOfflinePackaging(true);
+    setOfflineActionSuccess(null);
+    try {
+      let packLandmarks = landmarks;
+      if (!packLandmarks || packLandmarks.length === 0) {
+        try {
+          const res = await fetch(`/api/landmarks?trail=${encodeURIComponent(trail.name)}`);
+          if (res.ok) {
+            const data = await res.json();
+            packLandmarks = Array.isArray(data) ? data : (data.landmarks || []);
+          }
+        } catch (e) {
+          console.warn('Failed to load extra landmarks for offline pack', e);
+        }
+      }
+
+      const emergencyGuide = generateEmergencyGuide(trail.name, trail.maxElevation);
+      const packBase = {
+        id: trail.id,
+        trail,
+        routeCoordinates: trail.routeCoordinates || [],
+        elevationProfile: trail.elevationProfile || [],
+        landmarks: packLandmarks,
+        itinerary: itinerary?.days || [],
+        emergencyGuide,
+        savedAt: new Date().toISOString(),
+        version: 1,
+      };
+      const packSizeBytes = calculatePackSize(packBase);
+      const fullPack = { ...packBase, packSizeBytes };
+      await saveTrailOffline(fullPack);
+      setIsOfflineSaved(true);
+      setOfflinePackSize(packSizeBytes);
+      setOfflineActionSuccess(`Cached successfully (${(packSizeBytes / (1024 * 1024)).toFixed(2)} MB)`);
+    } catch (err: any) {
+      console.error('Failed to save offline pack', err);
+      setOfflineActionSuccess('Failed to package trail');
+    } finally {
+      setOfflinePackaging(false);
+    }
+  };
+
+  const handleDeleteOfflinePack = async () => {
+    if (!trail) return;
+    try {
+      await deleteOfflineTrail(trail.id);
+      setIsOfflineSaved(false);
+      setOfflinePackSize(null);
+      setShowOfflineDeleteConfirm(false);
+      setOfflineActionSuccess('Offline pack removed from device.');
+    } catch (err) {
+      console.error('Failed to remove offline pack', err);
+    }
+  };
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isTheaterModeOpen) {
@@ -176,9 +265,36 @@ export default function TrailDetailPage() {
         it.trailName.toLowerCase().includes(trailData.name.toLowerCase()) ||
         trailData.name.toLowerCase().includes(it.trailName.toLowerCase())
       ) || itineraries[0] || null;
-      setItinerary(matched);
-      setLoading(false);
-    }).catch(err => { if (mounted) { setLoadError(err.message); setLoading(false); } });
+    }).catch(async (err) => {
+      // Fallback: If offline or network request fails, attempt recovery from IndexedDB
+      try {
+        const offlinePack = await getOfflineTrail(trailParam);
+        if (mounted && offlinePack) {
+          setTrail(offlinePack.trail);
+          setLandmarks(offlinePack.landmarks || []);
+          if (offlinePack.itinerary && offlinePack.itinerary.length > 0) {
+            setItinerary({
+              id: 'offline-' + (offlinePack.id || trailParam),
+              trailId: offlinePack.trail.id,
+              trailName: offlinePack.trail.name,
+              region: offlinePack.trail.region,
+              days: offlinePack.itinerary,
+            } as any);
+          }
+          setIsOfflineSaved(true);
+          setOfflinePackSize(offlinePack.packSizeBytes);
+          setLoading(false);
+          return;
+        }
+      } catch (offlineErr) {
+        console.warn('Failed to retrieve offline trail pack fallback:', offlineErr);
+      }
+
+      if (mounted) {
+        setLoadError(err.message);
+        setLoading(false);
+      }
+    });
 
     return () => { mounted = false; };
   }, [trailParam]);
@@ -295,10 +411,18 @@ export default function TrailDetailPage() {
         <div className="p-8 rounded-3xl bg-slate-900 border border-slate-800 max-w-md space-y-4">
           <AlertCircle className="h-12 w-12 text-rose-500 mx-auto" />
           <h2 className="text-xl font-bold text-white">Trail Not Found</h2>
-          <p className="text-xs text-slate-400">{loadError || 'The requested trail does not exist.'}</p>
-          <Link href="/trails" className="inline-block px-5 py-2.5 rounded-xl bg-[#B68D40] text-black font-bold text-xs">
-            Return to Trail Directory
-          </Link>
+          <p className="text-xs text-slate-400">
+            {loadError || 'The requested trail could not be retrieved. If you are offline in the wilderness, ensure the trail pack was downloaded prior to departure.'}
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+            <Link href="/offline" className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[#B68D40] hover:bg-[#c99e4b] text-black font-bold text-xs flex items-center justify-center gap-1.5 transition">
+              <WifiOff className="w-3.5 h-3.5" />
+              <span>Wilderness Offline Hub</span>
+            </Link>
+            <Link href="/trails" className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition border border-slate-700">
+              Return to Directory
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -315,6 +439,12 @@ export default function TrailDetailPage() {
             <span>All Trails</span>
           </Link>
           <div className="flex items-center gap-3">
+            {isOfflineSaved && (
+              <span data-slot="indicator" className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-semibold flex items-center gap-1.5 shadow-sm">
+                <WifiOff className="w-3.5 h-3.5" />
+                <span>Wilderness Ready</span>
+              </span>
+            )}
             <span className={`px-3 py-1 rounded-full text-xs font-bold ${difficultyColor(trail.difficulty)}`}>
               {trail.difficulty}
             </span>
@@ -349,6 +479,12 @@ export default function TrailDetailPage() {
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/30 to-transparent" />
         <div className="absolute bottom-0 inset-x-0 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
+            {isOfflineSaved && (
+              <span className="px-3.5 py-1.5 rounded-full bg-emerald-500/25 backdrop-blur text-emerald-300 text-xs font-extrabold border border-emerald-400/50 flex items-center gap-1.5 shadow-lg">
+                <WifiOff className="w-3.5 h-3.5" />
+                <span>Wilderness Offline Ready</span>
+              </span>
+            )}
             <span className={`px-4 py-1.5 rounded-full text-sm font-extrabold ${difficultyColor(trail.difficulty)} shadow-lg`}>
               {trail.difficulty}
             </span>
@@ -735,6 +871,124 @@ export default function TrailDetailPage() {
 
           {/* ──── RIGHT COLUMN: BOOKING SIDEBAR ──── */}
           <div className="lg:col-span-4 sticky top-28 space-y-6">
+
+            {/* ──── OFFLINE WILDERNESS ROUTE PACK CARD ──── */}
+            <div data-slot="base" className="rounded-3xl backdrop-blur-xl bg-slate-900/80 border border-[#B68D40]/30 shadow-2xl p-5 space-y-4">
+              <div data-slot="header" className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-[#B68D40]/20 border border-[#B68D40]/40 flex items-center justify-center text-[#B68D40] shrink-0">
+                    <WifiOff className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-extrabold text-white flex items-center gap-1.5">
+                      Wilderness Offline Pack
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      Cache route for disconnected mountain passes
+                    </p>
+                  </div>
+                </div>
+                {isOfflineSaved ? (
+                  <span data-slot="indicator" className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-semibold shrink-0">
+                    Cached
+                  </span>
+                ) : (
+                  <span data-slot="indicator" className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 font-semibold shrink-0">
+                    Online Only
+                  </span>
+                )}
+              </div>
+
+              <div data-slot="body" className="space-y-3">
+                {offlineActionSuccess && (
+                  <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                    <span>{offlineActionSuccess}</span>
+                  </div>
+                )}
+
+                {!isOfflineSaved ? (
+                  <button
+                    onClick={handleDownloadOfflinePack}
+                    disabled={offlinePackaging}
+                    data-slot="trigger"
+                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-[#B68D40] to-[#E2C085] hover:opacity-95 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-[#B68D40]/20 transition focus-visible:ring-2 focus-visible:ring-[#B68D40] disabled:opacity-50"
+                  >
+                    {offlinePackaging ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-black" />
+                        <span>Packaging & Caching...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4 text-black" />
+                        <span>Download Offline Trail Pack</span>
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-800/60 border border-emerald-500/30">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        <span className="text-xs font-bold text-emerald-300">
+                          Saved Offline {offlinePackSize ? `(${(offlinePackSize / (1024 * 1024)).toFixed(2)} MB)` : ''}
+                        </span>
+                      </div>
+                      <Link
+                        href={`/offline?trail=${trail.id}`}
+                        className="text-[11px] font-bold text-[#B68D40] hover:text-[#c99e4b] underline flex items-center gap-1"
+                      >
+                        Hub →
+                      </Link>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <Link
+                        href={`/offline?trail=${trail.id}`}
+                        className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs text-center flex items-center justify-center gap-1.5 transition border border-slate-700 focus-visible:ring-2 focus-visible:ring-[#B68D40]"
+                      >
+                        <HardDrive className="w-3.5 h-3.5 text-[#B68D40]" />
+                        <span>Offline Map</span>
+                      </Link>
+
+                      {!showOfflineDeleteConfirm ? (
+                        <button
+                          onClick={() => setShowOfflineDeleteConfirm(true)}
+                          data-slot="trigger"
+                          className="py-2.5 px-3 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 font-bold text-xs flex items-center justify-center gap-1.5 transition focus-visible:ring-2 focus-visible:ring-rose-500"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Remove Pack</span>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={handleDeleteOfflinePack}
+                          data-slot="trigger"
+                          className="py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition animate-pulse"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Confirm Delete</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div data-slot="footer" className="pt-2 border-t border-slate-800/80 text-[10px] text-slate-400 space-y-1">
+                <p className="flex items-center gap-1.5">
+                  <span className="text-[#B68D40]">✓</span> Offline GPS polyline, milestones & elevation profile
+                </p>
+                <p className="flex items-center gap-1.5">
+                  <span className="text-[#B68D40]">✓</span> Lake Louise AMS diagnostic & HAPE/HACE protocol
+                </p>
+                <p className="flex items-center gap-1.5">
+                  <span className="text-[#B68D40]">✓</span> Helicopter SAR hotline (+977-1-4123456)
+                </p>
+              </div>
+            </div>
+
             <div data-slot="base" className="rounded-3xl backdrop-blur-xl bg-slate-900/80 border border-[#B68D40]/30 shadow-2xl overflow-hidden">
 
               {/* 7. Tabbed Header */}

@@ -23,6 +23,7 @@ import {
   FileText,
   Menu,
   ArrowRight,
+  WifiOff,
 } from 'lucide-react';
 
 /* ─────────────────────────────────────────────────────────────── */
@@ -69,6 +70,12 @@ const toolsGroup = {
       description: 'Day-by-day pacing, DnD stages & GPX export',
     },
     {
+      label: 'Offline Wilderness Hub',
+      href: '/offline',
+      icon: WifiOff,
+      description: 'Cached GPS route packs & emergency SOS guides',
+    },
+    {
       label: 'Dashboard',
       href: '/dashboard',
       icon: LayoutDashboard,
@@ -94,6 +101,7 @@ const mobileNavLinks = [
   { label: 'Explore & Trails', href: '/map',                icon: MapIcon,        description: 'AllTrails interactive topo & GPS tracks' },
   { label: '3D Globe Map',     href: '/map?engine=3d',      icon: Globe,          description: 'Himalayan massifs & summit drone tours' },
   { label: 'Itinerary Studio', href: '/itinerary/planner',  icon: Calendar,       description: 'Interactive pacing, DnD days & waypoints' },
+  { label: 'Offline Wilderness', href: '/offline',          icon: WifiOff,        description: 'Cached GPS route packs & emergency SOS guides' },
   { label: 'Weather Office',   href: '/weather',            icon: CloudSun,       description: 'Avalanche risk, summit temps & lapse rates' },
   { label: 'Trekker Stories',  href: '/stories',            icon: BookOpen,       description: 'Verified photo journals & dispatches' },
   { label: 'Dashboard',        href: '/dashboard',          icon: User,           description: 'Active bookings, badges & reviews' },

@@ -3173,6 +3173,276 @@ describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () =>
         'LeafletMap must check propRanges length before falling back to ranges');
     });
   });
+
+  describe('27. Work Package 6.3: Offline Wilderness Mode (PWA & IndexedDB Route Packs)', () => {
+    test('OfflineTrailPack schema, persistence, and storage contract methods', async () => {
+      const {
+        saveTrailOffline,
+        getOfflineTrail,
+        getAllOfflineTrails,
+        deleteOfflineTrail,
+        isTrailSavedOffline,
+        calculatePackSize,
+        generateEmergencyGuide,
+      } = await import('../src/lib/offline/trailStorage.ts');
+
+      // 1. Create a valid mock offline trail pack
+      const samplePack = {
+        id: 'test-annapurna-circuit',
+        trail: {
+          id: 'test-annapurna-circuit',
+          slug: 'annapurna-circuit',
+          name: 'Annapurna Circuit Expedition',
+          region: 'Annapurna',
+          difficulty: 'Challenging',
+          distanceKm: 160,
+          durationDays: 16,
+          maxElevation: 5416,
+          elevationGain: 6800,
+          image: '/bg.jpg',
+          description: 'High-altitude circuit over Thorong La pass.',
+          highlights: ['Thorong La Pass (5,416m)', 'Muktinath Temple'],
+          bestMonths: ['October', 'November'],
+          startPoint: 'Besisahar',
+          endPoint: 'Pokhara',
+          rating: 4.9,
+          reviewsCount: 142,
+        },
+        routeCoordinates: [
+          [28.23, 84.37, 820],
+          [28.79, 83.93, 5416],
+          [28.78, 83.87, 3800],
+        ],
+        elevationProfile: [
+          { distanceKm: 0, elevation: 820, label: 'Besisahar' },
+          { distanceKm: 110, elevation: 5416, label: 'Thorong La Pass' },
+          { distanceKm: 160, elevation: 820, label: 'Pokhara' },
+        ],
+        landmarks: [
+          {
+            id: 'thorong-la-landmark',
+            name: 'Thorong La Pass',
+            category: 'High Pass',
+            elevation: 5416,
+            region: 'Annapurna',
+            coordinates: { lat: 28.79, lng: 83.93 },
+            image: '/bg.jpg',
+            description: 'Highest alpine pass on the Annapurna Circuit.',
+            permitRequired: 'ACAP + TIMS',
+            associatedTrail: 'Annapurna Circuit',
+          },
+        ],
+        itinerary: [
+          {
+            day: 1,
+            title: 'Besisahar to Chame',
+            route: 'Besisahar - Chame',
+            distanceKm: 22,
+            hours: 6,
+            sleepingAltitude: 2670,
+            altitudeGain: 1850,
+            highlights: 'Marsyangdi gorge and pine forests',
+          },
+        ],
+        emergencyGuide: generateEmergencyGuide('Annapurna Circuit Expedition', 5416),
+        savedAt: new Date().toISOString(),
+        version: 1,
+      };
+
+      // Calculate pack size
+      const packSize = calculatePackSize(samplePack);
+      assert.ok(packSize > 100, `Pack size should be greater than 100 bytes, got: ${packSize}`);
+
+      samplePack.packSizeBytes = packSize;
+
+      // Save offline pack
+      await saveTrailOffline(samplePack);
+
+      // Verify isTrailSavedOffline
+      const isSaved = await isTrailSavedOffline('test-annapurna-circuit');
+      assert.strictEqual(isSaved, true, 'Trail should be recognized as saved offline by ID');
+
+      const isSavedBySlug = await isTrailSavedOffline('annapurna-circuit');
+      assert.strictEqual(isSavedBySlug, true, 'Trail should be recognized as saved offline by slug');
+
+      // Verify getOfflineTrail by ID and slug
+      const retrievedById = await getOfflineTrail('test-annapurna-circuit');
+      assert.ok(retrievedById, 'Should retrieve pack by ID');
+      assert.strictEqual(retrievedById.trail.name, 'Annapurna Circuit Expedition');
+      assert.strictEqual(retrievedById.routeCoordinates.length, 3);
+      assert.strictEqual(retrievedById.elevationProfile.length, 3);
+      assert.strictEqual(retrievedById.landmarks.length, 1);
+      assert.strictEqual(retrievedById.emergencyGuide.emergencyHelicopterDispatch, '+977-1-4123456');
+
+      const retrievedBySlug = await getOfflineTrail('annapurna-circuit');
+      assert.ok(retrievedBySlug, 'Should retrieve pack by slug');
+      assert.strictEqual(retrievedBySlug.id, 'test-annapurna-circuit');
+
+      // Verify getAllOfflineTrails
+      const allPacks = await getAllOfflineTrails();
+      assert.ok(allPacks.length >= 1, 'getAllOfflineTrails should return at least 1 pack');
+      assert.ok(allPacks.some(p => p.id === 'test-annapurna-circuit'));
+
+      // Re-save and test deleteOfflineTrail by slug
+      await saveTrailOffline(samplePack);
+      const isSavedBeforeSlugDelete = await isTrailSavedOffline('test-annapurna-circuit');
+      assert.strictEqual(isSavedBeforeSlugDelete, true);
+      await deleteOfflineTrail('annapurna-circuit');
+      const isSavedAfterSlugDelete = await isTrailSavedOffline('test-annapurna-circuit');
+      assert.strictEqual(isSavedAfterSlugDelete, false, 'Trail should be deleted when referenced by slug');
+    });
+
+    test('Lake Louise 2018 AMS scoring & clinical diagnostic algorithms', async () => {
+      const { calculateLakeLouiseScore, LAKE_LOUISE_CRITERIA } = await import('../src/lib/offline/trailStorage.ts');
+
+      assert.strictEqual(LAKE_LOUISE_CRITERIA.length, 4, 'Must define 4 core Lake Louise criteria categories');
+      assert.ok(LAKE_LOUISE_CRITERIA.some(c => c.category === 'headache'));
+      assert.ok(LAKE_LOUISE_CRITERIA.some(c => c.category === 'gastrointestinal'));
+      assert.ok(LAKE_LOUISE_CRITERIA.some(c => c.category === 'fatigue'));
+      assert.ok(LAKE_LOUISE_CRITERIA.some(c => c.category === 'dizziness'));
+
+      // Case 1: Healthy trekker (0 on all)
+      const zeroScore = calculateLakeLouiseScore({ headache: 0, gastrointestinal: 0, fatigue: 0, dizziness: 0 });
+      assert.strictEqual(zeroScore.totalScore, 0);
+      assert.strictEqual(zeroScore.hasAms, false);
+      assert.strictEqual(zeroScore.severity, 'None');
+
+      // Case 2: Fatigue only, no headache (AMS requires headache)
+      const fatigueOnly = calculateLakeLouiseScore({ headache: 0, gastrointestinal: 2, fatigue: 2, dizziness: 0 });
+      assert.strictEqual(fatigueOnly.totalScore, 4);
+      assert.strictEqual(fatigueOnly.hasAms, false, 'AMS diagnosis requires presence of headache');
+
+      // Case 3: Mild AMS (Headache 1 + Fatigue 1 + GI 1 = 3)
+      const mildAms = calculateLakeLouiseScore({ headache: 1, gastrointestinal: 1, fatigue: 1, dizziness: 0 });
+      assert.strictEqual(mildAms.totalScore, 3);
+      assert.strictEqual(mildAms.hasAms, true);
+      assert.strictEqual(mildAms.severity, 'Mild AMS');
+      assert.ok(mildAms.recommendation.includes('Halt ascent') || mildAms.recommendation.includes('ADVISORY'));
+
+      // Case 4: Moderate/Severe AMS (Headache 2 + GI 2 + Fatigue 2 = 6)
+      const severeAms = calculateLakeLouiseScore({ headache: 2, gastrointestinal: 2, fatigue: 2, dizziness: 1 });
+      assert.strictEqual(severeAms.totalScore, 7);
+      assert.strictEqual(severeAms.hasAms, true);
+      assert.strictEqual(severeAms.severity, 'Moderate / Severe AMS');
+      assert.ok(severeAms.recommendation.includes('CRITICAL') || severeAms.recommendation.includes('Descend'));
+
+      // Case 5: Incapacitating Headache (Headache 3) automatically Moderate/Severe
+      const severeHeadache = calculateLakeLouiseScore({ headache: 3, gastrointestinal: 0, fatigue: 0, dizziness: 0 });
+      assert.strictEqual(severeHeadache.totalScore, 3);
+      assert.strictEqual(severeHeadache.hasAms, true);
+      assert.strictEqual(severeHeadache.severity, 'Moderate / Severe AMS');
+    });
+
+    test('High-altitude emergency guide: SAR dispatch hotline, HACE, HAPE, VHF frequencies', async () => {
+      const { generateEmergencyGuide } = await import('../src/lib/offline/trailStorage.ts');
+      const guide = generateEmergencyGuide('Everest Base Camp', 5364);
+
+      assert.strictEqual(guide.emergencyHelicopterDispatch, '+977-1-4123456');
+      assert.ok(guide.satelliteDispatchHotlines.some(h => h.includes('+977-1-4123456')));
+      assert.ok(guide.gpsSosInstructions.includes('27.9881°N') || guide.gpsSosInstructions.includes('DD.DDDD°'));
+      assert.ok(guide.satellitePhoneProtocols.includes('Everest Base Camp'));
+      assert.ok(guide.satellitePhoneProtocols.includes('5364m'));
+
+      // Protocols for AMS, HACE, HAPE
+      assert.ok(guide.amsProtocol.lakeLouiseThreshold.includes('Score >= 3'));
+      assert.ok(guide.haceProtocol.symptoms.some(s => s.toLowerCase().includes('ataxia')));
+      assert.ok(guide.haceProtocol.medications.some(m => m.includes('Dexamethasone')));
+      assert.ok(guide.haceProtocol.oxygenProtocol.includes('Gamow Bag') && guide.haceProtocol.oxygenProtocol.includes('2 psi'));
+
+      assert.ok(guide.hapeProtocol.symptoms.some(s => s.toLowerCase().includes('dyspnea')));
+      assert.ok(guide.hapeProtocol.medications.some(m => m.includes('Nifedipine')));
+
+      // VHF frequencies
+      assert.ok(guide.vhfFrequencies.some(f => f.frequencyMhz.includes('156.800 MHz')));
+      assert.ok(guide.vhfFrequencies.some(f => f.frequencyMhz.includes('121.500 MHz')));
+      assert.ok(guide.vhfFrequencies.some(f => f.frequencyMhz.includes('406.037 MHz')));
+    });
+
+    test('PWA manifest, service worker scripts, and Next.js metadata routes', () => {
+      // 1. public/manifest.json
+      const manifestPath = path.join(process.cwd(), 'public', 'manifest.json');
+      assert.ok(fs.existsSync(manifestPath), 'public/manifest.json must exist');
+      const manifestJson = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+      assert.strictEqual(manifestJson.name, 'The Himalayan Trails — Wilderness Offline');
+      assert.strictEqual(manifestJson.display, 'standalone');
+      assert.strictEqual(manifestJson.theme_color, '#0F172A');
+      assert.strictEqual(manifestJson.background_color, '#020617');
+      assert.strictEqual(manifestJson.start_url, '/offline');
+
+      // 2. src/app/manifest.ts
+      const nextManifestPath = path.join(process.cwd(), 'src', 'app', 'manifest.ts');
+      assert.ok(fs.existsSync(nextManifestPath), 'src/app/manifest.ts must exist');
+      const nextManifestSrc = fs.readFileSync(nextManifestPath, 'utf8');
+      assert.ok(nextManifestSrc.includes('MetadataRoute.Manifest'), 'manifest.ts must return MetadataRoute.Manifest');
+
+      // 3. public/sw.js
+      const swPath = path.join(process.cwd(), 'public', 'sw.js');
+      assert.ok(fs.existsSync(swPath), 'public/sw.js must exist');
+      const swSrc = fs.readFileSync(swPath, 'utf8');
+      assert.ok(swSrc.includes('himalayan-trails-offline-v1'), 'sw.js must define cache name');
+      assert.ok(swSrc.includes('/offline'), 'sw.js must precache /offline');
+      assert.ok(swSrc.includes('addEventListener(\'install\''), 'sw.js must handle install event');
+      assert.ok(swSrc.includes('addEventListener(\'activate\''), 'sw.js must handle activate event');
+      assert.ok(swSrc.includes('addEventListener(\'fetch\''), 'sw.js must handle fetch event');
+      assert.ok(swSrc.includes('req.mode === \'navigate\''), 'sw.js must handle navigation fallback');
+      assert.ok(swSrc.includes('.woff2'), 'sw.js must cache web fonts');
+      assert.ok(swSrc.includes('basemaps.cartocdn.com'), 'sw.js must cache map tiles');
+
+      // 4. src/components/providers/PwaProvider.tsx
+      const pwaPath = path.join(process.cwd(), 'src', 'components', 'providers', 'PwaProvider.tsx');
+      assert.ok(fs.existsSync(pwaPath), 'PwaProvider must exist');
+      const pwaSrc = fs.readFileSync(pwaPath, 'utf8');
+      assert.ok(pwaSrc.includes('document.readyState === \'complete\''), 'PwaProvider must handle already complete document state');
+    });
+
+    test('UI Integration: Trail Detail Page offline pack download control and cached badge', () => {
+      const trailPageSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'trails', '[id]', 'page.tsx'), 'utf8');
+
+      // Offline storage imports and state
+      assert.ok(trailPageSrc.includes('saveTrailOffline'), 'Trail page must import saveTrailOffline');
+      assert.ok(trailPageSrc.includes('getOfflineTrail'), 'Trail page must import getOfflineTrail');
+      assert.ok(trailPageSrc.includes('deleteOfflineTrail'), 'Trail page must import deleteOfflineTrail');
+      assert.ok(trailPageSrc.includes('isOfflineSaved'), 'Trail page must track isOfflineSaved state');
+      assert.ok(trailPageSrc.includes('offlinePackaging'), 'Trail page must track offlinePackaging state');
+
+      // UI Indicators
+      assert.ok(trailPageSrc.includes('Wilderness Ready'), 'Trail page must render Wilderness Ready indicator');
+      assert.ok(trailPageSrc.includes('Wilderness Offline Ready'), 'Trail page must render Wilderness Offline Ready hero badge');
+      assert.ok(trailPageSrc.includes('Download Offline Trail Pack'), 'Trail page must render Download Offline Trail Pack button');
+      assert.ok(trailPageSrc.includes('Packaging & Caching...'), 'Trail page must render packaging state');
+      assert.ok(trailPageSrc.includes('Saved Offline'), 'Trail page must render Saved Offline state');
+      assert.ok(trailPageSrc.includes('data-slot="base"'), 'Offline card must use HeroUI semantic slots');
+    });
+
+    test('UI Integration: Dedicated Offline Hub page, OfflineRouteMap, and Global OfflineBanner', () => {
+      const offlinePageSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'offline', 'page.tsx'), 'utf8');
+      const offlineMapSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'map', 'OfflineRouteMap.tsx'), 'utf8');
+      const offlineBannerSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'ui', 'OfflineBanner.tsx'), 'utf8');
+      const layoutSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'layout.tsx'), 'utf8');
+      const navbarSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'layout', 'Navbar.tsx'), 'utf8');
+
+      // Offline Hub page
+      assert.ok(offlinePageSrc.includes('Wilderness Offline Hub'), 'Offline page must render title');
+      assert.ok(offlinePageSrc.includes('OfflineRouteMap'), 'Offline page must render OfflineRouteMap');
+      assert.ok(offlinePageSrc.includes('calculateLakeLouiseScore'), 'Offline page must wire AMS calculator');
+      assert.ok(offlinePageSrc.includes('toggleSimulateOffline'), 'Offline page must provide simulated offline mode toggle');
+      assert.ok(offlinePageSrc.includes('+977-1-4123456'), 'Offline page must feature SAR hotline');
+
+      // OfflineRouteMap
+      assert.ok(offlineMapSrc.includes('MapBoundsController'), 'OfflineRouteMap must auto-fit route bounds');
+      assert.ok(offlineMapSrc.includes('Offline Vector GPS Canvas'), 'OfflineRouteMap must render offline canvas overlay');
+
+      // OfflineBanner & Layout
+      assert.ok(offlineBannerSrc.includes('Wilderness Mode: Offline'), 'OfflineBanner must render offline toast text');
+      assert.ok(offlineBannerSrc.includes('window.addEventListener(\'offline\''), 'OfflineBanner must monitor window offline events');
+      assert.ok(layoutSrc.includes('<OfflineBanner />'), 'RootLayout must mount OfflineBanner');
+      assert.ok(layoutSrc.includes('<PwaProvider>'), 'RootLayout must mount PwaProvider');
+
+      // Navbar
+      assert.ok(navbarSrc.includes('/offline'), 'Navbar must link to /offline');
+      assert.ok(navbarSrc.includes('Offline Wilderness'), 'Navbar must include offline wilderness link');
+    });
+  });
 });
 
 

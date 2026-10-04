@@ -245,3 +245,59 @@ export interface SharedTrail {
   createdAt: string;
 }
 
+export interface LakeLouiseAmsCriterion {
+  category: 'headache' | 'gastrointestinal' | 'fatigue' | 'dizziness';
+  label: string;
+  description: string;
+  options: { score: number; label: string }[];
+}
+
+export interface HighAltitudeEmergencyGuide {
+  emergencyHelicopterDispatch: string;
+  satelliteDispatchHotlines: string[];
+  gpsSosInstructions: string;
+  satellitePhoneProtocols: string;
+  vhfFrequencies: { name: string; frequencyMhz: string; usage: string }[];
+  amsProtocol: {
+    name: string;
+    description: string;
+    symptoms: string[];
+    action: string;
+    lakeLouiseThreshold: string;
+  };
+  haceProtocol: {
+    name: string;
+    description: string;
+    symptoms: string[];
+    emergencyAction: string;
+    medications: string[];
+    oxygenProtocol: string;
+  };
+  hapeProtocol: {
+    name: string;
+    description: string;
+    symptoms: string[];
+    emergencyAction: string;
+    medications: string[];
+    oxygenProtocol: string;
+  };
+  evacuationChecklist: string[];
+}
+
+export interface OfflineTrailPack {
+  id: string;
+  trail: Trail;
+  routeCoordinates: [number, number, number?][];
+  elevationProfile: {
+    distanceKm: number;
+    elevation: number;
+    label?: string;
+  }[];
+  landmarks: Landmark[];
+  itinerary: ItineraryDay[];
+  emergencyGuide: HighAltitudeEmergencyGuide;
+  savedAt: string;
+  packSizeBytes: number;
+  version: number;
+}
+
