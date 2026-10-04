@@ -15,7 +15,8 @@ import {
   ChevronRight,
   Printer,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  CheckCircle2
 } from 'lucide-react';
 
 interface UserInfo {
@@ -39,6 +40,14 @@ interface UserBooking {
   totalPrice: number;
   status: string;
   specialRequests?: string;
+  paymentOption?: 'FULL' | 'DEPOSIT';
+  depositAmount?: number;
+  remainingBalance?: number;
+  receiptNumber?: string;
+  basePrice?: number;
+  permitFee?: number;
+  taxAmount?: number;
+  emergencyContact?: string;
   createdAt: string;
 }
 
@@ -236,64 +245,101 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4">
-              {bookings.map((booking) => (
-                <div
-                  key={booking.id}
-                  className="p-6 rounded-2xl bg-neutral-900/60 border border-neutral-800 hover:border-[#B68D40]/40 transition-all flex flex-col md:flex-row justify-between gap-6"
-                >
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <span className="px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                        {booking.status}
-                      </span>
-                      <span className="text-xs text-gray-400 font-mono">Ref: {booking.id}</span>
+              {bookings.map((booking) => {
+                const isDeposit = booking.paymentOption === 'DEPOSIT';
+                const paidAmount = booking.depositAmount ?? (isDeposit ? Math.round(booking.totalPrice * 0.25) : booking.totalPrice);
+                const remaining = booking.remainingBalance ?? (isDeposit ? Math.round(booking.totalPrice - paidAmount) : 0);
+
+                return (
+                  <div
+                    key={booking.id}
+                    data-slot="base"
+                    className="p-6 rounded-2xl bg-neutral-900/60 border border-neutral-800 hover:border-[#B68D40]/40 transition-all flex flex-col md:flex-row justify-between gap-6"
+                  >
+                    <div data-slot="body" className="space-y-3.5 flex-1">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <span
+                          data-slot="indicator"
+                          className={`px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider border ${
+                            isDeposit
+                              ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                              : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                          }`}
+                        >
+                          {isDeposit ? 'Confirmed — Deposit Paid' : 'Confirmed — Full Payment'}
+                        </span>
+                        {booking.receiptNumber && (
+                          <span className="text-xs font-mono font-bold text-[#B68D40] bg-[#B68D40]/10 px-2.5 py-0.5 rounded-full border border-[#B68D40]/30">
+                            {booking.receiptNumber}
+                          </span>
+                        )}
+                        <span className="text-xs text-gray-400 font-mono">Ref: {booking.id}</span>
+                      </div>
+
+                      <h3 className="text-lg font-bold text-white">
+                        {booking.trailName || 'Himalayan Expedition'}
+                      </h3>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs text-gray-300">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-4 h-4 text-[#B68D40]" />
+                          <span>Start Date: {booking.startDate}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Users className="w-4 h-4 text-[#B68D40]" />
+                          <span>{booking.travelers} {booking.travelers === 1 ? 'Traveler' : 'Travelers'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-400">Total: <strong className="text-white">${booking.totalPrice.toLocaleString()}</strong></span>
+                          <span className="text-emerald-400 font-semibold">(Paid: ${paidAmount.toLocaleString()})</span>
+                        </div>
+                      </div>
+
+                      {/* Remaining balance notice if deposit option */}
+                      {remaining > 0 ? (
+                        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300 flex items-start gap-2">
+                          <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                          <span>
+                            Outstanding Balance: <strong className="text-white font-bold">${remaining.toLocaleString()}</strong> • Outstanding balance payable in USD / NPR upon arrival at Kathmandu Basecamp briefing.
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300 flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span>Expedition package 100% fully settled. Official clearance active.</span>
+                        </div>
+                      )}
+
+                      {booking.specialRequests && (
+                        <p className="text-xs text-gray-400 italic">
+                          &quot;{booking.specialRequests}&quot;
+                        </p>
+                      )}
                     </div>
 
-                    <h3 className="text-lg font-bold text-white">
-                      {booking.trailName || 'Himalayan Expedition'}
-                    </h3>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs text-gray-300">
-                      <div className="flex items-center gap-2">
-                        <Calendar className="w-4 h-4 text-[#B68D40]" />
-                        <span>Start Date: {booking.startDate}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Users className="w-4 h-4 text-[#B68D40]" />
-                        <span>{booking.travelers} {booking.travelers === 1 ? 'Traveler' : 'Travelers'}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-white">Total: ${booking.totalPrice}</span>
-                      </div>
-                    </div>
-
-                    {booking.specialRequests && (
-                      <p className="text-xs text-gray-400 italic">
-                        &quot;{booking.specialRequests}&quot;
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="flex md:flex-col justify-end gap-2 shrink-0">
-                    {booking.trailSlug && (
+                    <div data-slot="footer" className="flex md:flex-col justify-end gap-2 shrink-0 md:min-w-[210px]">
                       <Link
-                        href={`/trails/${booking.trailSlug}`}
-                        className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs font-semibold text-gray-200 transition-colors"
+                        href={`/bookings/${booking.id}/voucher`}
+                        data-slot="trigger"
+                        className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#B68D40] to-[#E2C085] hover:opacity-95 text-black font-extrabold text-xs shadow-md shadow-[#B68D40]/20 transition-all focus-visible:ring-2 focus-visible:ring-[#B68D40]"
                       >
-                        Trail Guide
-                        <ChevronRight className="w-3.5 h-3.5" />
+                        <Printer className="w-3.5 h-3.5" />
+                        Download / Print Official Voucher
                       </Link>
-                    )}
-                    <button
-                      onClick={() => window.print()}
-                      className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl border border-neutral-700 hover:bg-neutral-800 text-xs font-medium text-gray-300 transition-colors"
-                    >
-                      <Printer className="w-3.5 h-3.5" />
-                      Print Voucher
-                    </button>
+
+                      {booking.trailSlug && (
+                        <Link
+                          href={`/trails/${booking.trailSlug}`}
+                          className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs font-semibold text-gray-200 transition-colors border border-neutral-700/60"
+                        >
+                          Trail Guide
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </Link>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

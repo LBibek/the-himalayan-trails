@@ -24,7 +24,12 @@ import {
   Clock,
   UserCheck,
   Calendar,
-  Users
+  Users,
+  Receipt,
+  FileText,
+  FileCheck2,
+  DollarSign,
+  X
 } from 'lucide-react';
 import { Trail, Landmark, Inquiry, ContactMessage } from '@/types';
 import { EditableLandmark } from '@/components/admin/ExpeditionMapEditor';
@@ -64,8 +69,8 @@ export default function AdminPage() {
 
   const [landmarksCount, setLandmarksCount] = useState(0);
 
-  // Edit Mode state
   const [editingTrailSlug, setEditingTrailSlug] = useState<string | null>(null);
+  const [selectedInvoiceBooking, setSelectedInvoiceBooking] = useState<any | null>(null);
 
   // Fetch expeditions, landmarks, bookings, inquiries, and contact messages from real SQLite DB APIs
   useEffect(() => {
@@ -930,51 +935,174 @@ export default function AdminPage() {
               <table className="w-full text-left text-xs text-gray-300">
                 <thead className="bg-neutral-950 uppercase tracking-wider text-gray-400 border-b border-neutral-800">
                   <tr>
-                    <th className="p-3">Reference</th>
+                    <th className="p-3">Receipt &amp; Ref</th>
                     <th className="p-3">Customer</th>
                     <th className="p-3">Start Date</th>
                     <th className="p-3">Party</th>
+                    <th className="p-3">Payment Option</th>
+                    <th className="p-3">Paid / Remaining</th>
                     <th className="p-3">Total ($)</th>
                     <th className="p-3">Status</th>
-                    <th className="p-3 text-right">Actions</th>
+                    <th className="p-3 text-right">Clearance &amp; Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-800">
-                  {bookings.map((booking: any) => (
-                    <tr key={booking.id} className="hover:bg-neutral-800/50 transition">
-                      <td className="p-3 font-mono text-[#B68D40]">{booking.id}</td>
-                      <td className="p-3">
-                        <div className="font-bold text-white">{booking.fullName}</div>
-                        <div className="text-[11px] text-gray-400">{booking.email} • {booking.phone}</div>
-                      </td>
-                      <td className="p-3 font-medium text-gray-200">{booking.startDate}</td>
-                      <td className="p-3">{booking.travelers} {booking.travelers === 1 ? 'Trekker' : 'Trekkers'}</td>
-                      <td className="p-3 font-bold text-white">${booking.totalPrice}</td>
-                      <td className="p-3">
-                        <select
-                          value={booking.status}
-                          onChange={(e) => handleUpdateBookingStatus(booking.id, e.target.value)}
-                          className="bg-neutral-950 border border-neutral-700 rounded-lg px-2 py-1 text-xs font-semibold text-white focus:outline-none focus:border-[#B68D40]"
-                        >
-                          <option value="CONFIRMED">CONFIRMED</option>
-                          <option value="EXPEDITION_ACTIVE">ACTIVE</option>
-                          <option value="COMPLETED">COMPLETED</option>
-                          <option value="CANCELLED">CANCELLED</option>
-                        </select>
-                      </td>
-                      <td className="p-3 text-right">
-                        <button
-                          onClick={() => handleDeleteBooking(booking.id)}
-                          className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20"
-                          title="Delete Booking"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {bookings.map((booking: any) => {
+                    const isDeposit = booking.paymentOption === 'DEPOSIT';
+                    const paidAmount = booking.depositAmount ?? (isDeposit ? Math.round(booking.totalPrice * 0.25) : booking.totalPrice);
+                    const remaining = booking.remainingBalance ?? (isDeposit ? Math.round(booking.totalPrice - paidAmount) : 0);
+
+                    return (
+                      <tr key={booking.id} className="hover:bg-neutral-800/50 transition">
+                        <td className="p-3">
+                          <span className="font-mono font-bold text-[#B68D40] block">
+                            {booking.receiptNumber || 'N/A'}
+                          </span>
+                          <span className="font-mono text-[10px] text-gray-400">{booking.id}</span>
+                        </td>
+                        <td className="p-3">
+                          <div className="font-bold text-white">{booking.fullName}</div>
+                          <div className="text-[11px] text-gray-400">{booking.email} • {booking.phone}</div>
+                        </td>
+                        <td className="p-3 font-medium text-gray-200">{booking.startDate}</td>
+                        <td className="p-3">{booking.travelers} {booking.travelers === 1 ? 'Trekker' : 'Trekkers'}</td>
+                        <td className="p-3">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                            isDeposit
+                              ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                              : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                          }`}>
+                            {isDeposit ? 'DEPOSIT (25%)' : 'FULL (100%)'}
+                          </span>
+                        </td>
+                        <td className="p-3">
+                          <div className="text-emerald-400 font-semibold">${paidAmount.toLocaleString()} paid</div>
+                          {remaining > 0 ? (
+                            <div className="text-amber-300 text-[11px]">${remaining.toLocaleString()} due</div>
+                          ) : (
+                            <div className="text-gray-400 text-[10px]">Settled</div>
+                          )}
+                        </td>
+                        <td className="p-3 font-bold text-white">
+                          <div className="flex items-center gap-1.5">
+                            <span>${booking.totalPrice.toLocaleString()}</span>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedInvoiceBooking(booking)}
+                              className="p-1 rounded bg-neutral-800 hover:bg-[#B68D40]/20 text-gray-300 hover:text-[#B68D40] transition"
+                              title="View itemized invoice breakdown"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          <select
+                            value={booking.status}
+                            onChange={(e) => handleUpdateBookingStatus(booking.id, e.target.value)}
+                            className="bg-neutral-950 border border-neutral-700 rounded-lg px-2 py-1 text-xs font-semibold text-white focus:outline-none focus:border-[#B68D40]"
+                          >
+                            <option value="CONFIRMED">CONFIRMED</option>
+                            <option value="EXPEDITION_ACTIVE">ACTIVE</option>
+                            <option value="COMPLETED">COMPLETED</option>
+                            <option value="CANCELLED">CANCELLED</option>
+                          </select>
+                        </td>
+                        <td className="p-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Link
+                              href={`/bookings/${booking.id}/voucher`}
+                              target="_blank"
+                              className="p-1.5 rounded-lg bg-[#B68D40]/10 text-[#B68D40] hover:bg-[#B68D40]/20 border border-[#B68D40]/30 transition"
+                              title="View & Print Official Expedition Voucher"
+                            >
+                              <FileCheck2 className="h-3.5 w-3.5" />
+                            </Link>
+
+                            <button
+                              onClick={() => handleDeleteBooking(booking.id)}
+                              className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 transition"
+                              title="Delete Booking"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* Selected Booking Invoice Breakdown Modal */}
+          {selectedInvoiceBooking && (
+            <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+              <div className="max-w-md w-full p-6 rounded-2xl bg-neutral-900 border border-[#B68D40]/40 shadow-2xl space-y-4 text-white">
+                <div className="flex justify-between items-center border-b border-neutral-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Receipt className="w-5 h-5 text-[#B68D40]" />
+                    <h3 className="font-bold text-sm">Itemized Invoice Breakdown</h3>
+                  </div>
+                  <button
+                    onClick={() => setSelectedInvoiceBooking(null)}
+                    className="p-1 rounded-lg hover:bg-neutral-800 text-gray-400 hover:text-white"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="text-xs space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Receipt Number:</span>
+                    <span className="font-mono font-bold text-[#B68D40]">{selectedInvoiceBooking.receiptNumber || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Adventurer:</span>
+                    <span className="font-semibold text-white">{selectedInvoiceBooking.fullName}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Party Size:</span>
+                    <span>{selectedInvoiceBooking.travelers} trekkers</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Base Price:</span>
+                    <span>${(selectedInvoiceBooking.basePrice || selectedInvoiceBooking.totalPrice).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Permit Fees (TIMS + Conservation):</span>
+                    <span>${(selectedInvoiceBooking.permitFee || (50 * selectedInvoiceBooking.travelers)).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Nepal VAT (13%):</span>
+                    <span>${(selectedInvoiceBooking.taxAmount || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between font-bold pt-2 border-t border-neutral-800 text-sm">
+                    <span>Total Package Price:</span>
+                    <span className="text-white">${selectedInvoiceBooking.totalPrice.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-emerald-400 pt-1">
+                    <span>Amount Paid ({selectedInvoiceBooking.paymentOption || 'FULL'}):</span>
+                    <span>${(selectedInvoiceBooking.depositAmount || selectedInvoiceBooking.totalPrice).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-amber-300">
+                    <span>Remaining Balance:</span>
+                    <span>${(selectedInvoiceBooking.remainingBalance || 0).toLocaleString()}</span>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-neutral-800 flex justify-end gap-2">
+                  <Link
+                    href={`/bookings/${selectedInvoiceBooking.id}/voucher`}
+                    target="_blank"
+                    className="px-4 py-2 rounded-xl bg-[#B68D40] text-black font-bold text-xs flex items-center gap-1.5"
+                  >
+                    <FileCheck2 className="w-3.5 h-3.5" />
+                    Open Official Voucher
+                  </Link>
+                </div>
+              </div>
             </div>
           )}
         </div>

@@ -131,6 +131,7 @@ export interface Booking {
   taxAmount?: number;
   receiptNumber?: string;
   invoiceBreakdown?: string;
+  emergencyContact?: string;
   createdAt: string;
 }
 

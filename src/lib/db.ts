@@ -203,6 +203,7 @@ export function initializeSchema(db: DatabaseSync) {
       tax_amount REAL DEFAULT 0,
       receipt_number TEXT,
       invoice_breakdown TEXT,
+      emergency_contact TEXT,
       created_at TEXT NOT NULL,
       FOREIGN KEY (trail_id) REFERENCES trails(id) ON DELETE CASCADE
     );
@@ -217,7 +218,8 @@ export function initializeSchema(db: DatabaseSync) {
     "ALTER TABLE bookings ADD COLUMN permit_fee REAL DEFAULT 0;",
     "ALTER TABLE bookings ADD COLUMN tax_amount REAL DEFAULT 0;",
     "ALTER TABLE bookings ADD COLUMN receipt_number TEXT;",
-    "ALTER TABLE bookings ADD COLUMN invoice_breakdown TEXT;"
+    "ALTER TABLE bookings ADD COLUMN invoice_breakdown TEXT;",
+    "ALTER TABLE bookings ADD COLUMN emergency_contact TEXT;"
   ];
   for (const colSql of bookingCols) {
     try {
@@ -1292,6 +1294,10 @@ export function getTrailBySlug(slug: string): Trail | null {
   };
 }
 
+export function getTrailById(id: string): Trail | null {
+  return getTrailBySlug(id);
+}
+
 export function createTrail(trail: Omit<Trail, 'rating' | 'reviewsCount'>): Trail {
   const db = getDatabase();
   const now = new Date().toISOString();
@@ -1769,6 +1775,7 @@ export function createBooking(data: {
   taxAmount?: number;
   receiptNumber?: string;
   invoiceBreakdown?: string;
+  emergencyContact?: string;
 }): Booking {
   const db = getDatabase();
   const id = `bkg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -1779,16 +1786,18 @@ export function createBooking(data: {
   const basePrice = data.basePrice ?? data.totalPrice;
   const permitFee = data.permitFee ?? 0;
   const taxAmount = data.taxAmount ?? 0;
-  const receiptNumber = data.receiptNumber || `REC-${Date.now().toString().slice(-6)}`;
+  const randomFive = Math.floor(10000 + Math.random() * 90000);
+  const receiptNumber = data.receiptNumber || `REC-2026-${randomFive}`;
   const invoiceBreakdown = data.invoiceBreakdown || null;
+  const emergencyContact = data.emergencyContact || null;
 
   db.prepare(`
     INSERT INTO bookings (
       id, trail_id, user_id, full_name, email, phone, start_date, travelers,
       special_requests, total_price, status, payment_option, deposit_amount,
       remaining_balance, base_price, permit_fee, tax_amount, receipt_number,
-      invoice_breakdown, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMED', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      invoice_breakdown, emergency_contact, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMED', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     data.trailId,
@@ -1808,6 +1817,7 @@ export function createBooking(data: {
     taxAmount,
     receiptNumber,
     invoiceBreakdown,
+    emergencyContact,
     now
   );
 
@@ -1830,6 +1840,7 @@ export function createBooking(data: {
     taxAmount,
     receiptNumber,
     invoiceBreakdown: invoiceBreakdown || undefined,
+    emergencyContact: data.emergencyContact,
     status: 'CONFIRMED',
     createdAt: now
   };
@@ -1857,6 +1868,7 @@ export function getBookings(): Booking[] {
     taxAmount: Number(r.tax_amount || 0),
     receiptNumber: (r.receipt_number as string) || undefined,
     invoiceBreakdown: (r.invoice_breakdown as string) || undefined,
+    emergencyContact: (r.emergency_contact as string) || undefined,
     status: r.status as 'CONFIRMED' | 'PENDING' | 'CANCELLED',
     createdAt: r.created_at as string
   }));
@@ -1883,11 +1895,81 @@ export function getBookingsByUserId(userId: string): (Booking & { trailName?: st
     travelers: Number(r.travelers),
     specialRequests: (r.special_requests as string) || undefined,
     totalPrice: Number(r.total_price),
+    paymentOption: (r.payment_option as 'FULL' | 'DEPOSIT') || 'FULL',
+    depositAmount: Number(r.deposit_amount || 0),
+    remainingBalance: Number(r.remaining_balance || 0),
+    basePrice: Number(r.base_price || 0),
+    permitFee: Number(r.permit_fee || 0),
+    taxAmount: Number(r.tax_amount || 0),
+    receiptNumber: (r.receipt_number as string) || undefined,
+    invoiceBreakdown: (r.invoice_breakdown as string) || undefined,
+    emergencyContact: (r.emergency_contact as string) || undefined,
     status: r.status as 'CONFIRMED' | 'PENDING' | 'CANCELLED',
     createdAt: r.created_at as string,
     trailName: (r.trail_name as string) || undefined,
     trailSlug: (r.trail_slug as string) || undefined
   }));
+}
+
+export function getBookingById(id: string): (Booking & {
+  trailName?: string;
+  trailSlug?: string;
+  region?: string;
+  startPoint?: string;
+  endPoint?: string;
+  durationDays?: number;
+  maxElevation?: number;
+  image?: string;
+}) | null {
+  const db = getDatabase();
+  const row = db.prepare(`
+    SELECT b.*,
+           t.name as trail_name,
+           t.slug as trail_slug,
+           t.region as trail_region,
+           t.start_point as trail_start_point,
+           t.end_point as trail_end_point,
+           t.duration_days as trail_duration_days,
+           t.max_elevation as trail_max_elevation,
+           t.image as trail_image
+    FROM bookings b
+    LEFT JOIN trails t ON b.trail_id = t.id
+    WHERE b.id = ? OR b.receipt_number = ?
+  `).get(id, id) as Record<string, unknown> | undefined;
+
+  if (!row) return null;
+
+  return {
+    id: row.id as string,
+    trailId: row.trail_id as string,
+    userId: (row.user_id as string) || undefined,
+    fullName: row.full_name as string,
+    email: row.email as string,
+    phone: row.phone as string,
+    startDate: row.start_date as string,
+    travelers: Number(row.travelers),
+    specialRequests: (row.special_requests as string) || undefined,
+    totalPrice: Number(row.total_price),
+    paymentOption: (row.payment_option as 'FULL' | 'DEPOSIT') || 'FULL',
+    depositAmount: Number(row.deposit_amount || 0),
+    remainingBalance: Number(row.remaining_balance || 0),
+    basePrice: Number(row.base_price || 0),
+    permitFee: Number(row.permit_fee || 0),
+    taxAmount: Number(row.tax_amount || 0),
+    receiptNumber: (row.receipt_number as string) || undefined,
+    invoiceBreakdown: (row.invoice_breakdown as string) || undefined,
+    emergencyContact: (row.emergency_contact as string) || undefined,
+    status: row.status as 'CONFIRMED' | 'PENDING' | 'CANCELLED',
+    createdAt: row.created_at as string,
+    trailName: (row.trail_name as string) || undefined,
+    trailSlug: (row.trail_slug as string) || undefined,
+    region: (row.trail_region as string) || undefined,
+    startPoint: (row.trail_start_point as string) || undefined,
+    endPoint: (row.trail_end_point as string) || undefined,
+    durationDays: row.trail_duration_days ? Number(row.trail_duration_days) : undefined,
+    maxElevation: row.trail_max_elevation ? Number(row.trail_max_elevation) : undefined,
+    image: (row.trail_image as string) || undefined
+  };
 }
 
 export function updateBookingStatus(id: string, status: string): boolean {

@@ -5,6 +5,13 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { scryptSync, randomBytes, timingSafeEqual, createHmac } from 'node:crypto';
 import { CesiumController } from '../src/lib/map/CesiumController.ts';
+import {
+  calculateBookingBreakdown,
+  createCheckoutSessionToken,
+  verifyCheckoutSessionToken,
+  generateReceiptNumber,
+  generateVoucherAuthenticityHash
+} from '../src/lib/pricing.ts';
 
 describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () => {
   let db;
@@ -23,6 +30,7 @@ describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () =>
       "ALTER TABLE bookings ADD COLUMN tax_amount REAL DEFAULT 0;",
       "ALTER TABLE bookings ADD COLUMN receipt_number TEXT;",
       "ALTER TABLE bookings ADD COLUMN invoice_breakdown TEXT;",
+      "ALTER TABLE bookings ADD COLUMN emergency_contact TEXT;",
       "ALTER TABLE reviews ADD COLUMN reviewer_name TEXT;",
       "ALTER TABLE reviews ADD COLUMN scenery_rating INTEGER;",
       "ALTER TABLE reviews ADD COLUMN condition_tags TEXT;"
@@ -3443,7 +3451,231 @@ describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () =>
       assert.ok(navbarSrc.includes('Offline Wilderness'), 'Navbar must include offline wilderness link');
     });
   });
+
+  describe('28. Work Package 6.4: Commercial Payment Gateway & Automated PDF Expedition Vouchers', () => {
+    test('Commercial pricing calculations and tiered group discount matrix', () => {
+      // 1 Solo trekker: 0% discount
+      const solo = calculateBookingBreakdown({ basePricePerPerson: 1000, travelers: 1, paymentOption: 'FULL' });
+      assert.equal(solo.travelers, 1);
+      assert.equal(solo.discountPercent, 0);
+      assert.equal(solo.discountAmount, 0);
+      assert.equal(solo.baseTotal, 1000);
+      assert.equal(solo.timsFee, 20);
+      assert.equal(solo.conservationFee, 30);
+      assert.equal(solo.permitFeesTotal, 50);
+      assert.equal(solo.vatAmount, 130); // 13% of 1000
+      assert.equal(solo.totalAmount, 1180); // 1000 + 50 + 130
+      assert.equal(solo.depositAmount, 1180);
+      assert.equal(solo.remainingBalance, 0);
+
+      // 2 Trekkers: 5% discount
+      const duo = calculateBookingBreakdown({ basePricePerPerson: 1000, travelers: 2, paymentOption: 'DEPOSIT' });
+      assert.equal(duo.travelers, 2);
+      assert.equal(duo.discountPercent, 5);
+      assert.equal(duo.baseTotal, 2000);
+      assert.equal(duo.discountAmount, 100); // 5% of 2000
+      assert.equal(duo.discountedBaseTotal, 1900);
+      assert.equal(duo.permitFeesTotal, 100); // $50 * 2
+      assert.equal(duo.vatAmount, 247); // 13% of 1900
+      assert.equal(duo.totalAmount, 2247); // 1900 + 100 + 247
+      assert.equal(duo.depositAmount, 561.75); // 25% of 2247
+      assert.equal(duo.remainingBalance, 1685.25); // 2247 - 561.75
+
+      // 4 Trekkers: 10% discount
+      const quad = calculateBookingBreakdown({ basePricePerPerson: 1000, travelers: 4, paymentOption: 'DEPOSIT' });
+      assert.equal(quad.discountPercent, 10);
+      assert.equal(quad.discountAmount, 400); // 10% of 4000
+      assert.equal(quad.discountedBaseTotal, 3600);
+      assert.equal(quad.permitFeesTotal, 200); // $50 * 4
+      assert.equal(quad.vatAmount, 468); // 13% of 3600
+      assert.equal(quad.totalAmount, 4268);
+
+      // 8 Trekkers: 15% discount
+      const group = calculateBookingBreakdown({ basePricePerPerson: 1000, travelers: 8, paymentOption: 'FULL' });
+      assert.equal(group.discountPercent, 15);
+      assert.equal(group.discountAmount, 1200); // 15% of 8000
+      assert.equal(group.discountedBaseTotal, 6800);
+      assert.equal(group.permitFeesTotal, 400); // $50 * 8
+      assert.equal(group.vatAmount, 884); // 13% of 6800
+      assert.equal(group.totalAmount, 8084);
+      assert.equal(group.remainingBalance, 0);
+    });
+
+    test('HMAC cryptographic checkout session tokens and formal receipt numbering', () => {
+      const breakdown = calculateBookingBreakdown({ basePricePerPerson: 850, travelers: 2, paymentOption: 'DEPOSIT' });
+      const sessionPayload = {
+        sessionId: 'cs_test_12345',
+        trailId: 'ebc-trek',
+        travelers: 2,
+        startDate: '2026-11-01',
+        paymentOption: 'DEPOSIT',
+        fullName: 'Sherpa Explorer',
+        email: 'explorer@himalaya.org',
+        phone: '+977-9801234567',
+        breakdown,
+        expiresAt: Date.now() + 60000
+      };
+
+      const token = createCheckoutSessionToken(sessionPayload);
+      assert.ok(typeof token === 'string' && token.includes('.'), 'Token must be dot-separated HMAC string');
+
+      // Valid token verification
+      const verified = verifyCheckoutSessionToken(token);
+      assert.ok(verified, 'Valid token must be verified');
+      assert.equal(verified.sessionId, 'cs_test_12345');
+      assert.equal(verified.email, 'explorer@himalaya.org');
+      assert.equal(verified.breakdown.totalAmount, breakdown.totalAmount);
+
+      // Tampered token rejection
+      const tamperedToken = token + 'tampered';
+      assert.equal(verifyCheckoutSessionToken(tamperedToken), null, 'Tampered token must fail verification');
+
+      // Expired token rejection
+      const expiredPayload = { ...sessionPayload, expiresAt: Date.now() - 3600000 };
+      const expiredToken = createCheckoutSessionToken(expiredPayload);
+      assert.equal(verifyCheckoutSessionToken(expiredToken), null, 'Expired token must fail verification');
+
+      // Formal receipt number formatting REC-2026-XXXXX
+      const receiptNum = generateReceiptNumber();
+      assert.match(receiptNum, /^REC-2026-\d{5}$/, 'Receipt number must follow REC-2026-XXXXX format');
+
+      // Authenticity hash generation
+      const authHash = generateVoucherAuthenticityHash('bkg_123', receiptNum, '2026-10-04T00:00:00.000Z');
+      assert.match(authHash, /^HT-AUTH-[A-F0-9]{16}$/, 'Authenticity hash must match HT-AUTH-[A-F0-9]{16} format');
+    });
+
+    test('ACID SQLite booking persistence, getBookingById trail join and financial breakdown', () => {
+      const dbSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'lib', 'db.ts'), 'utf8');
+      assert.ok(dbSrc.includes('getBookingById'), 'db.ts must export getBookingById');
+      assert.ok(dbSrc.includes('emergency_contact'), 'db.ts must persist emergency_contact');
+      assert.ok(dbSrc.includes('invoice_breakdown'), 'db.ts must persist invoice_breakdown');
+
+      const trail = db.prepare('SELECT id, name, region FROM trails LIMIT 1').get();
+      assert.ok(trail, 'Database must have at least one trail');
+
+      const receiptNum = generateReceiptNumber();
+      const breakdown = calculateBookingBreakdown({ basePricePerPerson: 850, travelers: 2, paymentOption: 'DEPOSIT' });
+      const bookingId = `bkg_test_${Date.now()}`;
+      const now = new Date().toISOString();
+
+      db.prepare(`
+        INSERT INTO bookings (
+          id, trail_id, user_id, full_name, email, phone, start_date, travelers,
+          special_requests, total_price, status, payment_option, deposit_amount,
+          remaining_balance, base_price, permit_fee, tax_amount, receipt_number,
+          invoice_breakdown, emergency_contact, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMED', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        bookingId,
+        trail.id,
+        'usr_trekker_1',
+        'Tenzing Norgay',
+        'tenzing@everest.org',
+        '+977-9812345678',
+        '2026-10-25',
+        2,
+        'High-altitude oxygen canister support',
+        breakdown.totalAmount,
+        'DEPOSIT',
+        breakdown.depositAmount,
+        breakdown.remainingBalance,
+        breakdown.baseTotal,
+        breakdown.permitFeesTotal,
+        breakdown.vatAmount,
+        receiptNum,
+        JSON.stringify(breakdown),
+        'Ang Dawa (+977-9809999999)',
+        now
+      );
+
+      // Verify row persisted
+      const row = db.prepare(`
+        SELECT b.*, t.name as trail_name, t.region as trail_region
+        FROM bookings b
+        LEFT JOIN trails t ON b.trail_id = t.id
+        WHERE b.id = ? OR b.receipt_number = ?
+      `).get(bookingId, bookingId);
+
+      assert.ok(row, 'Row must exist in SQLite bookings table');
+      assert.equal(row.id, bookingId);
+      assert.equal(row.receipt_number, receiptNum);
+      assert.equal(row.emergency_contact, 'Ang Dawa (+977-9809999999)');
+      assert.equal(row.payment_option, 'DEPOSIT');
+      assert.equal(row.deposit_amount, breakdown.depositAmount);
+      assert.equal(row.remaining_balance, breakdown.remainingBalance);
+      assert.equal(row.trail_name, trail.name);
+      assert.equal(row.trail_region, trail.region);
+    });
+
+    test('API Route Handlers contract verification for checkout, payment confirmation, and voucher', () => {
+      const sessionRouteSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'api', 'checkout', 'session', 'route.ts'), 'utf8');
+      const confirmRouteSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'api', 'payments', 'confirm', 'route.ts'), 'utf8');
+      const voucherRouteSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'api', 'bookings', '[id]', 'voucher', 'route.ts'), 'utf8');
+
+      // Checkout Session API
+      assert.ok(sessionRouteSrc.includes('POST'), 'Checkout session route must export POST');
+      assert.ok(sessionRouteSrc.includes('calculateBookingBreakdown'), 'Session route must use calculateBookingBreakdown');
+      assert.ok(sessionRouteSrc.includes('createCheckoutSessionToken'), 'Session route must generate cryptographic sessionToken');
+      assert.ok(sessionRouteSrc.includes('getTrailBySlug'), 'Session route must lookup trail in database');
+
+      // Payment Confirmation API
+      assert.ok(confirmRouteSrc.includes('POST'), 'Payment confirm route must export POST');
+      assert.ok(confirmRouteSrc.includes('verifyCheckoutSessionToken'), 'Confirm route must verify session token');
+      assert.ok(confirmRouteSrc.includes('validateCardNumber'), 'Confirm route must validate card number with Luhn check');
+      assert.ok(confirmRouteSrc.includes('generateReceiptNumber'), 'Confirm route must generate formal receipt number');
+      assert.ok(confirmRouteSrc.includes('createBooking'), 'Confirm route must persist booking in database');
+      assert.ok(confirmRouteSrc.includes('voucherUrl'), 'Confirm route must return voucherUrl');
+
+      // Voucher API
+      assert.ok(voucherRouteSrc.includes('GET'), 'Voucher route must export GET');
+      assert.ok(voucherRouteSrc.includes('getBookingById'), 'Voucher route must retrieve booking with getBookingById');
+      assert.ok(voucherRouteSrc.includes('generateVoucherAuthenticityHash'), 'Voucher route must generate authenticityHash');
+      assert.ok(voucherRouteSrc.includes('The Himalayan Trails — Official Expedition Voucher & Permit Clearance'), 'Voucher route must include official clearance header');
+      assert.ok(voucherRouteSrc.includes('+977-1-4123456'), 'Voucher route must include SAR hotline');
+      assert.ok(voucherRouteSrc.includes('Bhrikutimandap'), 'Voucher route must include Bhrikutimandap TIMS protocol');
+    });
+
+    test('UI Integration: Official Voucher Page, User Dashboard, and Trail Booking Card', () => {
+      const voucherPageSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'bookings', '[id]', 'voucher', 'page.tsx'), 'utf8');
+      const dashboardSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'dashboard', 'page.tsx'), 'utf8');
+      const trailPageSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'trails', '[id]', 'page.tsx'), 'utf8');
+      const adminPageSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'admin', 'page.tsx'), 'utf8');
+
+      // Voucher Page
+      assert.ok(voucherPageSrc.includes('Official Expedition Voucher & Permit Clearance'), 'Voucher page must render official clearance header');
+      assert.ok(voucherPageSrc.includes('window.print()'), 'Voucher page must wire 1-click print / PDF export');
+      assert.ok(voucherPageSrc.includes('@media print'), 'Voucher page must have print-optimized styling');
+      assert.ok(voucherPageSrc.includes('data-slot="base"'), 'Voucher page must use HeroUI compound slot architecture');
+      assert.ok(voucherPageSrc.includes('Authenticity Stamp'), 'Voucher page must feature authenticity stamp');
+      assert.ok(voucherPageSrc.includes('+977-1-4123456'), 'Voucher page must feature SAR emergency hotline');
+      assert.ok(voucherPageSrc.includes('Bhrikutimandap'), 'Voucher page must mention Bhrikutimandap TIMS clearance');
+      assert.ok(voucherPageSrc.includes('Outstanding balance'), 'Voucher page must state outstanding balance Kathmandu terms');
+
+      // User Dashboard
+      assert.ok(dashboardSrc.includes('Confirmed — Deposit Paid'), 'Dashboard must display deposit status badge');
+      assert.ok(dashboardSrc.includes('Confirmed — Full Payment'), 'Dashboard must display full payment status badge');
+      assert.ok(dashboardSrc.includes('Download / Print Official Voucher'), 'Dashboard must have direct action button for voucher');
+      assert.ok(dashboardSrc.includes('/bookings/'), 'Dashboard voucher button must link to /bookings/[id]/voucher');
+      assert.ok(dashboardSrc.includes('Kathmandu Basecamp briefing'), 'Dashboard must inform users of Kathmandu arrival balance settlement');
+
+      // Trail Detail Page Booking Card & Payment Gateway
+      assert.ok(trailPageSrc.includes('Commercial Payment Gateway'), 'Trail page must feature commercial payment gateway modal');
+      assert.ok(trailPageSrc.includes('calculateBookingBreakdown'), 'Trail page must calculate live itemized breakdown');
+      assert.ok(trailPageSrc.includes('25% Expedition Deposit'), 'Trail page must offer 25% deposit toggle');
+      assert.ok(trailPageSrc.includes('/api/checkout/session'), 'Trail page must call checkout session API');
+      assert.ok(trailPageSrc.includes('/api/payments/confirm'), 'Trail page must call payment confirm API');
+      assert.ok(trailPageSrc.includes('Expedition Booking Clearance Active'), 'Trail page must render instant receipt confirmation modal');
+      assert.ok(trailPageSrc.includes('View & Print Official Voucher'), 'Trail page must provide direct link to official voucher');
+
+      // Admin Page Payment Tracking
+      assert.ok(adminPageSrc.includes('Payment Option'), 'Admin page must have Payment Option column');
+      assert.ok(adminPageSrc.includes('Paid / Remaining'), 'Admin page must display paid vs remaining balance');
+      assert.ok(adminPageSrc.includes('Itemized Invoice Breakdown'), 'Admin page must provide invoice breakdown view');
+      assert.ok(adminPageSrc.includes('/bookings/'), 'Admin page must link to official voucher');
+    });
+  });
 });
+
 
 
 

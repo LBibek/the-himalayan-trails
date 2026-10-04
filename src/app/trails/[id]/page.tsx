@@ -10,7 +10,8 @@ import {
   Share2, Send, AlertCircle, Sparkles, PhoneCall, Loader2, Camera,
   Route, Thermometer, Eye, Flag, X, ChevronLeft, ChevronRight,
   MessageSquare, ThumbsUp, Footprints, TreePine, Plane,
-  WifiOff, Download, Trash2, HardDrive, Radio
+  WifiOff, Download, Trash2, HardDrive, Radio,
+  CreditCard, Lock, Receipt
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -18,6 +19,7 @@ import {
 } from 'recharts';
 import { Trail, Itinerary, Landmark } from '@/types';
 import { submitTrekInquiry } from '@/app/actions/inquiry';
+import { calculateBookingBreakdown } from '@/lib/pricing';
 import ElevationProfileChart from '@/components/map/ElevationProfileChart';
 import {
   saveTrailOffline,
@@ -136,6 +138,33 @@ export default function TrailDetailPage() {
     preferredStartDate: '', fitnessLevel: 'Intermediate (Regular Gym / Hiker)', notes: '',
   });
   const [formStatus, setFormStatus] = useState<{ success?: boolean; message?: string; errors?: Record<string, string> } | null>(null);
+
+  // ── Work Package 6.4: Payment Gateway & Voucher State ──
+  const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
+  const [bookingFormData, setBookingFormData] = useState({
+    fullName: '',
+    email: '',
+    phone: '',
+    startDate: '',
+    travelers: 2,
+    emergencyContact: '',
+    specialRequests: ''
+  });
+  const [paymentCardData, setPaymentCardData] = useState({
+    cardHolder: '',
+    cardNumber: '',
+    expiryDate: '',
+    cvc: ''
+  });
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [confirmedBookingData, setConfirmedBookingData] = useState<{
+    receiptNumber: string;
+    bookingId: string;
+    paidAmount: number;
+    remainingBalance: number;
+    voucherUrl: string;
+  } | null>(null);
 
   // 3D Alpine Theater Mode
   const [isTheaterModeOpen, setIsTheaterModeOpen] = useState(false);
@@ -379,13 +408,20 @@ export default function TrailDetailPage() {
     return { ...pt, grade: Math.round(grade * 10) / 10, fill: grade > 11 ? '#f43f5e' : grade > 6 ? '#f59e0b' : '#10b981' };
   }) || [];
 
-  // Pricing calc
-  const basePrice = estimatedCost;
-  const groupDiscount = formData.groupSize >= 4 ? Math.round(basePrice * 0.1) : formData.groupSize >= 2 ? Math.round(basePrice * 0.05) : 0;
-  const subtotal = basePrice - groupDiscount;
-  const vat = Math.round(subtotal * 0.13);
-  const totalPrice = subtotal + vat;
-  const depositAmount = Math.round(totalPrice * 0.25);
+  // Pricing calc with real tiered discounts (0% for 1, 5% for 2-3, 10% for 4-7, 15% for 8+)
+  const activeTravelers = bookingTab === 'booking' ? (bookingFormData.travelers || 2) : (formData.groupSize || 2);
+  const liveBreakdown = calculateBookingBreakdown({
+    basePricePerPerson: estimatedCost,
+    travelers: activeTravelers,
+    paymentOption: depositMode ? 'DEPOSIT' : 'FULL'
+  });
+  const basePrice = liveBreakdown.baseTotal;
+  const groupDiscount = liveBreakdown.discountAmount;
+  const vat = liveBreakdown.vatAmount;
+  const totalPrice = liveBreakdown.totalAmount;
+  const depositAmount = liveBreakdown.depositAmount;
+  const remainingBalance = liveBreakdown.remainingBalance;
+  const dueToday = liveBreakdown.paidAmount;
 
   // Condition tag colors
   const CONDITION_TAGS = [
@@ -1005,31 +1041,76 @@ export default function TrailDetailPage() {
               </div>
 
               <div className="p-6 space-y-5">
-                {/* Pricing */}
+                {/* Pricing Header */}
                 <div className="space-y-1">
-                  <span className="text-xs uppercase tracking-wider text-[#B68D40] font-semibold">All-Inclusive Package</span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs uppercase tracking-wider text-[#B68D40] font-semibold">All-Inclusive Package</span>
+                    {liveBreakdown.discountPercent > 0 && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        {liveBreakdown.discountPercent}% Group Discount
+                      </span>
+                    )}
+                  </div>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-extrabold text-white">${totalPrice.toLocaleString()}</span>
-                    <span className="text-xs text-slate-400">/ person</span>
+                    <span className="text-3xl font-extrabold text-white">${dueToday.toLocaleString()}</span>
+                    <span className="text-xs text-slate-400">
+                      {depositMode ? 'due today (25% deposit)' : 'total expedition package'}
+                    </span>
                   </div>
                 </div>
 
-                {/* Pricing Breakdown */}
-                <div className="p-3 rounded-xl bg-slate-800/50 border border-slate-700/40 space-y-1.5 text-[11px]">
-                  <div className="flex justify-between text-slate-300"><span>Base price</span><span className="font-bold text-white">${basePrice.toLocaleString()}</span></div>
-                  {groupDiscount > 0 && <div className="flex justify-between text-emerald-400"><span>Group discount ({formData.groupSize}+ pax)</span><span>-${groupDiscount}</span></div>}
-                  <div className="flex justify-between text-slate-300"><span>Nepal VAT (13%)</span><span>+${vat}</span></div>
-                  <div className="flex justify-between text-white font-bold border-t border-slate-700 pt-1.5 mt-1"><span>Total</span><span>${totalPrice.toLocaleString()}</span></div>
-                  {depositMode && <div className="flex justify-between text-[#B68D40] font-bold"><span>25% Deposit Now</span><span>${depositAmount.toLocaleString()}</span></div>}
+                {/* Live Itemized Breakdown */}
+                <div data-slot="body" className="p-3.5 rounded-2xl bg-slate-800/60 border border-slate-700/50 space-y-2 text-[11px]">
+                  <div className="flex justify-between text-slate-300">
+                    <span>Base package (${liveBreakdown.basePricePerPerson} × {activeTravelers} pax)</span>
+                    <span className="font-bold text-white">${liveBreakdown.baseTotal.toLocaleString()}</span>
+                  </div>
+                  {liveBreakdown.discountAmount > 0 && (
+                    <div className="flex justify-between text-emerald-400 font-semibold">
+                      <span>Tiered group discount ({liveBreakdown.discountPercent}%)</span>
+                      <span>-${liveBreakdown.discountAmount.toLocaleString()}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-slate-300">
+                    <span>Regional permits (TIMS $20 + Conservation $30 × {activeTravelers})</span>
+                    <span className="font-bold text-white">${liveBreakdown.permitFeesTotal.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-300">
+                    <span>Nepal VAT (13%)</span>
+                    <span className="font-bold text-white">+${liveBreakdown.vatAmount.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-white font-black border-t border-slate-700 pt-2 mt-1">
+                    <span>Total Expedition Package</span>
+                    <span className="text-sm">${liveBreakdown.totalAmount.toLocaleString()}</span>
+                  </div>
+                  {depositMode && (
+                    <div className="flex justify-between text-[#B68D40] font-bold border-t border-dashed border-[#B68D40]/30 pt-1.5 mt-1">
+                      <span>Deposit Due Today (25%)</span>
+                      <span>${liveBreakdown.depositAmount.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {depositMode && (
+                    <p className="text-[10px] text-amber-300/90 pt-1 italic">
+                      Outstanding balance of ${liveBreakdown.remainingBalance.toLocaleString()} payable at Kathmandu Basecamp briefing.
+                    </p>
+                  )}
                 </div>
 
-                {/* Deposit Toggle */}
+                {/* Deposit Mode Toggle */}
                 {bookingTab === 'booking' && (
-                  <div className="flex items-center gap-3 p-2.5 rounded-xl bg-slate-800/40 border border-slate-700/40">
-                    <button onClick={() => setDepositMode(!depositMode)} className={`w-10 h-5 rounded-full transition ${depositMode ? 'bg-[#B68D40]' : 'bg-slate-600'} relative`}>
-                      <span className={`block w-4 h-4 rounded-full bg-white shadow absolute top-0.5 transition-transform ${depositMode ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                  <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-800/50 border border-slate-700/50">
+                    <div>
+                      <p className="text-xs font-bold text-white">25% Expedition Deposit</p>
+                      <p className="text-[10px] text-slate-400">Lock reservations now, settle remainder in Kathmandu</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDepositMode(!depositMode)}
+                      data-slot="trigger"
+                      className={`w-11 h-6 rounded-full transition-colors p-0.5 relative ${depositMode ? 'bg-[#B68D40]' : 'bg-slate-700'} focus-visible:ring-2 focus-visible:ring-[#B68D40]`}
+                    >
+                      <span className={`block w-5 h-5 rounded-full bg-white shadow-md transition-transform ${depositMode ? 'translate-x-5' : 'translate-x-0'}`} />
                     </button>
-                    <span className="text-xs text-slate-300">Pay 25% deposit only</span>
                   </div>
                 )}
 
@@ -1062,25 +1143,129 @@ export default function TrailDetailPage() {
                       className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#B68D40]" />
                     <button type="submit" disabled={isPending}
                       className="w-full py-3 rounded-xl bg-gradient-to-r from-[#B68D40] to-amber-600 hover:from-[#c99e4b] hover:to-amber-500 text-black font-bold text-xs shadow-lg flex items-center justify-center gap-2 transition disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-[#B68D40]">
-                      {isPending ? 'Submitting...' : <><Send className="h-3.5 w-3.5" /> Inquire & Reserve Dates</>}
+                      {isPending ? 'Submitting...' : <><Send className="h-3.5 w-3.5" /> Inquire &amp; Reserve Dates</>}
                     </button>
                   </form>
                 )}
 
-                {/* Booking Tab */}
+                {/* Booking & Commercial Checkout Tab */}
                 {bookingTab === 'booking' && (
-                  <div className="space-y-3">
-                    <p className="text-xs text-slate-300">Select your dates and secure your expedition spot with a {depositMode ? '25% deposit' : 'full payment'}.</p>
-                    <input type="date" value={formData.preferredStartDate} onChange={e => setFormData({ ...formData, preferredStartDate: e.target.value })}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-[#B68D40]" />
-                    <select value={formData.groupSize} onChange={e => setFormData({ ...formData, groupSize: Number(e.target.value) })}
-                      className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-[#B68D40]">
-                      <option value={1}>1 Solo Trekker</option><option value={2}>2 People</option><option value={3}>3 People</option><option value={4}>4-6 People</option><option value={7}>7+ Group</option>
-                    </select>
-                    <button className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg flex items-center justify-center gap-2 transition focus-visible:ring-2 focus-visible:ring-[#B68D40]">
-                      {depositMode ? `Pay Deposit $${depositAmount.toLocaleString()}` : `Book Now $${totalPrice.toLocaleString()}`}
+                  <form onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!bookingFormData.fullName || !bookingFormData.email || !bookingFormData.phone || !bookingFormData.startDate) {
+                      setCheckoutError('Please provide your full name, email, phone, and expedition start date.');
+                      return;
+                    }
+                    setCheckoutError(null);
+                    setIsCheckoutModalOpen(true);
+                  }} className="space-y-3">
+                    {checkoutError && (
+                      <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                        <span>{checkoutError}</span>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block mb-1">
+                        Departure Date
+                      </label>
+                      <input
+                        type="date"
+                        required
+                        value={bookingFormData.startDate}
+                        onChange={(e) => setBookingFormData({ ...bookingFormData, startDate: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-[#B68D40]"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block mb-1">
+                          Trekker Party Size
+                        </label>
+                        <select
+                          value={bookingFormData.travelers}
+                          onChange={(e) => setBookingFormData({ ...bookingFormData, travelers: Number(e.target.value) })}
+                          className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-[#B68D40]"
+                        >
+                          <option value={1}>1 Solo Trekker (0% off)</option>
+                          <option value={2}>2 Trekkers (5% off)</option>
+                          <option value={3}>3 Trekkers (5% off)</option>
+                          <option value={4}>4 Trekkers (10% off)</option>
+                          <option value={6}>6 Trekkers (10% off)</option>
+                          <option value={8}>8 Trekkers (15% off)</option>
+                          <option value={12}>12+ Expedition (15% off)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block mb-1">
+                          Full Name
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Lead Adventurer"
+                          value={bookingFormData.fullName}
+                          onChange={(e) => setBookingFormData({ ...bookingFormData, fullName: e.target.value })}
+                          className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#B68D40]"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block mb-1">
+                          Email Address
+                        </label>
+                        <input
+                          type="email"
+                          required
+                          placeholder="trekker@alpine.org"
+                          value={bookingFormData.email}
+                          onChange={(e) => setBookingFormData({ ...bookingFormData, email: e.target.value })}
+                          className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#B68D40]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block mb-1">
+                          Phone / WhatsApp
+                        </label>
+                        <input
+                          type="tel"
+                          required
+                          placeholder="+1 555-0192"
+                          value={bookingFormData.phone}
+                          onChange={(e) => setBookingFormData({ ...bookingFormData, phone: e.target.value })}
+                          className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#B68D40]"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block mb-1">
+                        Emergency Contact (Name &amp; Phone)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Next of Kin / +1 555-0199"
+                        value={bookingFormData.emergencyContact}
+                        onChange={(e) => setBookingFormData({ ...bookingFormData, emergencyContact: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#B68D40]"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      data-slot="trigger"
+                      className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#B68D40] to-[#E2C085] hover:opacity-95 text-black font-extrabold text-xs shadow-xl shadow-[#B68D40]/20 flex items-center justify-center gap-2 transition focus-visible:ring-2 focus-visible:ring-[#B68D40]"
+                    >
+                      <CreditCard className="w-4 h-4 text-black" />
+                      <span>Proceed to Payment (${dueToday.toLocaleString()})</span>
                     </button>
-                  </div>
+                  </form>
                 )}
 
                 {/* Safety Badges */}
@@ -1173,6 +1358,295 @@ export default function TrailDetailPage() {
                   setTheaterDistanceKm(pt.distanceKm);
                 }}
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ──────── 10. COMMERCIAL PAYMENT GATEWAY MODAL ──────── */}
+      {isCheckoutModalOpen && trail && (
+        <div
+          data-slot="checkout-modal"
+          className="fixed inset-0 z-[9999] bg-black/85 backdrop-blur-xl flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200"
+        >
+          <div
+            data-slot="base"
+            className="max-w-lg w-full rounded-3xl bg-neutral-900 border border-[#B68D40]/40 shadow-2xl p-6 sm:p-8 space-y-6 text-white my-8"
+          >
+            {/* Modal Header */}
+            <div data-slot="header" className="flex items-start justify-between gap-4 border-b border-neutral-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-[#B68D40]/20 border border-[#B68D40]/40 flex items-center justify-center text-[#B68D40] shrink-0">
+                  <CreditCard className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                    Commercial Payment Gateway
+                  </h3>
+                  <p className="text-[11px] text-gray-400">
+                    Nepal Tourism Board Clearance • 256-bit TLS Encrypted
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCheckoutModalOpen(false);
+                  setCheckoutError(null);
+                }}
+                className="p-1.5 rounded-xl hover:bg-neutral-800 text-gray-400 hover:text-white transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Expedition Order Summary */}
+            <div data-slot="body" className="p-4 rounded-2xl bg-neutral-950/80 border border-neutral-800 space-y-2 text-xs">
+              <div className="flex justify-between font-bold text-white">
+                <span>{trail.name}</span>
+                <span className="text-[#B68D40]">${dueToday.toLocaleString()} Due Now</span>
+              </div>
+              <div className="flex justify-between text-gray-400 text-[11px]">
+                <span>Departure: {bookingFormData.startDate}</span>
+                <span>{activeTravelers} {activeTravelers === 1 ? 'Trekker' : 'Trekkers'} ({depositMode ? '25% Deposit' : 'Full Payment'})</span>
+              </div>
+              {depositMode && remainingBalance > 0 && (
+                <div className="pt-2 border-t border-neutral-800 text-[11px] text-amber-300">
+                  Remaining balance of <strong>${remainingBalance.toLocaleString()}</strong> payable upon arrival in Kathmandu.
+                </div>
+              )}
+            </div>
+
+            {/* Error Message */}
+            {checkoutError && (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>{checkoutError}</span>
+              </div>
+            )}
+
+            {/* Payment Card Form */}
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              setIsProcessingPayment(true);
+              setCheckoutError(null);
+
+              try {
+                // 1. Create checkout session
+                const sessionRes = await fetch('/api/checkout/session', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    trailId: trail.id,
+                    fullName: bookingFormData.fullName.trim(),
+                    email: bookingFormData.email.trim(),
+                    phone: bookingFormData.phone.trim(),
+                    startDate: bookingFormData.startDate,
+                    travelers: bookingFormData.travelers,
+                    paymentOption: depositMode ? 'DEPOSIT' : 'FULL',
+                    emergencyContact: bookingFormData.emergencyContact?.trim(),
+                    specialRequests: bookingFormData.specialRequests?.trim(),
+                    basePricePerPerson: estimatedCost
+                  })
+                });
+
+                const sessionJson = await sessionRes.json();
+                if (!sessionRes.ok || !sessionJson.success) {
+                  throw new Error(sessionJson.error || 'Failed to initialize checkout session');
+                }
+
+                // 2. Confirm payment via gateway
+                const confirmRes = await fetch('/api/payments/confirm', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    sessionToken: sessionJson.sessionToken,
+                    paymentDetails: {
+                      cardHolder: paymentCardData.cardHolder.trim(),
+                      cardNumber: paymentCardData.cardNumber.trim(),
+                      expiryDate: paymentCardData.expiryDate.trim(),
+                      cvc: paymentCardData.cvc.trim()
+                    }
+                  })
+                });
+
+                const confirmJson = await confirmRes.json();
+                if (!confirmRes.ok || !confirmJson.success) {
+                  throw new Error(confirmJson.error || 'Payment confirmation failed');
+                }
+
+                // 3. Show instant confirmation receipt modal
+                setConfirmedBookingData({
+                  receiptNumber: confirmJson.receiptNumber,
+                  bookingId: confirmJson.booking.id,
+                  paidAmount: confirmJson.booking.depositAmount,
+                  remainingBalance: confirmJson.booking.remainingBalance,
+                  voucherUrl: confirmJson.voucherUrl || `/bookings/${confirmJson.booking.id}/voucher`
+                });
+                setIsCheckoutModalOpen(false);
+              } catch (err: any) {
+                console.error('Payment checkout error:', err);
+                setCheckoutError(err.message || 'Payment processing failed');
+              } finally {
+                setIsProcessingPayment(false);
+              }
+            }} className="space-y-4">
+              <div>
+                <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block mb-1">
+                  Cardholder Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="NAME AS PRINTED ON CARD"
+                  value={paymentCardData.cardHolder}
+                  onChange={(e) => setPaymentCardData({ ...paymentCardData, cardHolder: e.target.value.toUpperCase() })}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-white placeholder-neutral-600 focus:outline-none focus:border-[#B68D40]"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block mb-1">
+                  Card Number
+                </label>
+                <input
+                  type="text"
+                  required
+                  maxLength={19}
+                  placeholder="4532 •••• •••• 8892"
+                  value={paymentCardData.cardNumber}
+                  onChange={(e) => setPaymentCardData({ ...paymentCardData, cardNumber: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-xs font-mono text-white placeholder-neutral-600 focus:outline-none focus:border-[#B68D40]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block mb-1">
+                    Expiration Date
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={5}
+                    placeholder="MM/YY"
+                    value={paymentCardData.expiryDate}
+                    onChange={(e) => setPaymentCardData({ ...paymentCardData, expiryDate: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-xs font-mono text-white placeholder-neutral-600 focus:outline-none focus:border-[#B68D40]"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block mb-1">
+                    CVC / CVV
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    maxLength={4}
+                    placeholder="•••"
+                    value={paymentCardData.cvc}
+                    onChange={(e) => setPaymentCardData({ ...paymentCardData, cvc: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-xs font-mono text-white placeholder-neutral-600 focus:outline-none focus:border-[#B68D40]"
+                  />
+                </div>
+              </div>
+
+              <div data-slot="footer" className="pt-2 border-t border-neutral-800 space-y-3">
+                <button
+                  type="submit"
+                  disabled={isProcessingPayment}
+                  data-slot="trigger"
+                  className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#B68D40] to-[#E2C085] hover:opacity-95 text-black font-extrabold text-xs uppercase tracking-wider shadow-xl shadow-[#B68D40]/20 flex items-center justify-center gap-2 transition disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-[#B68D40]"
+                >
+                  {isProcessingPayment ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-black" />
+                      <span>Authorizing Payment &amp; Permits...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="w-4 h-4 text-black" />
+                      <span>Authorize &amp; Pay ${dueToday.toLocaleString()}</span>
+                    </>
+                  )}
+                </button>
+
+                <p className="text-[10px] text-center text-gray-500 flex items-center justify-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Verified Nepal Tourism Board Operator • 100% Guaranteed Permit Issuance</span>
+                </p>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ──────── 11. INSTANT RECEIPT CONFIRMATION MODAL ──────── */}
+      {confirmedBookingData && (
+        <div
+          data-slot="receipt-modal"
+          className="fixed inset-0 z-[9999] bg-black/90 backdrop-blur-2xl flex items-center justify-center p-4 animate-in fade-in duration-300"
+        >
+          <div
+            data-slot="base"
+            className="max-w-md w-full rounded-3xl bg-neutral-900 border border-[#B68D40]/60 shadow-2xl p-6 sm:p-8 space-y-6 text-white text-center"
+          >
+            <div className="w-16 h-16 mx-auto rounded-3xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-xl">
+              <CheckCircle2 className="w-9 h-9" />
+            </div>
+
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-400 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                Payment Authorized &amp; Confirmed
+              </span>
+              <h2 className="text-xl font-black text-white mt-3">
+                Expedition Booking Clearance Active
+              </h2>
+              <p className="text-xs text-gray-400 mt-1">
+                Your permit dossier and reservation have been permanently recorded.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-neutral-950/80 border border-neutral-800 text-xs space-y-2 text-left">
+              <div className="flex justify-between items-center">
+                <span className="text-gray-400">Formal Receipt:</span>
+                <span className="font-mono font-bold text-[#B68D40]">{confirmedBookingData.receiptNumber}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-400">Booking Ref:</span>
+                <span className="font-mono text-gray-300">{confirmedBookingData.bookingId}</span>
+              </div>
+              <div className="flex justify-between items-center pt-2 border-t border-neutral-900">
+                <span className="text-gray-400">Paid Today:</span>
+                <span className="font-bold text-emerald-400">${confirmedBookingData.paidAmount.toLocaleString()}</span>
+              </div>
+              {confirmedBookingData.remainingBalance > 0 && (
+                <div className="flex justify-between items-center text-amber-300">
+                  <span>Balance at Kathmandu:</span>
+                  <span className="font-bold">${confirmedBookingData.remainingBalance.toLocaleString()}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2.5 pt-2">
+              <Link
+                href={confirmedBookingData.voucherUrl}
+                data-slot="trigger"
+                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#B68D40] to-[#E2C085] hover:opacity-95 text-black font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-[#B68D40]/20 transition focus-visible:ring-2 focus-visible:ring-[#B68D40]"
+              >
+                <Receipt className="w-4 h-4" />
+                <span>View & Print Official Voucher</span>
+              </Link>
+
+              <Link
+                href="/dashboard"
+                className="w-full py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs text-gray-300 font-semibold flex items-center justify-center gap-1.5 transition"
+              >
+                <span>Go to Trekker Dashboard</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </Link>
             </div>
           </div>
         </div>
