@@ -11,7 +11,7 @@ import {
   Route, Thermometer, Eye, Flag, X, ChevronLeft, ChevronRight,
   MessageSquare, ThumbsUp, Footprints, TreePine, Plane,
   WifiOff, Download, Trash2, HardDrive, Radio,
-  CreditCard, Lock, Receipt
+  CreditCard, Lock, Receipt, HeartPulse, Scale
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -20,6 +20,7 @@ import {
 import { Trail, Itinerary, Landmark, Guide } from '@/types';
 import { submitTrekInquiry } from '@/app/actions/inquiry';
 import { calculateBookingBreakdown } from '@/lib/pricing';
+import { calculateEstimatedSpO2 } from '@/lib/acclimatization';
 import ElevationProfileChart from '@/components/map/ElevationProfileChart';
 import {
   saveTrailOffline,
@@ -1033,6 +1034,72 @@ export default function TrailDetailPage() {
                 </p>
                 <p className="flex items-center gap-1.5">
                   <span className="text-[#B68D40]">✓</span> Helicopter SAR hotline (+977-1-4123456)
+                </p>
+              </div>
+            </div>
+
+            {/* ──── ACCLIMATIZATION & GEAR QUICK ASSESSMENT CARD ──── */}
+            <div data-slot="base" className="rounded-3xl backdrop-blur-xl bg-slate-900/80 border border-[#B68D40]/30 shadow-2xl p-5 space-y-4">
+              <div data-slot="header" className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
+                    <HeartPulse className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-extrabold text-white flex items-center gap-1.5">
+                      Acclimatization &amp; Gear
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      WMS Altitude Velocity &amp; Dynamic Packing
+                    </p>
+                  </div>
+                </div>
+                <span data-slot="indicator" className="text-[10px] px-2 py-0.5 rounded-full bg-[#B68D40]/20 text-[#E2C085] border border-[#B68D40]/40 font-semibold shrink-0">
+                  WMS Clinical
+                </span>
+              </div>
+
+              <div data-slot="body" className="space-y-3">
+                <div className="p-3 rounded-2xl bg-black/40 border border-white/5 space-y-1.5 text-xs">
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400">Apex Altitude:</span>
+                    <strong className="text-white font-mono">{trail.maxElevation.toLocaleString()} m</strong>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400">Est. Summit SpO₂:</span>
+                    <strong className="text-cyan-400 font-mono">~{calculateEstimatedSpO2(trail.maxElevation)}%</strong>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400">Elevation Tier:</span>
+                    <strong className="text-[#E2C085]">
+                      {trail.maxElevation > 5500
+                        ? 'Extreme Summit'
+                        : trail.maxElevation >= 4000
+                        ? 'High-Pass'
+                        : 'Sub-Alpine'}
+                    </strong>
+                  </div>
+                </div>
+
+                <Link
+                  href={`/acclimatization?trail=${trail.slug}`}
+                  data-slot="trigger"
+                  className="w-full py-3 rounded-2xl bg-gradient-to-r from-[#B68D40] to-[#E2C085] hover:opacity-95 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-[#B68D40]/20 transition focus-visible:ring-2 focus-visible:ring-[#B68D40]"
+                >
+                  <HeartPulse className="w-4 h-4 text-black" />
+                  <span>Open Acclimatization &amp; Gear Auditor →</span>
+                </Link>
+              </div>
+
+              <div data-slot="footer" className="pt-2 border-t border-slate-800/80 text-[10px] text-slate-400 space-y-1">
+                <p className="flex items-center gap-1.5">
+                  <span className="text-[#B68D40]">✓</span> Day-by-day hypobaric hypoxia (SpO₂) forecast
+                </p>
+                <p className="flex items-center gap-1.5">
+                  <span className="text-[#B68D40]">✓</span> Dynamic pack weight &amp; IPPG porter auditor
+                </p>
+                <p className="flex items-center gap-1.5">
+                  <span className="text-[#B68D40]">✓</span> Lake Louise AMS diagnostic predictor
                 </p>
               </div>
             </div>

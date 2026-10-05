@@ -353,3 +353,5 @@ export interface PorterCalculationResult {
   guidelinesSummary: string;
 }
 
+export * from './acclimatization';
+export * from './gear';

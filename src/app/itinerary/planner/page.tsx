@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useId, useRef, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, useId, useRef, Suspense } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -39,6 +39,7 @@ import {
   Check,
   X,
   Copy,
+  HeartPulse,
 } from 'lucide-react';
 import {
   DndContext,
@@ -62,6 +63,7 @@ import { ActivityType, PlannerWaypoint, ACTIVITY_CONFIG } from '@/types/planner'
 import { Trail, Landmark } from '@/types';
 import PlannerElevationChart from '@/components/planner/PlannerElevationChart';
 import { parseRouteFile, ParsedRouteResult } from '@/lib/gpxParser';
+import { auditItineraryPacing } from '@/lib/acclimatization';
 
 // Dynamically import Leaflet Planner Map without SSR
 const ItineraryPlannerMap = dynamic(() => import('@/components/planner/ItineraryPlannerMap'), {
@@ -973,6 +975,17 @@ function ItineraryPlannerContent() {
     (w) => w.sleepingAltitude > 3000 && w.altitudeGain > 600 && w.activityType !== 'acclimatization'
   );
 
+  // Live Wilderness Medical Society (WMS) Acclimatization Pacing Report
+  const wmsReport = useMemo(() => {
+    const stages = waypoints.map((w) => ({
+      day: w.day,
+      title: w.title,
+      elevation: w.sleepingAltitude,
+      distanceKm: w.distanceKm,
+    }));
+    return auditItineraryPacing(stages);
+  }, [waypoints]);
+
   // Handle Drag & Drop reorder
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -1503,6 +1516,16 @@ function ItineraryPlannerContent() {
             </button>
           </div>
 
+          {/* Acclimatization & Gear Auditor CTA */}
+          <Link
+            href={`/acclimatization?trail=${selectedTrailSlug || 'everest-base-camp'}`}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-black/80 border border-[#B68D40]/50 text-xs font-bold text-[#E2C085] hover:bg-[#B68D40]/20 transition backdrop-blur-md shadow-xl cursor-pointer"
+            title="Open WMS Altitude Acclimatization & Dynamic Gear Auditor"
+          >
+            <HeartPulse className="h-4 w-4 text-[#B68D40]" />
+            <span>Acclimatization Audit</span>
+          </Link>
+
           {/* Export GPX Button */}
           <button
             onClick={handleExportGPX}
@@ -1940,6 +1963,32 @@ function ItineraryPlannerContent() {
             <span className="text-gray-400 block text-[10px] uppercase">Itinerary Days</span>
             <strong className="text-base text-cyan-400">{waypoints.length} Days</strong>
           </div>
+
+          {/* Live WMS Acclimatization Safety Badge */}
+          <Link
+            href={`/acclimatization?trail=${selectedTrailSlug || 'everest-base-camp'}`}
+            data-slot="trigger"
+            className={`px-3.5 py-2 rounded-xl border backdrop-blur-md flex items-center gap-2.5 transition hover:scale-[1.02] cursor-pointer ${
+              wmsReport.overallSafety === 'SAFE'
+                ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
+                : wmsReport.overallSafety === 'CAUTION'
+                ? 'bg-amber-950/40 border-amber-500/40 text-amber-300'
+                : 'bg-rose-950/40 border-rose-500/50 text-rose-300'
+            }`}
+            title="Click to inspect full WMS physiological pacing and gear audit"
+          >
+            <HeartPulse className="w-5 h-5 shrink-0" />
+            <div>
+              <span className="block text-[10px] uppercase font-bold tracking-wider opacity-80">
+                WMS Safety Badge
+              </span>
+              <strong className="text-sm font-extrabold font-mono flex items-center gap-1.5">
+                <span>{wmsReport.wmsComplianceScore}%</span>
+                <span>•</span>
+                <span>{wmsReport.overallSafety}</span>
+              </strong>
+            </div>
+          </Link>
         </div>
       </div>
 

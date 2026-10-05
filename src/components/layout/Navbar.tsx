@@ -25,6 +25,7 @@ import {
   Menu,
   ArrowRight,
   WifiOff,
+  HeartPulse,
 } from 'lucide-react';
 
 /* ─────────────────────────────────────────────────────────────── */
@@ -77,6 +78,12 @@ const toolsGroup = {
       description: 'Day-by-day pacing, DnD stages & GPX export',
     },
     {
+      label: 'Acclimatization & Gear',
+      href: '/acclimatization',
+      icon: HeartPulse,
+      description: 'WMS altitude pacing, SpO2 forecast & gear audit',
+    },
+    {
       label: 'Offline Wilderness Hub',
       href: '/offline',
       icon: WifiOff,
@@ -109,6 +116,7 @@ const mobileNavLinks = [
   { label: '3D Globe Map',     href: '/map?engine=3d',      icon: Globe,          description: 'Himalayan massifs & summit drone tours' },
   { label: 'Sherpa Guides & Porters', href: '/guides',      icon: Users,          description: 'Certified IFMGA guides & ethical porter logistics' },
   { label: 'Itinerary Studio', href: '/itinerary/planner',  icon: Calendar,       description: 'Interactive pacing, DnD days & waypoints' },
+  { label: 'Acclimatization & Gear', href: '/acclimatization', icon: HeartPulse,   description: 'WMS altitude pacing, SpO2 forecast & pack weight audit' },
   { label: 'Offline Wilderness', href: '/offline',          icon: WifiOff,        description: 'Cached GPS route packs & emergency SOS guides' },
   { label: 'Weather Office',   href: '/weather',            icon: CloudSun,       description: 'Avalanche risk, summit temps & lapse rates' },
   { label: 'Trekker Stories',  href: '/stories',            icon: BookOpen,       description: 'Verified photo journals & dispatches' },
@@ -117,6 +125,7 @@ const mobileNavLinks = [
 ];
 
 const secondaryLinks = [
+  { label: 'Acclimatization Advisor', href: '/acclimatization' },
   { label: 'Sherpa Guides & Porters', href: '/guides' },
   { label: 'Landmark Guide',    href: '/landmarks' },
   { label: 'About Us',          href: '/about' },

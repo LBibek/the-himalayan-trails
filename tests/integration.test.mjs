@@ -21,6 +21,21 @@ import {
   getBookingById,
   initializeSchema
 } from '../src/lib/db.ts';
+import {
+  calculateEstimatedSpO2,
+  predictAmsRiskScore,
+  auditItineraryPacing,
+  isStageRestDay,
+  calculateClimbHighSleepLowDelta,
+  extractPeakElevationFromTitle,
+} from '../src/lib/acclimatization.ts';
+import {
+  getAllGearItems,
+  getGearCatalog,
+  calculateTotalPackWeight,
+  HIMALAYAN_GEAR_REGISTRY,
+} from '../src/lib/gearCatalog.ts';
+import { CANONICAL_EXPEDITION_TRAILS } from '../src/lib/canonicalStages.ts';
 
 describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () => {
   let db;
@@ -3973,6 +3988,234 @@ describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () =>
         voucherPageSrc.includes('Verified Alpine Expedition Leadership & Porter Logistics'),
         'Voucher page must render guide and porter clearance card'
       );
+    });
+  });
+
+  // 30. Work Package 7.1: Alpine Pacing, Altitude Acclimatization & Dynamic Gear Auditor
+  describe('30. Work Package 7.1: Alpine Pacing, Altitude Acclimatization & Dynamic Gear Auditor', () => {
+    test('Wilderness Medical Society (WMS) Ascent Velocity & SpO2 physiological algorithms', () => {
+      // 1. SpO2 model calculations
+      assert.equal(calculateEstimatedSpO2(0), 98, 'Sea level SpO2 must be 98%');
+      const luklaSpO2 = calculateEstimatedSpO2(2860);
+      assert.ok(luklaSpO2 >= 88 && luklaSpO2 <= 90, `Lukla (2,860m) SpO2 should be ~89%, got ${luklaSpO2}%`);
+      const namcheSpO2 = calculateEstimatedSpO2(3440);
+      assert.ok(namcheSpO2 >= 86 && namcheSpO2 <= 88, `Namche (3,440m) SpO2 should be ~87%, got ${namcheSpO2}%`);
+      const dingbocheSpO2 = calculateEstimatedSpO2(4410);
+      assert.ok(dingbocheSpO2 >= 83 && dingbocheSpO2 <= 85, `Dingboche (4,410m) SpO2 should be ~84%, got ${dingbocheSpO2}%`);
+      const ebcSpO2 = calculateEstimatedSpO2(5364);
+      assert.ok(ebcSpO2 >= 80 && ebcSpO2 <= 82, `EBC (5,364m) SpO2 should be ~81%, got ${ebcSpO2}%`);
+      const thorongSpO2 = calculateEstimatedSpO2(5416);
+      assert.ok(thorongSpO2 >= 80 && thorongSpO2 <= 82, `Thorong La (5,416m) SpO2 should be ~81%, got ${thorongSpO2}%`);
+
+      // Clamping limits
+      assert.ok(calculateEstimatedSpO2(15000) >= 60, 'SpO2 should clamp to minimum 60%');
+      assert.ok(calculateEstimatedSpO2(-500) <= 99, 'SpO2 should not exceed 99%');
+
+      // 2. Lake Louise AMS Risk Prediction
+      const lowRisk = predictAmsRiskScore(2200, 400, 0, true);
+      assert.equal(lowRisk.riskLevel, 'LOW');
+      assert.equal(lowRisk.estimatedScore, 0);
+
+      const moderateRisk = predictAmsRiskScore(3500, 450, 2, false);
+      assert.ok(moderateRisk.riskLevel === 'MODERATE' || moderateRisk.riskLevel === 'HIGH');
+      assert.ok(moderateRisk.estimatedScore >= 2);
+
+      const criticalRisk = predictAmsRiskScore(5000, 900, 1, false);
+      assert.ok(criticalRisk.riskLevel === 'HIGH' || criticalRisk.riskLevel === 'CRITICAL');
+      assert.ok(criticalRisk.estimatedScore >= 4);
+    });
+
+    test('WMS Itinerary Pacing Audit calculations, rest day detection & safety ratings', () => {
+      // 1. Rest day detection & substring / descent immunity
+      assert.ok(isStageRestDay('Namche Bazaar Acclimatization Rest Day', 0));
+      assert.ok(isStageRestDay('Dingboche Layover & Ridge Walk', 50));
+      assert.ok(isStageRestDay('Explore Gokyo Lakes', 80));
+      assert.ok(!isStageRestDay('Trek Namche to Tengboche', 427));
+      assert.ok(!isStageRestDay('Namche Bazaar to Dole Fir Forest', 670), 'Must not falsely match substring "rest" in Forest');
+      assert.ok(!isStageRestDay('Lobuche to Gorak Shep & Everest Base Camp', 224), 'Must not falsely match substring "rest" in Everest');
+      assert.ok(!isStageRestDay('Pheriche to Namche Bazaar', -800), 'Must not treat negative descent as rest day');
+
+      // 2. "Climb High, Sleep Low" (CHSL) Calculations
+      assert.equal(calculateClimbHighSleepLowDelta(5416, 3760), 1656, 'Thorong La pass delta must be 1,656m');
+      assert.equal(calculateClimbHighSleepLowDelta(4773, 3870), 903, 'Kyanjin Ri excursion delta must be 903m');
+      assert.equal(calculateClimbHighSleepLowDelta(3800, 3800), 0, 'Flat altitude should have 0 delta');
+      assert.equal(extractPeakElevationFromTitle('Thorong Phedi over Thorong La Pass (5,416m) to Muktinath'), 5416);
+      assert.equal(extractPeakElevationFromTitle('Kyanjin Gompa to Kyanjin Ri Summit Ascent (4,773m)'), 4773);
+
+      // 3. Safe Itinerary Pacing (Canonical EBC with proper acclimatization layovers)
+      const ebcStages = CANONICAL_EXPEDITION_TRAILS.find((t) => t.slug === 'everest-base-camp').stages;
+      const safeReport = auditItineraryPacing(ebcStages);
+
+      assert.equal(safeReport.stages.length, 12);
+      assert.ok(safeReport.restDayCount >= 2, 'EBC must include at least 2 rest/acclimatization stages');
+      assert.ok(safeReport.maxSleepingElevation > 5000, 'EBC apex sleep elevation must be > 5,000m');
+      assert.ok(safeReport.wmsComplianceScore >= 80, `Expected WMS score >= 80%, got ${safeReport.wmsComplianceScore}%`);
+      assert.ok(safeReport.recommendations.length > 0, 'Report must contain clinical recommendations');
+      assert.equal(safeReport.stages[5].climbHighSleepLowDelta, 673, 'Dingboche Nangkartshang CHSL delta must be 673m');
+      assert.equal(safeReport.stages[5].dayPeakElevation, 5083);
+
+      // 4. Dangerous Velocity Itinerary (>600m jump above 3,000m)
+      const aggressiveStages = [
+        { day: 1, title: 'Lukla Airstrip', elevation: 2860 },
+        { day: 2, title: 'Direct Push to Tengboche', elevation: 3867 }, // +867m above 3000m in 1 day!
+        { day: 3, title: 'Push to Lobuche', elevation: 4940 }, // +1073m above 3000m in 1 day!
+      ];
+      const dangerReport = auditItineraryPacing(aggressiveStages);
+
+      assert.equal(dangerReport.overallSafety, 'DANGER');
+      assert.ok(dangerReport.stages.some((s) => s.rating === 'DANGER' && s.wmsStatus === 'Steep Velocity Alert'));
+      assert.ok(dangerReport.wmsViolations.length >= 2, 'Should detect multiple WMS velocity violations');
+      assert.ok(dangerReport.wmsComplianceScore < 70, 'Compliance score should be penalized');
+
+      // 5. Severe Low-to-High Direct Jump (>1000m single-day jump into >=3000m)
+      const flightStages = [
+        { day: 1, title: 'Kathmandu Valley', elevation: 1400 },
+        { day: 2, title: 'Direct Syangboche Flight', elevation: 3780 },
+      ];
+      const flightReport = auditItineraryPacing(flightStages);
+      assert.equal(flightReport.overallSafety, 'DANGER');
+      assert.equal(flightReport.stages[1].wmsStatus, 'Steep Velocity Alert');
+
+      // 6. Missing Rest Day Rule (5 consecutive climbing days above 3,000m with no rest)
+      const noRestStages = [
+        { day: 1, title: 'Stage 1', elevation: 3000 },
+        { day: 2, title: 'Stage 2', elevation: 3300 },
+        { day: 3, title: 'Stage 3', elevation: 3600 },
+        { day: 4, title: 'Stage 4', elevation: 3900 },
+        { day: 5, title: 'Stage 5', elevation: 4200 },
+        { day: 6, title: 'Stage 6', elevation: 4500 },
+      ];
+      const noRestReport = auditItineraryPacing(noRestStages);
+      assert.ok(
+        noRestReport.wmsViolations.some((v) => v.includes('rest') || v.includes('consecutive')),
+        'Must flag missing rest days above 3,000m'
+      );
+    });
+
+    test('Himalayan Expedition Gear Registry, filtering & dynamic pack weight auditor', () => {
+      // 1. Registry integrity
+      const allGear = getAllGearItems();
+      assert.ok(allGear.length >= 20, 'Gear registry must have at least 20 authentic items');
+
+      const categories = new Set(allGear.map((g) => g.category));
+      assert.ok(categories.has('Alpine Technical Layering'));
+      assert.ok(categories.has('Footwear & Mountain Traction'));
+      assert.ok(categories.has('Packs & Load Carrying'));
+      assert.ok(categories.has('Sleep System & Warmth'));
+      assert.ok(categories.has('High-Altitude Medical & First Aid'));
+      assert.ok(categories.has('Electronics & Navigation'));
+
+      // Check key authentic items
+      const hasDownJacket = allGear.some((g) => g.name.includes('Down') && g.category === 'Alpine Technical Layering');
+      const hasDiamox = allGear.some((g) => g.name.includes('Diamox') || g.name.includes('Acetazolamide'));
+      const hasPulseOximeter = allGear.some((g) => g.name.includes('Oximeter'));
+      const hasGarmin = allGear.some((g) => g.name.includes('Garmin') || g.name.includes('Satellite'));
+
+      assert.ok(hasDownJacket, 'Must include expedition down jacket');
+      assert.ok(hasDiamox, 'Must include Diamox / Acetazolamide');
+      assert.ok(hasPulseOximeter, 'Must include pulse oximeter');
+      assert.ok(hasGarmin, 'Must include satellite communicator');
+
+      // 2. Filter tests
+      const winterGear = getGearCatalog({ season: 'Winter' });
+      assert.ok(winterGear.length > 0);
+
+      const subAlpineGear = getGearCatalog({ elevationTier: 'Sub-Alpine' });
+      assert.ok(subAlpineGear.length > 0);
+      assert.ok(subAlpineGear.every((g) => g.minElevationTier === 'Sub-Alpine'));
+
+      const selfSupportedGear = getGearCatalog({ porterStatus: 'Self-Supported' });
+      assert.ok(!selfSupportedGear.some((g) => g.id === 'pack-porter-duffel'), 'Self-supported trekkers must not be assigned a porter duffel');
+
+      // 3. Dynamic Pack Weight Auditor
+      const essentialIds = allGear.filter((g) => g.essential).map((g) => g.id);
+
+      // Empty selection test
+      const emptyAudit = calculateTotalPackWeight([]);
+      assert.equal(emptyAudit.totalWeightKg, 0, 'Empty selection should weigh 0 kg');
+
+      // Porter-Supported optimal scenario
+      const porterAudit = calculateTotalPackWeight(essentialIds, 'Porter-Supported');
+      assert.ok(porterAudit.totalWeightKg > 0);
+      assert.ok(porterAudit.daypackWeightKg > 0);
+      assert.equal(porterAudit.porterLimitKg, 6.0);
+      assert.ok(['OPTIMAL', 'HEAVY', 'OVERLOADED'].includes(porterAudit.status));
+      assert.ok(porterAudit.categoryBreakdown['Alpine Technical Layering'].count > 0);
+
+      // Self-Supported scenario
+      const selfAudit = calculateTotalPackWeight(essentialIds, 'Self-Supported');
+      assert.equal(selfAudit.porterLimitKg, 15.0);
+      assert.ok(selfAudit.daypackWeightKg >= porterAudit.daypackWeightKg);
+    });
+
+    test('Canonical Himalayan Expeditions dataset integrity', () => {
+      assert.ok(CANONICAL_EXPEDITION_TRAILS.length >= 6, 'Must include at least 6 canonical expeditions');
+
+      const expectedSlugs = [
+        'everest-base-camp',
+        'annapurna-circuit',
+        'manaslu-circuit',
+        'langtang-valley',
+        'gokyo-ri-cho-la',
+        'three-passes-trek',
+      ];
+
+      for (const slug of expectedSlugs) {
+        const found = CANONICAL_EXPEDITION_TRAILS.find((t) => t.slug === slug);
+        assert.ok(found, `Canonical dataset must include expedition: ${slug}`);
+        assert.ok(found.stages.length >= 7, `${slug} must have at least 7 stages`);
+        assert.ok(found.maxElevation >= 4500, `${slug} max elevation must be >= 4,500m`);
+        assert.ok(found.stages.every((s) => s.elevation > 0 && s.day > 0));
+      }
+    });
+
+    test('UI Integration: Acclimatization Page, Recharts Component, Planner Live Badge, Navbar & Trail Detail', () => {
+      const acclimatizationPageSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'acclimatization', 'page.tsx'), 'utf8');
+      const chartComponentSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'acclimatization', 'AcclimatizationChart.tsx'), 'utf8');
+      const gearAuditorSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'acclimatization', 'GearAuditorCard.tsx'), 'utf8');
+      const pacingListSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'acclimatization', 'PacingStageList.tsx'), 'utf8');
+      const navbarSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'layout', 'Navbar.tsx'), 'utf8');
+      const plannerSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'itinerary', 'planner', 'page.tsx'), 'utf8');
+      const trailDetailSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'trails', '[id]', 'page.tsx'), 'utf8');
+
+      // 1. Acclimatization Page
+      assert.ok(acclimatizationPageSrc.includes('data-slot="header"'), 'Acclimatization page must use HeroUI semantics');
+      assert.ok(acclimatizationPageSrc.includes('Suspense'), 'Acclimatization page must wrap content in Suspense for searchParams');
+      assert.ok(acclimatizationPageSrc.includes('AcclimatizationChart'), 'Acclimatization page must embed AcclimatizationChart');
+      assert.ok(acclimatizationPageSrc.includes('GearAuditorCard'), 'Acclimatization page must embed GearAuditorCard');
+      assert.ok(acclimatizationPageSrc.includes('calculateLakeLouiseScore'), 'Acclimatization page must support Lake Louise AMS diagnostic');
+      assert.ok(acclimatizationPageSrc.includes('auditItineraryPacing'), 'Acclimatization page must call auditItineraryPacing');
+
+      // 2. Recharts Acclimatization Chart
+      assert.ok(chartComponentSrc.includes("'use client'"), 'AcclimatizationChart must be a Client Component');
+      assert.ok(chartComponentSrc.includes('ComposedChart') || chartComponentSrc.includes('AreaChart'), 'Chart must render Recharts chart');
+      assert.ok(chartComponentSrc.includes('data-slot="chart-tooltip"'), 'Chart must render frosted glass tooltip slot');
+      assert.ok(chartComponentSrc.includes('#B68D40'), 'Chart must style elevation with Himalayan gold');
+      assert.ok(chartComponentSrc.includes('estimatedSpO2'), 'Chart must plot estimated SpO2');
+
+      // 3. Gear Auditor Card
+      assert.ok(gearAuditorSrc.includes("'use client'"), 'GearAuditorCard must be a Client Component');
+      assert.ok(gearAuditorSrc.includes('data-slot="base"'), 'GearAuditorCard must use HeroUI semantics');
+      assert.ok(gearAuditorSrc.includes('calculateTotalPackWeight'), 'GearAuditorCard must call calculateTotalPackWeight');
+      assert.ok(gearAuditorSrc.includes('window.print'), 'GearAuditorCard must support checklist printing');
+      assert.ok(gearAuditorSrc.includes('localStorage'), 'GearAuditorCard must persist checklist');
+
+      // 4. Pacing Stage List
+      assert.ok(pacingListSrc.includes('wmsStatus'), 'PacingStageList must display WMS status badges');
+      assert.ok(pacingListSrc.includes('estimatedSpO2'), 'PacingStageList must display SpO2');
+
+      // 5. Navbar
+      assert.ok(navbarSrc.includes('/acclimatization'), 'Navbar must link to /acclimatization');
+      assert.ok(navbarSrc.includes('Acclimatization & Gear'), 'Navbar must include Acclimatization & Gear in navigation');
+
+      // 6. Planner Page
+      assert.ok(plannerSrc.includes('auditItineraryPacing'), 'Planner must call auditItineraryPacing');
+      assert.ok(plannerSrc.includes('/acclimatization'), 'Planner must link to /acclimatization');
+      assert.ok(plannerSrc.includes('WMS Safety Badge'), 'Planner must render WMS Safety Badge in journey metrics');
+
+      // 7. Trail Detail Page
+      assert.ok(trailDetailSrc.includes('/acclimatization?trail='), 'Trail detail page must link to /acclimatization?trail=[slug]');
+      assert.ok(trailDetailSrc.includes('calculateEstimatedSpO2'), 'Trail detail page must display estimated summit SpO2');
     });
   });
 });
