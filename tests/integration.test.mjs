@@ -19,7 +19,9 @@ import {
   createGuide,
   createBooking,
   getBookingById,
-  initializeSchema
+  initializeSchema,
+  getTrailBySlug,
+  getAllTrails
 } from '../src/lib/db.ts';
 import {
   calculateEstimatedSpO2,
@@ -36,6 +38,18 @@ import {
   HIMALAYAN_GEAR_REGISTRY,
 } from '../src/lib/gearCatalog.ts';
 import { CANONICAL_EXPEDITION_TRAILS } from '../src/lib/canonicalStages.ts';
+import {
+  haversineDistanceKm,
+  interpolateGreatCirclePoints,
+  stitchRoutes,
+  exportStitchedGpx,
+  detectPassesOnRoute,
+} from '../src/lib/routeStitcher.ts';
+import {
+  evaluatePassCrossingWindow,
+  getAllPassCrossingAssessments,
+  HIGH_PASS_CROSSING_REGISTRY,
+} from '../src/lib/passCrossingWindow.ts';
 
 describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () => {
   let db;
@@ -4216,6 +4230,339 @@ describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () =>
       // 7. Trail Detail Page
       assert.ok(trailDetailSrc.includes('/acclimatization?trail='), 'Trail detail page must link to /acclimatization?trail=[slug]');
       assert.ok(trailDetailSrc.includes('calculateEstimatedSpO2'), 'Trail detail page must display estimated summit SpO2');
+    });
+  });
+
+  describe('31. Work Package 7.2: Custom Multi-Trail Route Stitcher & High-Pass Crossing Window Predictor', () => {
+    test('Geodesic mathematics: haversineDistanceKm and interpolateGreatCirclePoints', () => {
+      // Namche Bazaar (27.8069°N, 86.7142°E) to Everest Base Camp (28.0044°N, 86.8569°E)
+      const dist = haversineDistanceKm(27.8069, 86.7142, 28.0044, 86.8569);
+      assert.ok(dist > 20 && dist < 30, `Distance should be approximately ~26km, got ${dist}`);
+
+      // Zero distance for identical coordinates
+      const zeroDist = haversineDistanceKm(27.8069, 86.7142, 27.8069, 86.7142);
+      assert.strictEqual(zeroDist, 0);
+
+      // Spherical linear interpolation between two points
+      const p1 = [27.8069, 86.7142, 3440];
+      const p2 = [28.0044, 86.8569, 5364];
+      const interpolated = interpolateGreatCirclePoints(p1, p2, 4);
+      assert.strictEqual(interpolated.length, 4, 'Should generate 4 intermediate points');
+
+      // Points should progress monotonically in latitude and elevation
+      let prevLat = p1[0];
+      let prevEle = p1[2];
+      for (const pt of interpolated) {
+        assert.ok(pt[0] > prevLat, 'Latitude should increase towards EBC');
+        assert.ok(pt[2] > prevEle, 'Elevation should climb towards EBC');
+        prevLat = pt[0];
+        prevEle = pt[2];
+      }
+    });
+
+    test('Multi-trail route stitching engine: continuous coordinates, geodesic connectors & metrics', () => {
+      const trailA = {
+        id: 'trail-ebc',
+        slug: 'everest-base-camp',
+        name: 'Everest Base Camp Trek',
+        region: 'Everest',
+        difficulty: 'Strenuous',
+        distanceKm: 130,
+        durationDays: 12,
+        maxElevation: 5364,
+        elevationGain: 4800,
+        startPoint: 'Lukla (2,860m)',
+        endPoint: 'Gorak Shep / EBC (5,364m)',
+        routeCoordinates: [
+          [27.6869, 86.7314, 2860],
+          [27.8069, 86.7142, 3440],
+          [27.9881, 86.9250, 5364],
+        ],
+      };
+
+      const trailB = {
+        id: 'trail-gokyo',
+        slug: 'gokyo-ri-cho-la',
+        name: 'Gokyo Ri & Cho La Pass Expedition',
+        region: 'Everest',
+        difficulty: 'Challenging',
+        distanceKm: 90,
+        durationDays: 10,
+        maxElevation: 5420,
+        elevationGain: 3900,
+        startPoint: 'Dzongla (4,830m)',
+        endPoint: 'Gokyo Lakes (4,790m)',
+        routeCoordinates: [
+          [27.9250, 86.7861, 4830],
+          [27.9550, 86.7100, 5357],
+          [27.9600, 86.6900, 4790],
+        ],
+      };
+
+      const stitched = stitchRoutes([trailA, trailB]);
+
+      assert.ok(stitched.id.startsWith('stitched_'), 'Stitched route should have unique ID');
+      assert.strictEqual(stitched.segments.length, 2, 'Should contain 2 segments');
+      assert.strictEqual(stitched.connectors.length, 1, 'Should generate 1 connector bridge between segments');
+
+      const bridge = stitched.connectors[0];
+      assert.strictEqual(bridge.fromSegmentIndex, 0);
+      assert.strictEqual(bridge.toSegmentIndex, 1);
+      assert.ok(bridge.distanceKm > 0, 'Bridge distance should be greater than zero');
+      assert.ok(bridge.interpolatedPointsCount >= 2, 'Bridge should have interpolated points');
+      assert.ok(Array.isArray(bridge.interpolatedPoints), 'Bridge must store interpolatedPoints array');
+      assert.strictEqual(bridge.interpolatedPoints.length, bridge.interpolatedPointsCount, 'interpolatedPoints count must match');
+
+      // Continuous coordinates length must exceed sum of original coordinates due to connector
+      const totalOrigPoints = trailA.routeCoordinates.length + trailB.routeCoordinates.length;
+      assert.ok(
+        stitched.coordinates.length > totalOrigPoints,
+        `Stitched coordinates (${stitched.coordinates.length}) should include bridge points (${totalOrigPoints})`
+      );
+
+      // Verify elevation profile metadata & connector flags
+      const connectorPoints = stitched.elevationProfile.filter((p) => p.isConnector);
+      assert.ok(connectorPoints.length >= 2, 'Elevation profile must mark connector points with isConnector=true');
+      const segment1Points = stitched.elevationProfile.filter((p) => p.segmentIndex === 1);
+      assert.ok(segment1Points.length >= 1, 'Elevation profile must properly assign segmentIndex=1 for segment 2');
+
+      // Metrics validation
+      assert.ok(stitched.metrics.totalDistanceKm >= 220, 'Total distance should include both trails plus connector');
+      assert.ok(stitched.metrics.maxAltitudeM >= 5420, 'Max altitude should reflect apex of the combined route');
+      assert.ok(stitched.metrics.totalDays >= 20, 'Total duration should reflect merged days');
+      assert.ok(stitched.metrics.totalElevationGainM > 0, 'Elevation gain should be positive');
+      assert.ok(stitched.elevationProfile.length === stitched.coordinates.length, 'Elevation profile length should match coordinates');
+    });
+
+    test('Itinerary merger sequentially re-indexes Day 1...N without day number collisions', () => {
+      const trail1 = {
+        id: 't1',
+        slug: 'annapurna-circuit',
+        name: 'Annapurna Circuit',
+        region: 'Annapurna',
+        difficulty: 'Strenuous',
+        distanceKm: 160,
+        durationDays: 12,
+        maxElevation: 5416,
+        elevationGain: 5200,
+        startPoint: 'Besisahar',
+        endPoint: 'Nayapul',
+      };
+
+      const trail2 = {
+        id: 't2',
+        slug: 'manaslu-circuit',
+        name: 'Manaslu Circuit',
+        region: 'Manaslu',
+        difficulty: 'Challenging',
+        distanceKm: 177,
+        durationDays: 13,
+        maxElevation: 5106,
+        elevationGain: 5600,
+        startPoint: 'Soti Khola',
+        endPoint: 'Dharapani',
+      };
+
+      const stitched = stitchRoutes([trail1, trail2]);
+      const mergedDays = stitched.mergedItinerary;
+
+      assert.ok(mergedDays.length >= 20, 'Merged itinerary should combine all stages');
+      // Verify strictly consecutive day indexing 1, 2, 3...
+      for (let i = 0; i < mergedDays.length; i++) {
+        assert.strictEqual(mergedDays[i].day, i + 1, `Day at index ${i} should have day number ${i + 1}`);
+        assert.ok(mergedDays[i].title, 'Each merged stage must have a title');
+        assert.ok(mergedDays[i].distanceKm >= 0, 'Distance must be non-negative');
+        assert.ok(mergedDays[i].sleepingAltitude > 0, 'Sleeping altitude must be positive');
+      }
+    });
+
+    test('exportStitchedGpx produces authentic GPX 1.1 XML and round-trips with native GPX parser', async () => {
+      const trail = {
+        id: 'trail-ebc',
+        slug: 'everest-base-camp',
+        name: 'Everest Base Camp Trek',
+        region: 'Everest',
+        difficulty: 'Strenuous',
+        distanceKm: 130,
+        durationDays: 12,
+        maxElevation: 5364,
+        elevationGain: 4800,
+        startPoint: 'Lukla',
+        endPoint: 'Gorak Shep',
+        routeCoordinates: [
+          [27.6869, 86.7314, 2860],
+          [27.8069, 86.7142, 3440],
+          [28.0044, 86.8569, 5364],
+        ],
+      };
+
+      const stitched = stitchRoutes([trail]);
+      const gpxXml = exportStitchedGpx(stitched);
+
+      assert.ok(gpxXml.startsWith('<?xml version="1.0" encoding="UTF-8"?>'), 'Must start with XML declaration');
+      assert.ok(gpxXml.includes('<gpx version="1.1"'), 'Must specify GPX version 1.1');
+      assert.ok(gpxXml.includes('creator="The Himalayan Trails'), 'Must include creator metadata');
+      assert.ok(gpxXml.includes('<metadata>'), 'Must include metadata tag');
+      assert.ok(gpxXml.includes('<trk>'), 'Must include trk tag');
+      assert.ok(gpxXml.includes('<trkseg>'), 'Must include trkseg tag');
+      assert.ok(gpxXml.includes('<trkpt lat="27.6869" lon="86.7314">'), 'Must include trackpoint coordinates');
+      assert.ok(gpxXml.includes('<ele>2860</ele>'), 'Must include elevation tag inside trackpoint');
+      assert.ok(gpxXml.includes('</trkseg>'), 'Must close trkseg');
+      assert.ok(gpxXml.includes('</trk>'), 'Must close trk');
+      assert.ok(gpxXml.includes('</gpx>'), 'Must close gpx');
+
+      // Round-trip parse with native parseGpx
+      const { parseGpx } = await import('../src/lib/gpxParser.ts');
+      const parsed = parseGpx(gpxXml);
+      assert.strictEqual(parsed.startPoint, 'Lukla', 'GPX start point must match starting trailhead');
+      assert.strictEqual(parsed.endPoint, 'Gorak Shep', 'GPX end point must match terminus');
+      assert.ok(parsed.coordinatesWithElevation.length === 3, 'Parsed trackpoints must match coordinates length');
+    });
+
+    test('High-Pass Crossing Window Predictor: 5 iconic passes coverage & physics evaluations', () => {
+      // 1. Registry coverage: Thorong La, Cho La, Larkya La, Kongma La, Renjo La
+      assert.strictEqual(HIGH_PASS_CROSSING_REGISTRY.length, 5, 'Must configure all 5 iconic high passes');
+      const passIds = HIGH_PASS_CROSSING_REGISTRY.map((p) => p.id);
+      assert.ok(passIds.includes('thorong-la'), 'Must include Thorong La');
+      assert.ok(passIds.includes('cho-la'), 'Must include Cho La');
+      assert.ok(passIds.includes('larkya-la'), 'Must include Larkya La');
+      assert.ok(passIds.includes('kongma-la'), 'Must include Kongma La');
+      assert.ok(passIds.includes('renjo-la'), 'Must include Renjo La');
+
+      // 2. Individual pass assessment
+      const thorongAssessment = evaluatePassCrossingWindow('thorong-la');
+      assert.ok(thorongAssessment !== null, 'Thorong La assessment must not be null');
+      assert.strictEqual(thorongAssessment.elevationM, 5416);
+      assert.strictEqual(thorongAssessment.region, 'Annapurna');
+      assert.ok(['OPTIMAL_WINDOW', 'CAUTION_WINDOW', 'HIGH_RISK_CLOSED'].includes(thorongAssessment.currentStatus));
+
+      // 3. 48-Hour intervals
+      assert.strictEqual(thorongAssessment.intervals.length, 4, 'Must provide 4 distinct 48-hour forecast intervals');
+      const periods = thorongAssessment.intervals.map((i) => i.period);
+      assert.deepStrictEqual(periods, [
+        'today_morning',
+        'today_afternoon',
+        'tomorrow_morning',
+        'tomorrow_afternoon',
+      ]);
+
+      // 4. Afternoon wind acceleration & thermal shift physics
+      const todayMorning = thorongAssessment.intervals[0];
+      const todayAfternoon = thorongAssessment.intervals[1];
+      assert.ok(
+        todayAfternoon.windSpeedKm > todayMorning.windSpeedKm,
+        'Afternoon wind speed must accelerate over morning calm window due to valley thermal updrafts'
+      );
+      assert.ok(
+        todayMorning.timeRange.includes('05:00'),
+        'Morning window must recommend dawn departure'
+      );
+      assert.ok(
+        thorongAssessment.morningWindowRecommendation.includes('05:00 - 09:30 AM'),
+        'Must recommend 05:00 - 09:30 AM crossing window'
+      );
+
+      // 5. Gear and hazards
+      assert.ok(thorongAssessment.gearRequired.length >= 3, 'Must recommend mandatory alpine gear');
+      assert.ok(thorongAssessment.hazards.length >= 2, 'Must list authentic hazards');
+
+      // 6. Bulk assessment
+      const allAssessments = getAllPassCrossingAssessments();
+      assert.strictEqual(allAssessments.length, 5, 'Must return assessments for all 5 passes');
+    });
+
+    test('detectPassesOnRoute detects traversed high passes within proximity threshold', () => {
+      // Coordinates passing right by Thorong La (28.7936, 83.9351)
+      const coordsNearThorong = [
+        [28.7800, 83.9200, 4800],
+        [28.7936, 83.9351, 5416],
+        [28.8100, 83.9500, 4200],
+      ];
+
+      const detected = detectPassesOnRoute(coordsNearThorong);
+      assert.ok(detected.length >= 1, 'Should detect at least 1 pass');
+      const passIds = detected.map((p) => p.passId);
+      assert.ok(passIds.includes('thorong-la'), 'Should detect Thorong La pass');
+    });
+
+    test('Database integrity: gokyo-ri-cho-la exists in database and supports multi-trail route stitching', () => {
+      const gokyoTrail = getTrailBySlug('gokyo-ri-cho-la');
+      assert.ok(gokyoTrail, 'gokyo-ri-cho-la must exist in the SQLite database catalog');
+      assert.strictEqual(gokyoTrail.slug, 'gokyo-ri-cho-la');
+      assert.strictEqual(gokyoTrail.maxElevation, 5420);
+      assert.strictEqual(gokyoTrail.region, 'Everest');
+
+      const ebcTrail = getTrailBySlug('everest-base-camp');
+      assert.ok(ebcTrail, 'everest-base-camp must exist in the database');
+
+      // Stitch real trails from database
+      const stitched = stitchRoutes([ebcTrail, gokyoTrail]);
+      assert.strictEqual(stitched.segments.length, 2, 'Should stitch 2 real database trails');
+      assert.ok(stitched.metrics.totalDistanceKm > 100, 'Total distance must reflect combined trails');
+      assert.ok(stitched.connectors.length === 1, 'Should generate connector bridge');
+      assert.ok(stitched.traversedPasses.some((p) => p.passId === 'cho-la'), 'Should detect Cho La on stitched EBC + Gokyo Ri route');
+    });
+
+    test('UI Integration: Route Stitcher page, components, navbar and cross-linking', () => {
+      const pagePath = path.join(process.cwd(), 'src/app/routes/stitcher/page.tsx');
+      const mapComponentPath = path.join(process.cwd(), 'src/components/routes/StitchedRouteMap.tsx');
+      const chartComponentPath = path.join(process.cwd(), 'src/components/routes/StitchedElevationChart.tsx');
+      const cardComponentPath = path.join(process.cwd(), 'src/components/routes/PassCrossingWindowCard.tsx');
+      const navbarPath = path.join(process.cwd(), 'src/components/layout/Navbar.tsx');
+      const weatherPath = path.join(process.cwd(), 'src/app/weather/page.tsx');
+      const plannerPath = path.join(process.cwd(), 'src/app/itinerary/planner/page.tsx');
+      const stitchApiPath = path.join(process.cwd(), 'src/app/api/routes/stitch/route.ts');
+      const passApiPath = path.join(process.cwd(), 'src/app/api/routes/pass-crossing/route.ts');
+
+      assert.ok(fs.existsSync(pagePath), 'Route Stitcher page must exist at src/app/routes/stitcher/page.tsx');
+      assert.ok(fs.existsSync(mapComponentPath), 'StitchedRouteMap must exist');
+      assert.ok(fs.existsSync(chartComponentPath), 'StitchedElevationChart must exist');
+      assert.ok(fs.existsSync(cardComponentPath), 'PassCrossingWindowCard must exist');
+      assert.ok(fs.existsSync(stitchApiPath), 'Stitch API route must exist');
+      assert.ok(fs.existsSync(passApiPath), 'Pass crossing API route must exist');
+
+      const pageSrc = fs.readFileSync(pagePath, 'utf8');
+      const mapSrc = fs.readFileSync(mapComponentPath, 'utf8');
+      const chartSrc = fs.readFileSync(chartComponentPath, 'utf8');
+      const cardSrc = fs.readFileSync(cardComponentPath, 'utf8');
+      const navbarSrc = fs.readFileSync(navbarPath, 'utf8');
+      const weatherSrc = fs.readFileSync(weatherPath, 'utf8');
+      const plannerSrc = fs.readFileSync(plannerPath, 'utf8');
+
+      // 1. Route Stitcher page
+      assert.ok(pageSrc.includes('data-slot="header"'), 'Page must implement HeroUI data-slot="header"');
+      assert.ok(pageSrc.includes('stitchRoutes'), 'Page must invoke stitchRoutes engine');
+      assert.ok(pageSrc.includes('exportStitchedGpx'), 'Page must support 1-click GPX download');
+      assert.ok(pageSrc.includes('sessionStorage'), 'Page must support Send to Itinerary Planner via sessionStorage');
+      assert.ok(pageSrc.includes('/itinerary/planner?stitched=true'), 'Page must link to planner with stitched query');
+
+      // 2. Map component
+      assert.ok(mapSrc.includes("'use client'"), 'StitchedRouteMap must be a Client Component');
+      assert.ok(mapSrc.includes('#B68D40'), 'StitchedRouteMap must render polyline in Himalayan gold');
+      assert.ok(mapSrc.includes('connectors'), 'StitchedRouteMap must render geodesic connector bridges');
+
+      // 3. Elevation Chart
+      assert.ok(chartSrc.includes("'use client'"), 'StitchedElevationChart must be a Client Component');
+      assert.ok(chartSrc.includes('ResponsiveContainer'), 'StitchedElevationChart must use ResponsiveContainer');
+      assert.ok(chartSrc.includes('data-slot="chart-tooltip"'), 'Chart must render frosted glass tooltip');
+      assert.ok(chartSrc.includes('#B68D40'), 'Chart must fill with gold gradient');
+
+      // 4. Pass Card
+      assert.ok(cardSrc.includes('OPTIMAL_WINDOW'), 'Card must evaluate OPTIMAL_WINDOW');
+      assert.ok(cardSrc.includes('CAUTION_WINDOW'), 'Card must evaluate CAUTION_WINDOW');
+      assert.ok(cardSrc.includes('HIGH_RISK_CLOSED'), 'Card must evaluate HIGH_RISK_CLOSED');
+      assert.ok(cardSrc.includes('05:00 - 09:30 AM'), 'Card must emphasize morning crossing window');
+
+      // 5. Navbar
+      assert.ok(navbarSrc.includes('/routes/stitcher'), 'Navbar must link to /routes/stitcher');
+      assert.ok(navbarSrc.includes('Route Stitcher & Passes'), 'Navbar must label Route Stitcher & Passes');
+
+      // 6. Weather Page Cross-Link
+      assert.ok(weatherSrc.includes('/routes/stitcher'), 'Weather page must cross-link to /routes/stitcher');
+
+      // 7. Itinerary Planner Import
+      assert.ok(plannerSrc.includes('/routes/stitcher'), 'Planner page must cross-link to /routes/stitcher');
+      assert.ok(plannerSrc.includes('stitched_route_import'), 'Planner page must support importing stitched route');
     });
   });
 });

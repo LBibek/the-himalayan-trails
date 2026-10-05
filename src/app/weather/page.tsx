@@ -465,6 +465,32 @@ export default function WeatherPage() {
         )}
       </div>
 
+      {/* ── 3.5 HIGH-PASS CROSSING WINDOW PREDICTOR & MULTI-TRAIL STITCHER BANNER ── */}
+      <div
+        data-slot="card"
+        className="backdrop-blur-xl bg-gradient-to-r from-neutral-950 via-neutral-900 to-[#B68D40]/10 border border-[#B68D40]/40 rounded-3xl p-6 sm:p-8 shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6"
+      >
+        <div className="space-y-2 max-w-2xl">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#B68D40]/20 text-[#E2C085] text-xs font-bold uppercase tracking-wider">
+            <Compass className="h-3.5 w-3.5" />
+            <span>48-Hour High-Pass Alpine Window Predictor</span>
+          </div>
+          <h3 className="text-xl sm:text-2xl font-extrabold text-white">
+            Plan Custom Route Traverses Across Iconic Passes
+          </h3>
+          <p className="text-xs sm:text-sm text-gray-300 leading-relaxed">
+            Stitch multiple trails together (e.g. Everest Base Camp + Cho La Pass), calculate geodesic distance, and predict morning traversal safety windows across Thorong La, Cho La, Larkya La, Kongma La, and Renjo La.
+          </p>
+        </div>
+        <Link
+          href="/routes/stitcher"
+          className="px-6 py-3 rounded-2xl bg-[#B68D40] hover:bg-[#c99e4b] active:bg-[#a07a35] text-black font-extrabold text-xs uppercase tracking-wider flex items-center gap-2.5 transition shrink-0 shadow-lg shadow-[#B68D40]/25 focus-visible:ring-2 focus-visible:ring-[#B68D40]"
+        >
+          <span>Open Route Stitcher</span>
+          <ExternalLink className="h-4 w-4" />
+        </Link>
+      </div>
+
       {/* ── 4. INTERACTIVE THERMODYNAMIC ALTITUDE CALCULATOR ── */}
       <div
         data-slot="card"

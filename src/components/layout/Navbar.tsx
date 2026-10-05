@@ -78,6 +78,12 @@ const toolsGroup = {
       description: 'Day-by-day pacing, DnD stages & GPX export',
     },
     {
+      label: 'Route Stitcher & Passes',
+      href: '/routes/stitcher',
+      icon: Compass,
+      description: 'Multi-trail geodesic stitcher & high-pass crossing predictor',
+    },
+    {
       label: 'Acclimatization & Gear',
       href: '/acclimatization',
       icon: HeartPulse,
@@ -114,6 +120,7 @@ const mobileNavLinks = [
   { label: 'Alpine Gateway',   href: '/',                   icon: Mountain,       description: 'Expedition Matrix & Live Regional Map' },
   { label: 'Explore & Trails', href: '/map',                icon: MapIcon,        description: 'AllTrails interactive topo & GPS tracks' },
   { label: '3D Globe Map',     href: '/map?engine=3d',      icon: Globe,          description: 'Himalayan massifs & summit drone tours' },
+  { label: 'Route Stitcher & Passes', href: '/routes/stitcher', icon: Compass,    description: 'Multi-trail geodesic stitcher & pass window predictor' },
   { label: 'Sherpa Guides & Porters', href: '/guides',      icon: Users,          description: 'Certified IFMGA guides & ethical porter logistics' },
   { label: 'Itinerary Studio', href: '/itinerary/planner',  icon: Calendar,       description: 'Interactive pacing, DnD days & waypoints' },
   { label: 'Acclimatization & Gear', href: '/acclimatization', icon: HeartPulse,   description: 'WMS altitude pacing, SpO2 forecast & pack weight audit' },

@@ -521,6 +521,38 @@ function seedInitialDataIfEmpty(db: DatabaseSync) {
       ]
     },
     {
+      id: 'gokyo-ri-cho-la',
+      slug: 'gokyo-ri-cho-la',
+      name: 'Gokyo Ri & Cho La Pass Expedition',
+      region: 'Everest',
+      difficulty: 'Challenging',
+      distanceKm: 98,
+      durationDays: 13,
+      maxElevation: 5420,
+      elevationGain: 4200,
+      image: 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=1200&q=80',
+      description: 'Stunning alpine traverse through Gokyo Sacred Lakes, summiting Gokyo Ri (5,357m) and crossing the glaciated Cho La Pass (5,420m) into the Khumbu Valley.',
+      highlights: ['Gokyo Sacred Lakes (Dudh Pokhari)', 'Gokyo Ri Summit (5,357m)', 'Glaciated Cho La Pass (5,420m)', 'Ngozumpa Glacier traverse'],
+      bestMonths: ['Mar-May', 'Oct-Nov'],
+      startPoint: 'Lukla (2,860m)',
+      endPoint: 'Lukla (2,860m)',
+      rating: 4.9,
+      reviewsCount: 164,
+      elevationProfile: [
+        { distanceKm: 0, elevation: 2860, label: 'Lukla Trailhead' },
+        { distanceKm: 8, elevation: 2610, label: 'Phakding' },
+        { distanceKm: 19, elevation: 3440, label: 'Namche Bazaar' },
+        { distanceKm: 31, elevation: 4110, label: 'Dole' },
+        { distanceKm: 39, elevation: 4470, label: 'Machhermo' },
+        { distanceKm: 46, elevation: 4790, label: 'Gokyo Lakes' },
+        { distanceKm: 55, elevation: 5357, label: 'Gokyo Ri Summit' },
+        { distanceKm: 65, elevation: 5420, label: 'Cho La Pass' },
+        { distanceKm: 71, elevation: 4830, label: 'Dzongla' },
+        { distanceKm: 83, elevation: 5164, label: 'Gorak Shep' },
+        { distanceKm: 98, elevation: 2860, label: 'Return Lukla' }
+      ]
+    },
+    {
       id: 'annapurna-circuit',
       slug: 'annapurna-circuit',
       name: 'Annapurna Circuit & Thorong La',

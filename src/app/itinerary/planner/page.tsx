@@ -670,6 +670,7 @@ function SortableWaypointItem({
 function ItineraryPlannerContent() {
   const searchParams = useSearchParams();
   const trailParam = searchParams.get('trail') || searchParams.get('expedition') || searchParams.get('id');
+  const stitchedParam = searchParams.get('stitched');
 
   // Expedition & Persistent Database State
   const [expeditions, setExpeditions] = useState<Trail[]>([]);
@@ -688,6 +689,55 @@ function ItineraryPlannerContent() {
 
   // Itinerary Waypoints State with stable IDs
   const [waypoints, setWaypoints] = useState<PlannerWaypoint[]>(EXPEDITION_BASE_DAYS['ebc-trek']);
+
+  // Handle Stitched Route Import from Route Stitcher
+  useEffect(() => {
+    if (stitchedParam === 'true') {
+      try {
+        const stored = sessionStorage.getItem('stitched_route_import');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed.days) && parsed.days.length > 0) {
+            const coordsLen = parsed.coordinates?.length || 0;
+            const daysLen = parsed.days.length;
+            const mappedWaypoints: PlannerWaypoint[] = parsed.days.map((d: any, idx: number) => {
+              const coordIdx = (coordsLen > 0 && daysLen > 1)
+                ? Math.min(coordsLen - 1, Math.round((idx / (daysLen - 1)) * (coordsLen - 1)))
+                : 0;
+              const pt = parsed.coordinates?.[coordIdx];
+              return {
+                id: `stitched-d-${d.day || idx + 1}`,
+                day: d.day || idx + 1,
+                title: d.title || `Stage ${idx + 1}`,
+                distanceKm: Number(d.distanceKm) || 10,
+                sleepingAltitude: Number(d.sleepingAltitude) || 3500,
+                altitudeGain: Number(d.altitudeGain) || 500,
+                activityType: (d.title?.toLowerCase().includes('pass')
+                  ? 'pass'
+                  : d.title?.toLowerCase().includes('acclimatiz')
+                  ? 'acclimatization'
+                  : 'trekking') as ActivityType,
+                coordinates: {
+                  lat: pt ? pt[0] : 27.9881,
+                  lng: pt ? pt[1] : 86.925,
+                },
+                notes: d.highlights || d.route || 'Stitched alpine expedition segment',
+              };
+            });
+            setWaypoints(mappedWaypoints);
+            if (Array.isArray(parsed.coordinates) && parsed.coordinates.length > 0) {
+              setExpeditionPolyline(parsed.coordinates.map((pt: any) => [pt[0], pt[1]]));
+            }
+            setSaveSuccessMessage(
+              `Imported Stitched Expedition: "${parsed.title || 'Multi-Trail Traverse'}" (${mappedWaypoints.length} Days)`
+            );
+          }
+        }
+      } catch (e) {
+        console.error('Failed to import stitched route into planner:', e);
+      }
+    }
+  }, [stitchedParam]);
 
   // Three-Way Synchronization State (Map ↔ Timeline ↔ Elevation Line Chart)
   const [activeDayIndex, setActiveDayIndex] = useState<number | null>(0);
@@ -731,13 +781,14 @@ function ItineraryPlannerContent() {
   // When selected expedition changes, sync its GPX polyline track
   useEffect(() => {
     if (!selectedTrail) return;
+    if (stitchedParam === 'true') return; // Preserve imported multi-trail continuous polyline
 
     if (selectedTrail.routeCoordinates && Array.isArray(selectedTrail.routeCoordinates) && selectedTrail.routeCoordinates.length > 0) {
       setExpeditionPolyline(selectedTrail.routeCoordinates.map((pt) => [pt[0], pt[1]]));
     } else {
       setExpeditionPolyline(waypoints.map((w) => [w.coordinates.lat, w.coordinates.lng]));
     }
-  }, [selectedTrail]);
+  }, [selectedTrail, stitchedParam]);
 
   // Fetch landmarks based on active expedition region and selected scope
   useEffect(() => {
@@ -1515,6 +1566,16 @@ function ItineraryPlannerContent() {
               <span className="hidden sm:inline">Timeline</span>
             </button>
           </div>
+
+          {/* Route Stitcher & High Pass Predictor CTA */}
+          <Link
+            href="/routes/stitcher"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-black/80 border border-cyan-500/50 text-xs font-bold text-cyan-300 hover:bg-cyan-950/40 transition backdrop-blur-md shadow-xl cursor-pointer"
+            title="Open Multi-Trail Route Stitcher & High-Pass Crossing Window Predictor"
+          >
+            <Compass className="h-4 w-4 text-cyan-400" />
+            <span>Route Stitcher</span>
+          </Link>
 
           {/* Acclimatization & Gear Auditor CTA */}
           <Link

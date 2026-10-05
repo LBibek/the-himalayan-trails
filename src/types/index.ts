@@ -355,3 +355,4 @@ export interface PorterCalculationResult {
 
 export * from './acclimatization';
 export * from './gear';
+export * from './routes';
