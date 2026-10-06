@@ -54,6 +54,12 @@ const exploreGroup = {
       description: 'Certified IFMGA guides & ethical porter logistics',
     },
     {
+      label: 'Teahouse Lodges',
+      href: '/teahouses',
+      icon: Tent,
+      description: 'Authentic mountain lodges, amenities & direct booking',
+    },
+    {
       label: 'Trekker Stories',
       href: '/stories',
       icon: BookOpen,
@@ -120,6 +126,7 @@ const mobileNavLinks = [
   { label: 'Alpine Gateway',   href: '/',                   icon: Mountain,       description: 'Expedition Matrix & Live Regional Map' },
   { label: 'Explore & Trails', href: '/map',                icon: MapIcon,        description: 'AllTrails interactive topo & GPS tracks' },
   { label: '3D Globe Map',     href: '/map?engine=3d',      icon: Globe,          description: 'Himalayan massifs & summit drone tours' },
+  { label: 'Teahouse Lodges',  href: '/teahouses',          icon: Tent,           description: 'Authentic mountain lodges & live condition reports' },
   { label: 'Route Stitcher & Passes', href: '/routes/stitcher', icon: Compass,    description: 'Multi-trail geodesic stitcher & pass window predictor' },
   { label: 'Sherpa Guides & Porters', href: '/guides',      icon: Users,          description: 'Certified IFMGA guides & ethical porter logistics' },
   { label: 'Itinerary Studio', href: '/itinerary/planner',  icon: Calendar,       description: 'Interactive pacing, DnD days & waypoints' },
@@ -132,6 +139,7 @@ const mobileNavLinks = [
 ];
 
 const secondaryLinks = [
+  { label: 'Teahouse Lodges', href: '/teahouses' },
   { label: 'Acclimatization Advisor', href: '/acclimatization' },
   { label: 'Sherpa Guides & Porters', href: '/guides' },
   { label: 'Landmark Guide',    href: '/landmarks' },

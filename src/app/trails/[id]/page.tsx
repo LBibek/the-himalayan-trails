@@ -11,13 +11,15 @@ import {
   Route, Thermometer, Eye, Flag, X, ChevronLeft, ChevronRight,
   MessageSquare, ThumbsUp, Footprints, TreePine, Plane,
   WifiOff, Download, Trash2, HardDrive, Radio,
-  CreditCard, Lock, Receipt, HeartPulse, Scale
+  CreditCard, Lock, Receipt, HeartPulse, Scale, Bed
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceDot
 } from 'recharts';
-import { Trail, Itinerary, Landmark, Guide } from '@/types';
+import { Trail, Itinerary, Landmark, Guide, Teahouse } from '@/types';
+import TrailConditionsFeed from '@/components/conditions/TrailConditionsFeed';
+import ReserveTeahouseModal from '@/components/teahouses/ReserveTeahouseModal';
 import { submitTrekInquiry } from '@/app/actions/inquiry';
 import { calculateBookingBreakdown } from '@/lib/pricing';
 import { calculateEstimatedSpO2 } from '@/lib/acclimatization';
@@ -182,6 +184,25 @@ export default function TrailDetailPage() {
   const [offlinePackaging, setOfflinePackaging] = useState(false);
   const [offlineActionSuccess, setOfflineActionSuccess] = useState<string | null>(null);
   const [showOfflineDeleteConfirm, setShowOfflineDeleteConfirm] = useState(false);
+
+  // ── Teahouses along route state ──
+  const [routeTeahouses, setRouteTeahouses] = useState<Teahouse[]>([]);
+  const [selectedReserveTeahouse, setSelectedReserveTeahouse] = useState<Teahouse | null>(null);
+  const [isReserveModalOpen, setIsReserveModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (!trail?.region) return;
+    let isMounted = true;
+    fetch(`/api/teahouses?region=${encodeURIComponent(trail.region)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (isMounted && data.success && Array.isArray(data.teahouses)) {
+          setRouteTeahouses(data.teahouses);
+        }
+      })
+      .catch((err) => console.error('Failed to load route teahouses:', err));
+    return () => { isMounted = false; };
+  }, [trail?.region]);
 
   useEffect(() => {
     if (!trail) return;
@@ -824,6 +845,95 @@ export default function TrailDetailPage() {
                 </ul>
               </div>
             </div>
+
+            {/* ──────── AUTHENTIC TEAHOUSES ALONG THIS ROUTE ──────── */}
+            <div data-slot="base" className="p-6 rounded-3xl backdrop-blur-xl bg-slate-900/70 border border-slate-700/50 space-y-5">
+              <div data-slot="header" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                    <Bed className="h-5 w-5 text-[#B68D40]" />
+                    Teahouses Along This Route
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Authentic high-altitude lodges in {trail.region} Himal with solar showers, Starlink Wi-Fi, and Sherpa hospitality.
+                  </p>
+                </div>
+                <Link
+                  href="/teahouses"
+                  className="inline-flex items-center gap-1.5 text-xs text-[#E2C085] hover:text-white font-bold transition"
+                >
+                  <span>Explore All Lodges</span>
+                  <span>→</span>
+                </Link>
+              </div>
+
+              {routeTeahouses.length === 0 ? (
+                <div className="p-6 rounded-2xl bg-slate-800/30 border border-slate-700/30 text-center text-xs text-slate-400">
+                  <p>Discover authentic Himalayan teahouses across the range in our full lodge directory.</p>
+                  <Link href="/teahouses" className="inline-block mt-2 px-3 py-1.5 rounded-xl bg-slate-800 text-[#E2C085] font-bold">
+                    View Teahouses Directory →
+                  </Link>
+                </div>
+              ) : (
+                <div data-slot="body" className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {routeTeahouses.map((th) => (
+                    <div
+                      key={th.id}
+                      className="p-4 rounded-2xl bg-slate-800/50 border border-slate-700/40 hover:border-[#B68D40]/40 transition space-y-3 flex flex-col justify-between"
+                    >
+                      <div className="space-y-2.5">
+                        <div className="relative h-32 rounded-xl overflow-hidden bg-slate-950">
+                          <img src={th.coverImage} alt={th.name} className="w-full h-full object-cover" />
+                          <div className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-black/60 backdrop-blur-md text-[#E2C085]">
+                            {th.village} ({th.elevation}m)
+                          </div>
+                          <div className="absolute top-2 right-2 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-black/70 backdrop-blur-md text-[#B68D40] text-[10px] font-bold">
+                            <Star className="w-3 h-3 fill-[#B68D40]" />
+                            <span>{th.rating}</span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <h4 className="text-sm font-bold text-white">{th.name}</h4>
+                          {th.hostName && <p className="text-[11px] text-slate-400">Host: {th.hostName}</p>}
+                        </div>
+
+                        <div className="flex flex-wrap gap-1">
+                          {th.amenities.slice(0, 2).map((a, i) => (
+                            <span key={i} className="px-2 py-0.5 rounded-md text-[10px] bg-slate-700/50 text-slate-300">
+                              {a}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="pt-3 border-t border-slate-700/50 flex items-center justify-between">
+                        <div>
+                          <span className="text-[10px] text-slate-400">From</span>
+                          <p className="text-sm font-extrabold text-white">
+                            ${th.pricePerNightUsd} <span className="text-[10px] font-normal text-slate-400">/night</span>
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedReserveTeahouse(th);
+                            setIsReserveModalOpen(true);
+                          }}
+                          data-slot="trigger"
+                          className="px-3 py-1.5 rounded-xl bg-[#B68D40] hover:bg-[#c99e4b] text-black font-extrabold text-xs transition shadow-sm focus-visible:ring-2 focus-visible:ring-[#B68D40]"
+                        >
+                          Reserve Room
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* ──────── LIVE FIELD CONDITIONS & TRAIL REPORTS ──────── */}
+            <TrailConditionsFeed trailId={trail.id} trailName={trail.name} />
 
             {/* ──────── 4. TRAIL CONDITIONS & REVIEWS ──────── */}
             <div data-slot="body" className="p-6 rounded-3xl backdrop-blur-xl bg-slate-900/70 border border-slate-700/50 space-y-6">
@@ -1801,6 +1911,16 @@ export default function TrailDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Teahouse Room Reservation Modal */}
+      <ReserveTeahouseModal
+        teahouse={selectedReserveTeahouse}
+        isOpen={isReserveModalOpen}
+        onClose={() => {
+          setIsReserveModalOpen(false);
+          setSelectedReserveTeahouse(null);
+        }}
+      />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import fs from 'node:fs';
-import type { Trail, Landmark, Itinerary, ItineraryDay, Story, WeatherReport, Booking, ContactMessage, Inquiry, SharedTrail, User, HimalayanRange, Guide } from '../types';
+import type { Trail, Landmark, Itinerary, ItineraryDay, Story, WeatherReport, Booking, ContactMessage, Inquiry, SharedTrail, User, HimalayanRange, Guide, Teahouse, TeahouseReservation, TrailConditionReport } from '../types';
 import crypto from 'node:crypto';
 
 function hashPassword(password: string): string {
@@ -436,6 +436,70 @@ export function initializeSchema(db: DatabaseSync) {
     );
   `);
 
+  // Teahouses table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS teahouses (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      region TEXT NOT NULL,
+      village TEXT NOT NULL,
+      elevation INTEGER NOT NULL,
+      latitude REAL NOT NULL,
+      longitude REAL NOT NULL,
+      room_types TEXT NOT NULL,
+      price_per_night_usd REAL NOT NULL,
+      amenities TEXT NOT NULL,
+      food_menu TEXT NOT NULL,
+      contact_phone TEXT,
+      host_name TEXT,
+      rating REAL NOT NULL DEFAULT 4.8,
+      reviews_count INTEGER NOT NULL DEFAULT 0,
+      cover_image TEXT NOT NULL,
+      is_verified INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL
+    );
+  `);
+
+  // Teahouse reservations table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS teahouse_reservations (
+      id TEXT PRIMARY KEY,
+      teahouse_id TEXT NOT NULL,
+      user_id TEXT,
+      guest_name TEXT NOT NULL,
+      guest_email TEXT NOT NULL,
+      guest_phone TEXT,
+      check_in_date TEXT NOT NULL,
+      guests_count INTEGER NOT NULL,
+      room_type TEXT NOT NULL,
+      dietary_notes TEXT,
+      total_price_usd REAL NOT NULL,
+      status TEXT NOT NULL DEFAULT 'CONFIRMED',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (teahouse_id) REFERENCES teahouses(id) ON DELETE CASCADE
+    );
+  `);
+
+  // Trail condition reports table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS trail_condition_reports (
+      id TEXT PRIMARY KEY,
+      trail_id TEXT NOT NULL,
+      reporter_name TEXT NOT NULL,
+      reporter_role TEXT NOT NULL,
+      status_level TEXT NOT NULL,
+      condition_type TEXT NOT NULL,
+      latitude REAL NOT NULL,
+      longitude REAL NOT NULL,
+      location_name TEXT NOT NULL,
+      elevation INTEGER NOT NULL,
+      notes TEXT NOT NULL,
+      gear_recommended TEXT,
+      upvotes INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+  `);
+
   // Ensure route_coordinates column exists on trails table
   try {
     db.exec('ALTER TABLE trails ADD COLUMN route_coordinates TEXT;');
@@ -450,6 +514,26 @@ export function initializeSchema(db: DatabaseSync) {
     const guideCount = db.prepare('SELECT COUNT(*) as count FROM guides').get() as { count: number };
     if (!guideCount || guideCount.count === 0) {
       seedOfficialGuides(db);
+    }
+  } catch {
+    // ignore
+  }
+
+  // Ensure official teahouses are seeded if table is empty
+  try {
+    const teahouseCount = db.prepare('SELECT COUNT(*) as count FROM teahouses').get() as { count: number };
+    if (!teahouseCount || teahouseCount.count === 0) {
+      seedOfficialTeahouses(db);
+    }
+  } catch {
+    // ignore
+  }
+
+  // Ensure official trail condition reports are seeded if table is empty
+  try {
+    const condCount = db.prepare('SELECT COUNT(*) as count FROM trail_condition_reports').get() as { count: number };
+    if (!condCount || condCount.count === 0) {
+      seedOfficialTrailConditionReports(db);
     }
   } catch {
     // ignore
@@ -2540,6 +2624,606 @@ export function seedOfficialGuides(db: DatabaseSync) {
       now
     );
   }
+}
+
+// ---------------- OFFICIAL TEAHOUSE LODGES SEED & METHODS ----------------
+
+export function seedOfficialTeahouses(db: DatabaseSync) {
+  const insertTeahouse = db.prepare(`
+    INSERT OR IGNORE INTO teahouses (
+      id, name, region, village, elevation, latitude, longitude,
+      room_types, price_per_night_usd, amenities, food_menu,
+      contact_phone, host_name, rating, reviews_count,
+      cover_image, is_verified, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const now = new Date().toISOString();
+  const teahouses = [
+    {
+      id: 'teahouse-namche-sherpa-bakery',
+      name: 'Sherpa Lodge & Bakery',
+      region: 'Everest',
+      village: 'Namche Bazaar',
+      elevation: 3440,
+      latitude: 27.8069,
+      longitude: 86.7140,
+      roomTypes: ['Deluxe Double with Ensuite Bath', 'Twin Room with Kongde View', 'Standard Bunk Bed'],
+      pricePerNightUsd: 35,
+      amenities: ['Solar Hot Showers', 'Starlink / Wi-Fi', 'Heated Dining Room', 'Electric Blankets', '24/7 Device Charging'],
+      foodMenu: ['Sherpa Stew (Syamkpa)', 'Freshly Baked Apple Pie', 'Yak Cheese Omelette', 'Dal Bhat 24-Hour Power', 'Himalayan French Press Coffee'],
+      contactPhone: '+977 984-1234567',
+      hostName: 'Ang Dawa Sherpa',
+      rating: 4.9,
+      reviewsCount: 142,
+      coverImage: 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=800&q=80',
+      isVerified: 1
+    },
+    {
+      id: 'teahouse-dingboche-khangri',
+      name: 'Hotel Khangri & Cafe',
+      region: 'Everest',
+      village: 'Dingboche',
+      elevation: 4410,
+      latitude: 27.8933,
+      longitude: 86.8315,
+      roomTypes: ['Insulated Private Twin', 'Ama Dablam View Double', 'Alpine Dormitory'],
+      pricePerNightUsd: 40,
+      amenities: ['Starlink / Wi-Fi', 'Solar Heated Showers', 'Central Yak-Dung Hearth', 'Oxygen Concentrators', 'Heated Dining Room'],
+      foodMenu: ['Tibetan Bread & Organic Honey', 'Garlic Soup for Acclimatization', 'Yak Steak Sizzler', 'Thukpa Noodle Bowl', 'Ginger Lemon Honey Tea'],
+      contactPhone: '+977 980-8765432',
+      hostName: 'Pasang Nuru Sherpa',
+      rating: 4.8,
+      reviewsCount: 98,
+      coverImage: 'https://images.unsplash.com/photo-1571401835393-8c5f35328320?auto=format&fit=crop&w=800&q=80',
+      isVerified: 1
+    },
+    {
+      id: 'teahouse-gokyo-namaste',
+      name: 'Gokyo Namaste Lodge & Bakery',
+      region: 'Everest',
+      village: 'Gokyo',
+      elevation: 4790,
+      latitude: 27.9536,
+      longitude: 86.6953,
+      roomTypes: ['Turquoise Lake View Double', 'Panoramic Twin Room', 'Trekker Dorm Bed'],
+      pricePerNightUsd: 45,
+      amenities: ['Glacial Lake View Terrace', 'Starlink / Wi-Fi', 'Hot Showers (Gas)', 'Electric Bed Warmers', 'Drying Room'],
+      foodMenu: ['Wood-Fired Apple Strudel', 'Sherpa Potato Pancake', 'Hot Lemon Ginger Tea', 'Hearty Veggie MoMo Platter', 'Dal Bhat Refills'],
+      contactPhone: '+977 981-3344556',
+      hostName: 'Mingma Lhamu Sherpa',
+      rating: 4.9,
+      reviewsCount: 86,
+      coverImage: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=800&q=80',
+      isVerified: 1
+    },
+    {
+      id: 'teahouse-manang-tilicho-peak',
+      name: 'Tilicho Peak Lodge & German Bakery',
+      region: 'Annapurna',
+      village: 'Manang',
+      elevation: 3540,
+      latitude: 28.6603,
+      longitude: 84.0240,
+      roomTypes: ['Deluxe Ensuite Double', 'Pine Wood Twin Room', 'Sunny Courtyard Dorm'],
+      pricePerNightUsd: 30,
+      amenities: ['Gas Hot Showers', 'Starlink / Wi-Fi', 'Bakery Courtyard Cafe', 'Heated Dining Room', 'Movie Screening Lounge'],
+      foodMenu: ['Fresh Cinnamon Rolls', 'Buckwheat Dhindo with Ghee', 'Yak Cheese Pizza', 'Himalayan Trout Curry', 'Organic Seabuckthorn Juice'],
+      contactPhone: '+977 985-6012345',
+      hostName: 'Karma Gurung',
+      rating: 4.8,
+      reviewsCount: 115,
+      coverImage: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=80',
+      isVerified: 1
+    },
+    {
+      id: 'teahouse-thorong-high-camp',
+      name: 'High Camp Stone Sanctuary',
+      region: 'Annapurna',
+      village: 'Thorong High Camp',
+      elevation: 4880,
+      latitude: 28.7960,
+      longitude: 83.9470,
+      roomTypes: ['Insulated High Camp Twin', 'Pass Summit Dormitory'],
+      pricePerNightUsd: 35,
+      amenities: ['Pre-Pass 3AM Breakfast Service', 'Gravity Water Station', 'Heated Dining Room', 'Thermal Sleep Mats', 'Emergency Oxygen'],
+      foodMenu: ['Summit Carb Energy Porridge', 'Heavy Garlic Noodle Soup', 'Hot Cocoa & Ginger Infusion', 'Spiced Dal Bhat'],
+      contactPhone: '+977 984-6098765',
+      hostName: 'Tenzing Gurung',
+      rating: 4.7,
+      reviewsCount: 79,
+      coverImage: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=800&q=80',
+      isVerified: 1
+    },
+    {
+      id: 'teahouse-kyanjin-eco-lodge',
+      name: 'Kyanjin Organic Eco Lodge',
+      region: 'Langtang',
+      village: 'Kyanjin Gompa',
+      elevation: 3870,
+      latitude: 28.2125,
+      longitude: 85.5681,
+      roomTypes: ['Langtang Lirung View Double', 'Cedarwood Twin Room', 'Alpine Dorm'],
+      pricePerNightUsd: 28,
+      amenities: ['Solar Hot Showers', 'Organic Greenhouse Dining', 'Starlink / Wi-Fi', 'Traditional Stone Hearth', 'Local Yak Cheese Cellar Access'],
+      foodMenu: ['Artisanal Kyanjin Yak Cheese Tasting', 'Garden Greens Sherpa Stew', 'Buckwheat Roti with Chhurpi', 'Warm Apple Crisp'],
+      contactPhone: '+977 986-1122334',
+      hostName: 'Dorje Tamang',
+      rating: 4.9,
+      reviewsCount: 104,
+      coverImage: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80',
+      isVerified: 1
+    },
+    {
+      id: 'teahouse-samagaun-mountain-oasis',
+      name: 'Samagaun Mountain Oasis',
+      region: 'Manaslu',
+      village: 'Samagaun',
+      elevation: 3530,
+      latitude: 28.5875,
+      longitude: 84.6339,
+      roomTypes: ['Mt. Manaslu North Face Double', 'Stone Cottage Twin', 'Trekker Bunk Dorm'],
+      pricePerNightUsd: 32,
+      amenities: ['Starlink / Wi-Fi', 'Solar Heated Baths', 'Wood Pellet Stove', 'Expedition Staging Yard', 'Device Battery Bank'],
+      foodMenu: ['Tibetan Tsampa Porridge with Yak Butter', 'Homemade Vegetable Momos', 'Spicy Mountain Mushroom Soup', 'Classic Manaslu Dal Bhat'],
+      contactPhone: '+977 982-4455667',
+      hostName: 'Lobsang Lama',
+      rating: 4.8,
+      reviewsCount: 67,
+      coverImage: 'https://images.unsplash.com/photo-1486870591958-9b9d0d1dda99?auto=format&fit=crop&w=800&q=80',
+      isVerified: 1
+    },
+    {
+      id: 'teahouse-lama-hotel-haven',
+      name: 'Lama Hotel Peaceful Haven',
+      region: 'Langtang',
+      village: 'Lama Hotel',
+      elevation: 2470,
+      latitude: 28.1517,
+      longitude: 85.4222,
+      roomTypes: ['Forest View Twin Room', 'Riverbank Double', 'Cozy Dorm Bed'],
+      pricePerNightUsd: 25,
+      amenities: ['Riverstone Hot Showers', 'Filtered Spring Water', 'Rhododendron Forest Garden', 'Heated Dining Room'],
+      foodMenu: ['Wild Nettle Soup (Sisnu)', 'Wood-Fired Dal Bhat', 'Honey Banana Pancakes', 'Masala Mountain Tea'],
+      contactPhone: '+977 980-1199887',
+      hostName: 'Chhiring Tamang',
+      rating: 4.7,
+      reviewsCount: 58,
+      coverImage: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=800&q=80',
+      isVerified: 1
+    }
+  ];
+
+  for (const th of teahouses) {
+    insertTeahouse.run(
+      th.id,
+      th.name,
+      th.region,
+      th.village,
+      th.elevation,
+      th.latitude,
+      th.longitude,
+      JSON.stringify(th.roomTypes),
+      th.pricePerNightUsd,
+      JSON.stringify(th.amenities),
+      JSON.stringify(th.foodMenu),
+      th.contactPhone,
+      th.hostName,
+      th.rating,
+      th.reviewsCount,
+      th.coverImage,
+      th.isVerified,
+      now
+    );
+  }
+}
+
+export function seedOfficialTrailConditionReports(db: DatabaseSync) {
+  const insertReport = db.prepare(`
+    INSERT OR IGNORE INTO trail_condition_reports (
+      id, trail_id, reporter_name, reporter_role, status_level,
+      condition_type, latitude, longitude, location_name,
+      elevation, notes, gear_recommended, upvotes, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const reports = [
+    {
+      id: 'cond-cho-la-glacier',
+      trailId: 'gokyo-ri-cho-la',
+      reporterName: 'Dawa Yangzum Sherpa',
+      reporterRole: 'Certified Sherpa Guide',
+      statusLevel: 'CAUTION_HAZARD',
+      conditionType: 'Snow / Ice on Pass',
+      latitude: 27.9250,
+      longitude: 86.7880,
+      locationName: 'Cho La Pass Summit & Glacier Ridge',
+      elevation: 5420,
+      notes: 'Glacier tongue has hard blue ice on east flank. Fresh snowfall covered hidden crevasses near marker prayer flags. Early morning crossing recommended before 10 AM before sun softens snow bridges.',
+      gearRecommended: 'Microspikes / crampons mandatory, trekking poles, alpine gaiters',
+      upvotes: 42,
+      createdAt: '2026-10-05T07:30:00Z'
+    },
+    {
+      id: 'cond-thorong-la-ice',
+      trailId: 'annapurna-circuit',
+      reporterName: 'Mingma Dorchi Sherpa',
+      reporterRole: 'Certified Sherpa Guide',
+      statusLevel: 'CAUTION_HAZARD',
+      conditionType: 'Snow / Ice on Pass',
+      latitude: 28.7942,
+      longitude: 83.9389,
+      locationName: 'Thorong La Pass (Manang to Muktinath)',
+      elevation: 5416,
+      notes: 'Sustained -18°C wind chills at dawn. The descent towards Muktinath has frozen compacted scree between 5,200m and 4,800m. Start from High Camp no later than 4:30 AM to beat midday gusts.',
+      gearRecommended: 'Kahtoola microspikes, balaclava, windproof outer hardshell, 800-fill down mittens',
+      upvotes: 38,
+      createdAt: '2026-10-04T16:15:00Z'
+    },
+    {
+      id: 'cond-phakding-bridge',
+      trailId: 'ebc-trek',
+      reporterName: 'Ang Dawa Sherpa',
+      reporterRole: 'Lodge Host',
+      statusLevel: 'CLEAR_PASSABLE',
+      conditionType: 'River Crossing / Bridge',
+      latitude: 27.7408,
+      longitude: 86.7114,
+      locationName: 'Phakding Dudh Koshi Suspension Bridge',
+      elevation: 2610,
+      notes: 'Dudh Koshi suspension bridge inspected and cleared by Khumbu engineers. New galvanized steel cables and plank decking installed. Clear transit for both yaks and trekkers.',
+      gearRecommended: 'Standard trekking footwear',
+      upvotes: 29,
+      createdAt: '2026-10-06T06:00:00Z'
+    },
+    {
+      id: 'cond-larkya-la-pass',
+      trailId: 'manaslu-circuit',
+      reporterName: 'Lakpa Nuru Sherpa',
+      reporterRole: 'Certified Sherpa Guide',
+      statusLevel: 'CLEAR_PASSABLE',
+      conditionType: 'Weather Window',
+      latitude: 28.6475,
+      longitude: 84.6225,
+      locationName: 'Larkya La Pass (Dharamsala to Bimthang)',
+      elevation: 5106,
+      notes: 'Crystal clear morning window. Glacier traverse is dry and well-flagged with Buddhist prayer stones. Tea shop at high hut is operational with hot lemon ginger tea.',
+      gearRecommended: 'Trekking poles, UV cat-4 sunglasses, sun protection',
+      upvotes: 21,
+      createdAt: '2026-10-05T12:00:00Z'
+    },
+    {
+      id: 'cond-kyanjin-avalanche',
+      trailId: 'langtang-valley',
+      reporterName: 'Dorje Tamang',
+      reporterRole: 'Lodge Host',
+      statusLevel: 'CLEAR_PASSABLE',
+      conditionType: 'Teahouse Capacity Full',
+      latitude: 28.2125,
+      longitude: 85.5681,
+      locationName: 'Kyanjin Gompa Valley Basin',
+      elevation: 3870,
+      notes: 'Autumn trekking wave has arrived in upper Langtang. Lodges in Kyanjin Gompa are reaching 90% capacity by 3 PM. Trekking groups are strongly advised to reserve rooms ahead of time.',
+      gearRecommended: 'Thermal sleeping bag (-10°C), advance teahouse reservation voucher',
+      upvotes: 18,
+      createdAt: '2026-10-06T08:00:00Z'
+    }
+  ];
+
+  for (const rep of reports) {
+    insertReport.run(
+      rep.id,
+      rep.trailId,
+      rep.reporterName,
+      rep.reporterRole,
+      rep.statusLevel,
+      rep.conditionType,
+      rep.latitude,
+      rep.longitude,
+      rep.locationName,
+      rep.elevation,
+      rep.notes,
+      rep.gearRecommended,
+      rep.upvotes,
+      rep.createdAt
+    );
+  }
+}
+
+export function getTeahouses(
+  filterOrRegion?: {
+    region?: string;
+    village?: string;
+    amenity?: string;
+  } | string,
+  villageParam?: string
+): Teahouse[] {
+  let regionFilter: string | undefined;
+  let villageFilter: string | undefined;
+  let amenityFilter: string | undefined;
+
+  if (typeof filterOrRegion === 'string') {
+    regionFilter = filterOrRegion;
+    villageFilter = villageParam;
+  } else if (filterOrRegion && typeof filterOrRegion === 'object') {
+    regionFilter = filterOrRegion.region;
+    villageFilter = filterOrRegion.village;
+    amenityFilter = filterOrRegion.amenity;
+  }
+
+  const db = getDatabase();
+  let query = 'SELECT * FROM teahouses WHERE 1=1';
+  const params: (string | number)[] = [];
+
+  if (regionFilter && regionFilter !== 'All') {
+    query += ' AND LOWER(region) = LOWER(?)';
+    params.push(regionFilter);
+  }
+  if (villageFilter && villageFilter !== 'All') {
+    query += ' AND LOWER(village) = LOWER(?)';
+    params.push(villageFilter);
+  }
+
+  query += ' ORDER BY elevation ASC, rating DESC';
+
+  const rows = db.prepare(query).all(...params) as any[];
+
+  let results: Teahouse[] = rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    region: r.region,
+    village: r.village,
+    elevation: Number(r.elevation),
+    latitude: Number(r.latitude),
+    longitude: Number(r.longitude),
+    roomTypes: JSON.parse(r.room_types || '[]'),
+    pricePerNightUsd: Number(r.price_per_night_usd),
+    amenities: JSON.parse(r.amenities || '[]'),
+    foodMenu: JSON.parse(r.food_menu || '[]'),
+    contactPhone: r.contact_phone || undefined,
+    hostName: r.host_name || undefined,
+    rating: Number(r.rating),
+    reviewsCount: Number(r.reviews_count),
+    coverImage: r.cover_image,
+    isVerified: Boolean(r.is_verified),
+    createdAt: r.created_at,
+  }));
+
+  if (amenityFilter && amenityFilter !== 'All') {
+    const target = amenityFilter.toLowerCase();
+    results = results.filter((th) =>
+      th.amenities.some((a) => a.toLowerCase().includes(target))
+    );
+  }
+
+  return results;
+}
+
+export function getTeahouseById(id: string): Teahouse | null {
+  const db = getDatabase();
+  const r = db.prepare('SELECT * FROM teahouses WHERE id = ?').get(id) as any;
+  if (!r) return null;
+  return {
+    id: r.id,
+    name: r.name,
+    region: r.region,
+    village: r.village,
+    elevation: Number(r.elevation),
+    latitude: Number(r.latitude),
+    longitude: Number(r.longitude),
+    roomTypes: JSON.parse(r.room_types || '[]'),
+    pricePerNightUsd: Number(r.price_per_night_usd),
+    amenities: JSON.parse(r.amenities || '[]'),
+    foodMenu: JSON.parse(r.food_menu || '[]'),
+    contactPhone: r.contact_phone || undefined,
+    hostName: r.host_name || undefined,
+    rating: Number(r.rating),
+    reviewsCount: Number(r.reviews_count),
+    coverImage: r.cover_image,
+    isVerified: Boolean(r.is_verified),
+    createdAt: r.created_at,
+  };
+}
+
+export function createTeahouseReservation(data: {
+  teahouseId: string;
+  userId?: string;
+  guestName: string;
+  guestEmail: string;
+  guestPhone?: string;
+  checkInDate: string;
+  guestsCount: number;
+  roomType: string;
+  dietaryNotes?: string;
+  totalPriceUsd?: number;
+}): TeahouseReservation {
+  const db = getDatabase();
+  const th = getTeahouseById(data.teahouseId);
+  if (!th) {
+    throw new Error(`Teahouse with ID ${data.teahouseId} not found`);
+  }
+  const id = `res_${crypto.randomUUID()}`;
+  const now = new Date().toISOString();
+  const totalPrice = typeof data.totalPriceUsd === 'number' && data.totalPriceUsd > 0
+    ? data.totalPriceUsd
+    : (th.pricePerNightUsd * Math.max(1, data.guestsCount));
+
+  db.exec('BEGIN TRANSACTION;');
+  try {
+    db.prepare(`
+      INSERT INTO teahouse_reservations (
+        id, teahouse_id, user_id, guest_name, guest_email, guest_phone,
+        check_in_date, guests_count, room_type, dietary_notes,
+        total_price_usd, status, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.teahouseId,
+      data.userId || null,
+      data.guestName,
+      data.guestEmail,
+      data.guestPhone || null,
+      data.checkInDate,
+      data.guestsCount,
+      data.roomType,
+      data.dietaryNotes || null,
+      totalPrice,
+      'CONFIRMED',
+      now
+    );
+    db.exec('COMMIT;');
+  } catch (err) {
+    try {
+      db.exec('ROLLBACK;');
+    } catch {}
+    throw err;
+  }
+
+  return {
+    id,
+    teahouseId: data.teahouseId,
+    userId: data.userId,
+    guestName: data.guestName,
+    guestEmail: data.guestEmail,
+    guestPhone: data.guestPhone,
+    checkInDate: data.checkInDate,
+    guestsCount: data.guestsCount,
+    roomType: data.roomType,
+    dietaryNotes: data.dietaryNotes,
+    totalPriceUsd: totalPrice,
+    status: 'CONFIRMED',
+    createdAt: now,
+    teahouseName: th.name,
+    village: th.village,
+  };
+}
+
+export function getTrailConditionReports(
+  filterOrTrailId?: {
+    trailId?: string;
+    statusLevel?: string;
+  } | string,
+  statusLevelParam?: string
+): TrailConditionReport[] {
+  let trailIdFilter: string | undefined;
+  let statusLevelFilter: string | undefined;
+
+  if (typeof filterOrTrailId === 'string') {
+    trailIdFilter = filterOrTrailId;
+    statusLevelFilter = statusLevelParam;
+  } else if (filterOrTrailId && typeof filterOrTrailId === 'object') {
+    trailIdFilter = filterOrTrailId.trailId;
+    statusLevelFilter = filterOrTrailId.statusLevel;
+  }
+
+  const db = getDatabase();
+  let query = `
+    SELECT c.*, t.name as trail_name
+    FROM trail_condition_reports c
+    LEFT JOIN trails t ON c.trail_id = t.id
+    WHERE 1=1
+  `;
+  const params: string[] = [];
+
+  if (trailIdFilter && trailIdFilter !== 'All') {
+    query += ' AND c.trail_id = ?';
+    params.push(trailIdFilter);
+  }
+  if (statusLevelFilter && statusLevelFilter !== 'All') {
+    query += ' AND c.status_level = ?';
+    params.push(statusLevelFilter);
+  }
+
+  query += ' ORDER BY c.created_at DESC';
+
+  const rows = db.prepare(query).all(...params) as any[];
+
+  return rows.map((r) => ({
+    id: r.id,
+    trailId: r.trail_id,
+    reporterName: r.reporter_name,
+    reporterRole: r.reporter_role,
+    statusLevel: r.status_level,
+    conditionType: r.condition_type,
+    latitude: Number(r.latitude),
+    longitude: Number(r.longitude),
+    locationName: r.location_name,
+    elevation: Number(r.elevation),
+    notes: r.notes,
+    gearRecommended: r.gear_recommended || undefined,
+    upvotes: Number(r.upvotes),
+    createdAt: r.created_at,
+    trailName: r.trail_name || undefined,
+  }));
+}
+
+export function createTrailConditionReport(data: {
+  trailId: string;
+  reporterName: string;
+  reporterRole: string;
+  statusLevel: string;
+  conditionType: string;
+  latitude: number;
+  longitude: number;
+  locationName: string;
+  elevation: number;
+  notes: string;
+  gearRecommended?: string;
+}): TrailConditionReport {
+  const db = getDatabase();
+  const id = `rep_${crypto.randomUUID()}`;
+  const now = new Date().toISOString();
+
+  db.prepare(`
+    INSERT INTO trail_condition_reports (
+      id, trail_id, reporter_name, reporter_role, status_level,
+      condition_type, latitude, longitude, location_name,
+      elevation, notes, gear_recommended, upvotes, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    data.trailId,
+    data.reporterName,
+    data.reporterRole,
+    data.statusLevel,
+    data.conditionType,
+    data.latitude,
+    data.longitude,
+    data.locationName,
+    data.elevation,
+    data.notes,
+    data.gearRecommended || null,
+    0,
+    now
+  );
+
+  return {
+    id,
+    trailId: data.trailId,
+    reporterName: data.reporterName,
+    reporterRole: data.reporterRole,
+    statusLevel: data.statusLevel,
+    conditionType: data.conditionType,
+    latitude: data.latitude,
+    longitude: data.longitude,
+    locationName: data.locationName,
+    elevation: data.elevation,
+    notes: data.notes,
+    gearRecommended: data.gearRecommended,
+    upvotes: 0,
+    createdAt: now,
+  };
+}
+
+export function upvoteTrailConditionReport(id: string): { id: string; upvotes: number } {
+  const db = getDatabase();
+  const row = db.prepare(
+    'UPDATE trail_condition_reports SET upvotes = upvotes + 1 WHERE id = ? RETURNING id, upvotes'
+  ).get(id) as any;
+  if (!row) {
+    throw new Error(`Trail condition report with ID ${id} not found`);
+  }
+  return { id: row.id, upvotes: Number(row.upvotes) };
 }
 
 

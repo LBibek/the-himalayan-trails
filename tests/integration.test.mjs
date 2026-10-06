@@ -21,7 +21,13 @@ import {
   getBookingById,
   initializeSchema,
   getTrailBySlug,
-  getAllTrails
+  getAllTrails,
+  getTeahouses,
+  getTeahouseById,
+  createTeahouseReservation,
+  getTrailConditionReports,
+  createTrailConditionReport,
+  upvoteTrailConditionReport
 } from '../src/lib/db.ts';
 import {
   calculateEstimatedSpO2,
@@ -4563,6 +4569,215 @@ describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () =>
       // 7. Itinerary Planner Import
       assert.ok(plannerSrc.includes('/routes/stitcher'), 'Planner page must cross-link to /routes/stitcher');
       assert.ok(plannerSrc.includes('stitched_route_import'), 'Planner page must support importing stitched route');
+    });
+  });
+
+  describe('32. Work Package 7.3: Authentic Teahouse Lodge Directory & Live Trekker Condition Reports', () => {
+    test('Database schema & authentic teahouses catalog verification', () => {
+      // 1. All teahouses query
+      const allTeahouses = getTeahouses();
+      assert.ok(Array.isArray(allTeahouses), 'getTeahouses must return an array');
+      assert.ok(allTeahouses.length >= 8, `Expected at least 8 authentic teahouses, got ${allTeahouses.length}`);
+
+      // 2. Region filtering
+      const everestLodges = getTeahouses({ region: 'Everest' });
+      assert.ok(everestLodges.length >= 3, 'Everest region must contain at least 3 lodges');
+      assert.ok(everestLodges.every((th) => th.region === 'Everest'), 'All returned lodges must belong to Everest');
+
+      // 3. Village filtering
+      const manangLodges = getTeahouses({ village: 'Manang' });
+      assert.strictEqual(manangLodges.length, 1, 'Manang village should match 1 authentic lodge');
+      assert.strictEqual(manangLodges[0].name, 'Tilicho Peak Lodge & German Bakery');
+
+      // 4. Amenity filtering
+      const solarLodges = getTeahouses({ amenity: 'Solar Hot Showers' });
+      assert.ok(solarLodges.length >= 2, 'Should find multiple lodges with solar hot showers');
+      assert.ok(solarLodges.some((th) => th.village === 'Namche Bazaar'));
+
+      // 5. Single teahouse lookup by ID
+      const namcheLodge = getTeahouseById('teahouse-namche-sherpa-bakery');
+      assert.ok(namcheLodge, 'Namche bakery lodge must exist');
+      assert.strictEqual(namcheLodge.hostName, 'Ang Dawa Sherpa');
+      assert.strictEqual(namcheLodge.elevation, 3440);
+      assert.ok(Array.isArray(namcheLodge.roomTypes) && namcheLodge.roomTypes.length >= 3);
+      assert.ok(Array.isArray(namcheLodge.foodMenu) && namcheLodge.foodMenu.length >= 4);
+      assert.ok(namcheLodge.foodMenu.includes('Sherpa Stew (Syamkpa)'));
+    });
+
+    test('Teahouse reservation ACID transaction & price computation', () => {
+      const reservation = createTeahouseReservation({
+        teahouseId: 'teahouse-namche-sherpa-bakery',
+        guestName: 'Tenzing Norgay Explorer',
+        guestEmail: 'tenzing@expedition.org',
+        guestPhone: '+977 9801122334',
+        checkInDate: '2026-11-15',
+        guestsCount: 2,
+        roomType: 'Deluxe Double with Ensuite Bath',
+        dietaryNotes: 'Vegetarian Sherpa stew, hot tea at 5 AM'
+      });
+
+      assert.ok(reservation.id.startsWith('res_'), 'Reservation ID must have res_ prefix');
+      assert.strictEqual(reservation.status, 'CONFIRMED');
+      assert.strictEqual(reservation.guestsCount, 2);
+      assert.strictEqual(reservation.totalPriceUsd, 70, 'Nightly rate of $35 * 2 guests should be $70');
+      assert.strictEqual(reservation.teahouseName, 'Sherpa Lodge & Bakery');
+      assert.strictEqual(reservation.village, 'Namche Bazaar');
+
+      // Verify direct database persistence
+      const persisted = db.prepare('SELECT * FROM teahouse_reservations WHERE id = ?').get(reservation.id);
+      assert.ok(persisted, 'Reservation must be stored in SQLite database');
+      assert.strictEqual(persisted.guest_name, 'Tenzing Norgay Explorer');
+      assert.strictEqual(persisted.total_price_usd, 70);
+
+      // Verify validation: non-existent teahouse throws
+      assert.throws(() => {
+        createTeahouseReservation({
+          teahouseId: 'invalid-non-existent-lodge',
+          guestName: 'Ghost',
+          guestEmail: 'ghost@example.com',
+          checkInDate: '2026-11-15',
+          guestsCount: 1,
+          roomType: 'Standard'
+        });
+      }, /not found/);
+    });
+
+    test('Live trail condition reports & community upvoting engine', () => {
+      // 1. Initial seeded condition reports
+      const allReports = getTrailConditionReports();
+      assert.ok(Array.isArray(allReports), 'getTrailConditionReports must return an array');
+      assert.ok(allReports.length >= 5, `Expected at least 5 seeded condition reports, got ${allReports.length}`);
+
+      // 2. Query filtered by trailId
+      const choLaReports = getTrailConditionReports({ trailId: 'gokyo-ri-cho-la' });
+      assert.ok(choLaReports.length >= 1, 'Cho La trail must have condition reports');
+      const choLa = choLaReports[0];
+      assert.strictEqual(choLa.statusLevel, 'CAUTION_HAZARD');
+      assert.strictEqual(choLa.conditionType, 'Snow / Ice on Pass');
+      assert.strictEqual(choLa.elevation, 5420);
+      assert.ok(choLa.gearRecommended.includes('Microspikes'));
+
+      // 3. Create a new real-time condition report
+      const newReport = createTrailConditionReport({
+        trailId: 'ebc-trek',
+        reporterName: 'Pemba Dorje Sherpa',
+        reporterRole: 'Certified Sherpa Guide',
+        statusLevel: 'CLEAR_PASSABLE',
+        conditionType: 'Weather Window',
+        latitude: 27.9881,
+        longitude: 86.9250,
+        locationName: 'Gorak Shep to EBC Moraine Path',
+        elevation: 5164,
+        notes: 'Dry compacted trail along Khumbu Glacier moraine. Zero ice hazard today.',
+        gearRecommended: 'Standard trekking poles'
+      });
+
+      assert.ok(newReport.id.startsWith('rep_'), 'Report ID must have rep_ prefix');
+      assert.strictEqual(newReport.upvotes, 0);
+
+      // Verify database retrieval
+      const foundNew = getTrailConditionReports({ trailId: 'ebc-trek' }).find((r) => r.id === newReport.id);
+      assert.ok(foundNew, 'New condition report must be retrievable from database');
+
+      // 4. Community upvote test
+      const initialUpvotes = foundNew.upvotes;
+      const upvoteResult = upvoteTrailConditionReport(newReport.id);
+      assert.strictEqual(upvoteResult.upvotes, initialUpvotes + 1);
+
+      // Verify upvote persisted in SQLite
+      const updatedReport = db.prepare('SELECT upvotes FROM trail_condition_reports WHERE id = ?').get(newReport.id);
+      assert.strictEqual(updatedReport.upvotes, initialUpvotes + 1);
+    });
+
+    test('API Route Handlers contract verification for teahouses and live conditions', () => {
+      const teahousesApi = path.join(process.cwd(), 'src/app/api/teahouses/route.ts');
+      const teahouseDetailApi = path.join(process.cwd(), 'src/app/api/teahouses/[id]/route.ts');
+      const reserveApi = path.join(process.cwd(), 'src/app/api/teahouses/reserve/route.ts');
+      const conditionsApi = path.join(process.cwd(), 'src/app/api/conditions/route.ts');
+      const upvoteApi = path.join(process.cwd(), 'src/app/api/conditions/[id]/upvote/route.ts');
+
+      assert.ok(fs.existsSync(teahousesApi), 'GET /api/teahouses must exist');
+      assert.ok(fs.existsSync(teahouseDetailApi), 'GET /api/teahouses/[id] must exist');
+      assert.ok(fs.existsSync(reserveApi), 'POST /api/teahouses/reserve must exist');
+      assert.ok(fs.existsSync(conditionsApi), 'GET and POST /api/conditions must exist');
+      assert.ok(fs.existsSync(upvoteApi), 'POST /api/conditions/[id]/upvote must exist');
+
+      const teahousesSrc = fs.readFileSync(teahousesApi, 'utf8');
+      const teahouseDetailSrc = fs.readFileSync(teahouseDetailApi, 'utf8');
+      const reserveSrc = fs.readFileSync(reserveApi, 'utf8');
+      const conditionsSrc = fs.readFileSync(conditionsApi, 'utf8');
+      const upvoteSrc = fs.readFileSync(upvoteApi, 'utf8');
+
+      assert.ok(teahousesSrc.includes('export async function GET'), 'Teahouses route must export GET handler');
+      assert.ok(teahouseDetailSrc.includes('export async function GET'), 'Teahouse detail route must export GET handler');
+      assert.ok(reserveSrc.includes('export async function POST'), 'Reserve route must export POST handler');
+      assert.ok(conditionsSrc.includes('export async function GET') && conditionsSrc.includes('export async function POST'), 'Conditions route must export GET and POST handlers');
+      assert.ok(upvoteSrc.includes('export async function POST'), 'Upvote route must export POST handler');
+    });
+
+    test('UI Integration: Teahouse directory, Feed, Reservation Modal & Trail Detail cross-wiring', () => {
+      const pagePath = path.join(process.cwd(), 'src/app/teahouses/page.tsx');
+      const feedPath = path.join(process.cwd(), 'src/components/conditions/TrailConditionsFeed.tsx');
+      const reportModalPath = path.join(process.cwd(), 'src/components/conditions/ReportConditionModal.tsx');
+      const reserveModalPath = path.join(process.cwd(), 'src/components/teahouses/ReserveTeahouseModal.tsx');
+      const navbarPath = path.join(process.cwd(), 'src/components/layout/Navbar.tsx');
+      const trailDetailPath = path.join(process.cwd(), 'src/app/trails/[id]/page.tsx');
+
+      assert.ok(fs.existsSync(pagePath), 'Teahouses directory page must exist');
+      assert.ok(fs.existsSync(feedPath), 'TrailConditionsFeed component must exist');
+      assert.ok(fs.existsSync(reportModalPath), 'ReportConditionModal component must exist');
+      assert.ok(fs.existsSync(reserveModalPath), 'ReserveTeahouseModal component must exist');
+      assert.ok(fs.existsSync(navbarPath), 'Navbar must exist');
+      assert.ok(fs.existsSync(trailDetailPath), 'Trail detail page must exist');
+
+      const pageSrc = fs.readFileSync(pagePath, 'utf8');
+      const feedSrc = fs.readFileSync(feedPath, 'utf8');
+      const reportModalSrc = fs.readFileSync(reportModalPath, 'utf8');
+      const reserveModalSrc = fs.readFileSync(reserveModalPath, 'utf8');
+      const navbarSrc = fs.readFileSync(navbarPath, 'utf8');
+      const trailDetailSrc = fs.readFileSync(trailDetailPath, 'utf8');
+
+      // 1. Directory Page
+      assert.ok(pageSrc.includes("'use client'"), 'Teahouses page must be a client component');
+      assert.ok(pageSrc.includes('data-slot="base"'), 'Page must implement HeroUI data-slot="base"');
+      assert.ok(pageSrc.includes('data-slot="header"'), 'Page must implement HeroUI data-slot="header"');
+      assert.ok(pageSrc.includes('data-slot="body"'), 'Page must implement HeroUI data-slot="body"');
+      assert.ok(pageSrc.includes('data-slot="footer"'), 'Page must implement HeroUI data-slot="footer"');
+      assert.ok(pageSrc.includes('data-slot="trigger"'), 'Page must implement HeroUI data-slot="trigger"');
+      assert.ok(pageSrc.includes('#B68D40'), 'Page must incorporate Himalayan gold theme tokens');
+
+      // 2. Feed Component
+      assert.ok(feedSrc.includes('CLEAR_PASSABLE'), 'Feed must render CLEAR_PASSABLE badge');
+      assert.ok(feedSrc.includes('CAUTION_HAZARD'), 'Feed must render CAUTION_HAZARD badge');
+      assert.ok(feedSrc.includes('BLOCKED_IMPASSABLE'), 'Feed must render BLOCKED_IMPASSABLE badge');
+      assert.ok(feedSrc.includes('Helpful ('), 'Feed must render community helpful upvoting');
+
+      // 3. Modals
+      assert.ok(reportModalSrc.includes('Certified Sherpa Guide'), 'Report modal must support guide role');
+      assert.ok(reserveModalSrc.includes('Room Guaranteed!'), 'Reserve modal must render instant confirmation state');
+
+      // 4. Navbar & Trail Detail cross-wiring
+      assert.ok(navbarSrc.includes('/teahouses'), 'Navbar must link to /teahouses');
+      assert.ok(trailDetailSrc.includes('TrailConditionsFeed'), 'Trail detail page must mount TrailConditionsFeed');
+      assert.ok(trailDetailSrc.includes('ReserveTeahouseModal'), 'Trail detail page must mount ReserveTeahouseModal');
+      assert.ok(trailDetailSrc.includes('Teahouses Along This Route'), 'Trail detail page must feature teahouse section');
+    });
+
+    test('Helper functions positional parameters & strict API input validation contracts', () => {
+      // 1. Positional arguments for getTeahouses(region, village)
+      const positionalTeahouses = getTeahouses('Everest', 'Namche Bazaar');
+      assert.strictEqual(positionalTeahouses.length, 1, 'getTeahouses positional args must filter to 1 lodge');
+      assert.strictEqual(positionalTeahouses[0].name, 'Sherpa Lodge & Bakery');
+
+      // 2. Positional string argument for getTrailConditionReports(trailId)
+      const ebcReports = getTrailConditionReports('ebc-trek');
+      assert.ok(ebcReports.length >= 1, 'getTrailConditionReports with string trailId must filter properly');
+      assert.ok(ebcReports.every((r) => r.trailId === 'ebc-trek'), 'All reports must belong to ebc-trek');
+
+      // 3. Upvoting non-existent report throws error cleanly
+      assert.throws(() => {
+        upvoteTrailConditionReport('non-existent-report-xyz');
+      }, /not found/);
     });
   });
 });
