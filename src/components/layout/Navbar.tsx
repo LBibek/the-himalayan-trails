@@ -26,7 +26,9 @@ import {
   ArrowRight,
   WifiOff,
   HeartPulse,
+  Sparkles,
 } from 'lucide-react';
+import AlpineGlareToggle from '@/components/ui/AlpineGlareToggle';
 
 /* ─────────────────────────────────────────────────────────────── */
 /* Data                                                            */
@@ -64,6 +66,12 @@ const exploreGroup = {
       href: '/stories',
       icon: BookOpen,
       description: 'Verified photo journals & expedition dispatches',
+    },
+    {
+      label: 'Himalayan Matchmaker',
+      href: '/explore/matchmaker',
+      icon: Sparkles,
+      description: 'AI expedition matcher & door-to-door cost simulator',
     },
     {
       label: 'Weather',
@@ -134,11 +142,13 @@ const mobileNavLinks = [
   { label: 'Offline Wilderness', href: '/offline',          icon: WifiOff,        description: 'Cached GPS route packs & emergency SOS guides' },
   { label: 'Weather Office',   href: '/weather',            icon: CloudSun,       description: 'Avalanche risk, summit temps & lapse rates' },
   { label: 'Trekker Stories',  href: '/stories',            icon: BookOpen,       description: 'Verified photo journals & dispatches' },
+  { label: 'Himalayan Matchmaker', href: '/explore/matchmaker', icon: Sparkles,   description: 'AI expedition matcher & true cost simulator' },
   { label: 'Dashboard',        href: '/dashboard',          icon: User,           description: 'Active bookings, badges & reviews' },
   { label: 'Admin Studio',     href: '/admin',              icon: ShieldCheck,    description: 'Expedition operations & catalog management' },
 ];
 
 const secondaryLinks = [
+  { label: 'Himalayan Matchmaker', href: '/explore/matchmaker' },
   { label: 'Teahouse Lodges', href: '/teahouses' },
   { label: 'Acclimatization Advisor', href: '/acclimatization' },
   { label: 'Sherpa Guides & Porters', href: '/guides' },
@@ -404,6 +414,9 @@ export default function Navbar() {
             )}
           </form>
 
+          {/* Alpine Sun-Glare Mode Toggle (4,500m+) */}
+          <AlpineGlareToggle variant="compact" />
+
           {/* Login */}
           <Link
             href="/login"
@@ -517,6 +530,9 @@ export default function Navbar() {
                   </button>
                 )}
               </form>
+
+              {/* Alpine Sun-Glare Mode Toggle */}
+              <AlpineGlareToggle variant="expanded" />
 
               {/* Primary Nav Links */}
               <div className="space-y-1">

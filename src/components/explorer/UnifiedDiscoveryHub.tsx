@@ -1475,6 +1475,17 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                 <span>Wind & Clouds</span>
               </button>
             </div>
+
+            {/* AI Expedition Matchmaker & True Cost Simulator */}
+            <Link
+              href="/explore/matchmaker"
+              data-slot="trigger"
+              className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-[#B68D40] to-amber-500 hover:from-[#c99e4b] hover:to-amber-400 text-black font-extrabold text-xs shadow-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white shrink-0"
+              title="Find your ideal Himalayan trail & calculate full door-to-door cost"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              <span>Matchmaker & Cost</span>
+            </Link>
           </div>
         </div>
 
@@ -2168,6 +2179,27 @@ export function UnifiedDiscoveryHubContent({ defaultLayout = 'split' }: UnifiedD
                   <div className="p-3 space-y-3">
                     {/* Inline Quick Filter Bar */}
                     <div className="space-y-2 pb-2 border-b border-neutral-900">
+                      {/* Discovery Hub Matchmaker Banner */}
+                      <Link
+                        href="/explore/matchmaker"
+                        data-slot="trigger"
+                        className="p-2.5 rounded-xl bg-gradient-to-r from-[#B68D40]/20 via-amber-500/10 to-transparent border border-[#B68D40]/40 hover:border-[#B68D40] text-left transition flex items-center justify-between group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B68D40]"
+                        title="AI Expedition Matchmaker & True Cost Simulator"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="h-4 w-4 text-[#B68D40] shrink-0" />
+                          <div>
+                            <p className="text-xs font-extrabold text-white group-hover:text-[#E2C085]">
+                              Himalayan Matchmaker
+                            </p>
+                            <p className="text-[10px] text-gray-400">
+                              4-step preference wizard & true cost simulator
+                            </p>
+                          </div>
+                        </div>
+                        <ArrowUpRight className="h-3.5 w-3.5 text-[#B68D40] group-hover:translate-x-0.5 transition-transform" />
+                      </Link>
+
                       <div className="flex items-center gap-1.5">
                         <select
                           value={selectedRegion}

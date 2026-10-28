@@ -10,6 +10,7 @@ import { ROUTE_TRACKS } from '@/data/routeTracks';
 import { HIMALAYAN_SUMMITS, ApexSummit } from '@/data/summitTours';
 import FloatingMapPanel from '@/components/ui/FloatingMapPanel';
 import Link from 'next/link';
+import AlpineGlareToggle from '@/components/ui/AlpineGlareToggle';
 
 // Custom Map Controller to programmatically fly to location
 function MapController({ center, zoom }: { center: [number, number]; zoom: number }) {
@@ -729,6 +730,7 @@ export default function LeafletMap({
         >
           {showSummits ? '✓ Apex Summits' : 'Apex Summits'}
         </button>
+        <AlpineGlareToggle variant="map-floating" />
       </div>
 
     </div>

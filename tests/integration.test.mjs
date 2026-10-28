@@ -27,7 +27,11 @@ import {
   createTeahouseReservation,
   getTrailConditionReports,
   createTrailConditionReport,
-  upvoteTrailConditionReport
+  upvoteTrailConditionReport,
+  getCertificateById,
+  getCertificateByBookingId,
+  getCertificateByVerificationCode,
+  createCertificate
 } from '../src/lib/db.ts';
 import {
   calculateEstimatedSpO2,
@@ -56,6 +60,16 @@ import {
   getAllPassCrossingAssessments,
   HIGH_PASS_CROSSING_REGISTRY,
 } from '../src/lib/passCrossingWindow.ts';
+import {
+  calculateTrueCost,
+  matchExpeditions
+} from '../src/lib/matchmaker.ts';
+import {
+  generateCertificateCode,
+  generateDigitalSignature,
+  issueHighAltitudeCertificate,
+  verifyCertificate
+} from '../src/lib/certificates.ts';
 
 describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () => {
   let db;
@@ -4778,6 +4792,402 @@ describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () =>
       assert.throws(() => {
         upvoteTrailConditionReport('non-existent-report-xyz');
       }, /not found/);
+    });
+  });
+
+  /* ─────────────────────────────────────────────────────────────── */
+  /* 33. Work Package 8.1.1: Himalayan Matchmaker & True Cost Simulator */
+  /* ─────────────────────────────────────────────────────────────── */
+  describe('33. Work Package 8.1.1: Himalayan Matchmaker & True Cost Simulator', () => {
+    test('Mathematical True Cost Simulator calculates 5-pillar realistic expenses across regions', () => {
+      const allTrails = getAllTrails();
+      const ebc = allTrails.find((t) => t.slug === 'everest-base-camp');
+      const act = allTrails.find((t) => t.slug === 'annapurna-circuit');
+      const manaslu = allTrails.find((t) => t.slug === 'manaslu-circuit');
+      const mustang = allTrails.find((t) => t.slug === 'upper-mustang');
+      const langtang = allTrails.find((t) => t.slug === 'langtang-valley');
+
+      assert.ok(ebc, 'EBC trail must exist');
+      assert.ok(act, 'Annapurna Circuit must exist');
+      assert.ok(manaslu, 'Manaslu Circuit must exist');
+      assert.ok(mustang, 'Upper Mustang must exist');
+      assert.ok(langtang, 'Langtang Valley must exist');
+
+      // 1. EBC Authentic Teahouse Cost Breakdown (14 days, 5364m)
+      const ebcCost = calculateTrueCost(ebc, 'authentic_teahouse');
+      assert.strictEqual(ebcCost.basePackageUsd, 14 * 95, 'EBC base package: 14 days * $95 = $1330');
+      assert.strictEqual(ebcCost.domesticTransitUsd, 420, 'EBC transit must include Lukla flights ($420)');
+      assert.strictEqual(ebcCost.dailyFoodRateUsd, 35, 'EBC high-altitude food rate must be $35/day');
+      assert.strictEqual(ebcCost.dailyFoodAndShowerUsd, 14 * 35, 'EBC 14 days food & shower = $490');
+      assert.strictEqual(ebcCost.permitsAndTimsUsd, 70, 'EBC Sagarmatha + Khumbu + TIMS = $70');
+      assert.strictEqual(ebcCost.tippingBudgetUsd, Math.round(1330 * 0.15), 'EBC 15% tipping = $200');
+      const expectedEbcTotal = 1330 + 420 + 490 + 70 + 200;
+      assert.strictEqual(ebcCost.totalEstimatedInvestmentUsd, expectedEbcTotal, 'Total EBC investment must sum all 5 pillars');
+
+      // 2. EBC Premium Lodge Cost Breakdown
+      const ebcPremium = calculateTrueCost(ebc, 'premium_lodge');
+      assert.strictEqual(ebcPremium.basePackageUsd, 14 * 140, 'Premium base package: 14 days * $140 = $1960');
+      assert.strictEqual(ebcPremium.dailyFoodRateUsd, 65, 'Premium lodge dining rate must be $65/day');
+      assert.strictEqual(ebcPremium.dailyFoodAndShowerUsd, 14 * 65, 'Premium 14 days food & shower = $910');
+
+      // 3. Manaslu Circuit (Restricted Area Permit RAP $100 + MCAP $30 + ACAP $30 + TIMS $20 = $180)
+      const manasluCost = calculateTrueCost(manaslu, 'authentic_teahouse');
+      assert.strictEqual(manasluCost.domesticTransitUsd, 150, 'Manaslu offroad 4WD transit = $150');
+      assert.strictEqual(manasluCost.permitsAndTimsUsd, 180, 'Manaslu permits must equal $180');
+
+      // 4. Upper Mustang (Restricted Area Permit RAP $500 + ACAP $30 + TIMS $20 = $550)
+      const mustangCost = calculateTrueCost(mustang, 'authentic_teahouse');
+      assert.strictEqual(mustangCost.domesticTransitUsd, 320, 'Mustang flights + 4WD = $320');
+      assert.strictEqual(mustangCost.permitsAndTimsUsd, 550, 'Upper Mustang RAP + ACAP + TIMS = $550');
+
+      // 5. Langtang Valley (70 overland jeep, 50 permits)
+      const langtangCost = calculateTrueCost(langtang, 'authentic_teahouse');
+      assert.strictEqual(langtangCost.domesticTransitUsd, 70, 'Langtang mountain jeep = $70');
+      assert.strictEqual(langtangCost.permitsAndTimsUsd, 50, 'Langtang NP + TIMS = $50');
+
+      // 6. Rolwaling Valley (310 transit, 80 permits GCAP+Sagarmatha+TIMS)
+      const rolwaling = allTrails.find((t) => t.slug === 'rolwaling-valley');
+      if (rolwaling) {
+        const rolwalingCost = calculateTrueCost(rolwaling, 'authentic_teahouse');
+        assert.strictEqual(rolwalingCost.domesticTransitUsd, 310, 'Rolwaling 4WD + Lukla return flight = $310');
+        assert.strictEqual(rolwalingCost.permitsAndTimsUsd, 80, 'Rolwaling GCAP + Sagarmatha + TIMS = $80');
+      }
+    });
+
+    test('AI Matching algorithm evaluates preferences with accurate percentage scores and ranking', () => {
+      const allTrails = getAllTrails();
+
+      // Test Scenario A: Quick 8-day cultural / moderate trek in Spring
+      const matchesA = matchExpeditions(allTrails, {
+        duration: 'short',
+        season: 'spring',
+        fitness: 'casual',
+        vibe: 'cultural_immersion',
+        comfort: 'authentic_teahouse'
+      });
+      assert.ok(matchesA.length > 0, 'Must return matched trails');
+      assert.strictEqual(matchesA[0].trail.slug, 'langtang-valley', 'Langtang Valley must rank #1 for short cultural casual escape');
+      assert.ok(matchesA[0].matchPercentage >= 90, 'Langtang match percentage must be >= 90%');
+      assert.ok(matchesA[0].matchReasons.length >= 2, 'Must supply explanatory match reasons');
+
+      // Test Scenario B: 2-week classic iconic summit trek in Autumn with intermediate fitness
+      const matchesB = matchExpeditions(allTrails, {
+        duration: 'medium',
+        season: 'autumn',
+        fitness: 'intermediate',
+        vibe: 'classic_iconic',
+        comfort: 'authentic_teahouse'
+      });
+      assert.strictEqual(matchesB[0].trail.slug, 'everest-base-camp', 'Everest Base Camp must rank #1 for 2-week classic iconic trek');
+      assert.ok(matchesB[0].matchPercentage >= 95, 'EBC match percentage must be >= 95%');
+
+      // Test Scenario C: Grand 15+ days extreme remote wilderness circuit
+      const matchesC = matchExpeditions(allTrails, {
+        duration: 'long',
+        season: 'autumn',
+        fitness: 'extreme',
+        vibe: 'remote_wilderness',
+        comfort: 'authentic_teahouse'
+      });
+      const topSlug = matchesC[0].trail.slug;
+      assert.ok(topSlug === 'annapurna-circuit' || topSlug === 'manaslu-circuit', 'Long high-pass wilderness must recommend AC or Manaslu');
+      assert.ok(matchesC[0].matchPercentage >= 85, 'Match score must be >= 85%');
+      assert.ok(matchesC.every((m) => m.matchPercentage >= 55 && m.matchPercentage <= 99), 'Match percentages must be bounded between 55% and 99%');
+    });
+
+    test('API Route Handlers contract verification for /api/matchmaker (POST and GET)', () => {
+      const routePath = path.join(process.cwd(), 'src/app/api/matchmaker/route.ts');
+      assert.ok(fs.existsSync(routePath), 'Matchmaker API route file must exist');
+
+      const routeSrc = fs.readFileSync(routePath, 'utf8');
+      assert.ok(routeSrc.includes('export async function POST'), 'Must export POST handler');
+      assert.ok(routeSrc.includes('export async function GET'), 'Must export GET handler');
+      assert.ok(routeSrc.includes('getAllTrails'), 'Must query canonical database trails');
+      assert.ok(routeSrc.includes('matchExpeditions'), 'Must execute matchExpeditions engine');
+    });
+
+    test('UI Integration: Matchmaker wizard page, HeroUI compound slots & cross-wiring', () => {
+      const pagePath = path.join(process.cwd(), 'src/app/explore/matchmaker/page.tsx');
+      const navbarPath = path.join(process.cwd(), 'src/components/layout/Navbar.tsx');
+      const hubPath = path.join(process.cwd(), 'src/components/explorer/UnifiedDiscoveryHub.tsx');
+
+      assert.ok(fs.existsSync(pagePath), 'Matchmaker page file must exist');
+      assert.ok(fs.existsSync(navbarPath), 'Navbar must exist');
+      assert.ok(fs.existsSync(hubPath), 'UnifiedDiscoveryHub must exist');
+
+      const pageSrc = fs.readFileSync(pagePath, 'utf8');
+      const navbarSrc = fs.readFileSync(navbarPath, 'utf8');
+      const hubSrc = fs.readFileSync(hubPath, 'utf8');
+
+      // HeroUI compound slots
+      assert.ok(pageSrc.includes("'use client'"), 'Matchmaker page must be a client component');
+      assert.ok(pageSrc.includes('data-slot="base"'), 'Must implement data-slot="base"');
+      assert.ok(pageSrc.includes('data-slot="header"'), 'Must implement data-slot="header"');
+      assert.ok(pageSrc.includes('data-slot="body"'), 'Must implement data-slot="body"');
+      assert.ok(pageSrc.includes('data-slot="footer"'), 'Must implement data-slot="footer"');
+      assert.ok(pageSrc.includes('data-slot="trigger"'), 'Must implement data-slot="trigger"');
+
+      // Features & CTAs
+      assert.ok(pageSrc.includes('AI Himalayan Matchmaker & True Cost Simulator'), 'Must render matchmaker header badge');
+      assert.ok(pageSrc.includes('/itinerary/planner?trail='), 'Must wire Customize in Itinerary Planner CTA');
+      assert.ok(pageSrc.includes('/trails/'), 'Must wire Book Expedition CTA');
+      assert.ok(pageSrc.includes('totalEstimatedInvestmentUsd'), 'Must render total door-to-door investment');
+
+      // Cross-wiring in Navbar and Discovery Hub
+      assert.ok(navbarSrc.includes('/explore/matchmaker'), 'Navbar must link to /explore/matchmaker');
+      assert.ok(navbarSrc.includes('Himalayan Matchmaker'), 'Navbar must include Himalayan Matchmaker label');
+      assert.ok(hubSrc.includes('/explore/matchmaker'), 'Discovery Hub must link to /explore/matchmaker');
+      assert.ok(hubSrc.includes('Matchmaker'), 'Discovery Hub must display Matchmaker CTA');
+    });
+  });
+
+  /* ─────────────────────────────────────────────────────────────── */
+  /* 34. Work Package 8.1.2: Alpine Sun-Glare & Ultra-High-Contrast Mode */
+  /* ─────────────────────────────────────────────────────────────── */
+  describe('34. Work Package 8.1.2: Alpine Sun-Glare & Ultra-High-Contrast Mode', () => {
+    test('AlpineGlareProvider state persistence and theme provider contract', () => {
+      const providerPath = path.join(process.cwd(), 'src/components/providers/AlpineGlareProvider.tsx');
+      const togglePath = path.join(process.cwd(), 'src/components/ui/AlpineGlareToggle.tsx');
+      const layoutPath = path.join(process.cwd(), 'src/app/layout.tsx');
+
+      assert.ok(fs.existsSync(providerPath), 'AlpineGlareProvider file must exist');
+      assert.ok(fs.existsSync(togglePath), 'AlpineGlareToggle file must exist');
+      assert.ok(fs.existsSync(layoutPath), 'Root layout must exist');
+
+      const providerSrc = fs.readFileSync(providerPath, 'utf8');
+      const toggleSrc = fs.readFileSync(togglePath, 'utf8');
+      const layoutSrc = fs.readFileSync(layoutPath, 'utf8');
+
+      // Provider
+      assert.ok(providerSrc.includes('AlpineGlareProvider'), 'Must export AlpineGlareProvider');
+      assert.ok(providerSrc.includes('useAlpineGlare'), 'Must export useAlpineGlare hook');
+      assert.ok(providerSrc.includes("data-alpine-glare"), 'Must set data-alpine-glare attribute');
+      assert.ok(providerSrc.includes('alpine-glare-mode'), 'Must persist to localStorage alpine-glare-mode');
+
+      // Toggle
+      assert.ok(toggleSrc.includes('useAlpineGlare'), 'Toggle must consume useAlpineGlare');
+      assert.ok(toggleSrc.includes('data-slot="trigger"'), 'Toggle must implement data-slot="trigger"');
+      assert.ok(toggleSrc.includes('aria-pressed='), 'Toggle must implement aria-pressed accessibility state');
+      assert.ok(toggleSrc.includes('data-pressed='), 'Toggle must implement data-pressed state');
+      assert.ok(toggleSrc.includes('#FACC15'), 'Toggle must use alpine safety yellow #FACC15');
+
+      // Root Layout
+      assert.ok(layoutSrc.includes('AlpineGlareProvider'), 'Root layout must wrap app with AlpineGlareProvider');
+    });
+
+    test('Ultra-high contrast palette rules & gloved hand hit areas (>= 56px) in globals.css', () => {
+      const cssPath = path.join(process.cwd(), 'src/app/globals.css');
+      assert.ok(fs.existsSync(cssPath), 'globals.css must exist');
+
+      const cssSrc = fs.readFileSync(cssPath, 'utf8');
+      assert.ok(cssSrc.includes('data-alpine-glare="true"'), 'globals.css must define data-alpine-glare="true" selectors');
+      assert.ok(cssSrc.includes('#000000'), 'Must define stark pitch black #000000');
+      assert.ok(cssSrc.includes('#ffffff'), 'Must define pure titanium white #ffffff');
+      assert.ok(cssSrc.includes('#facc15'), 'Must define alpine safety yellow #facc15');
+      assert.ok(cssSrc.includes('min-height: 56px') && cssSrc.includes('min-width: 56px'), 'Must enforce >= 56px touch hit areas for gloved hands');
+    });
+
+    test('Sun-Glare toggle integration across Navbar and all 3 map canvases', () => {
+      const navbarPath = path.join(process.cwd(), 'src/components/layout/Navbar.tsx');
+      const leafletPath = path.join(process.cwd(), 'src/components/map/LeafletMap.tsx');
+      const cesiumPath = path.join(process.cwd(), 'src/components/map/CesiumGlobeMap.tsx');
+      const offlineMapPath = path.join(process.cwd(), 'src/components/map/OfflineRouteMap.tsx');
+
+      const navbarSrc = fs.readFileSync(navbarPath, 'utf8');
+      const leafletSrc = fs.readFileSync(leafletPath, 'utf8');
+      const cesiumSrc = fs.readFileSync(cesiumPath, 'utf8');
+      const offlineSrc = fs.readFileSync(offlineMapPath, 'utf8');
+
+      assert.ok(navbarSrc.includes('AlpineGlareToggle'), 'Navbar must include AlpineGlareToggle');
+      assert.ok(leafletSrc.includes('AlpineGlareToggle'), 'LeafletMap must mount AlpineGlareToggle');
+      assert.ok(cesiumSrc.includes('AlpineGlareToggle'), 'CesiumGlobeMap must mount AlpineGlareToggle');
+      assert.ok(offlineSrc.includes('AlpineGlareToggle'), 'OfflineRouteMap must mount AlpineGlareToggle');
+    });
+  });
+
+  /* ─────────────────────────────────────────────────────────────── */
+  /* 35. Work Package 8.1.3: Verifiable High-Altitude Completion Certificates */
+  /* ─────────────────────────────────────────────────────────────── */
+  describe('35. Work Package 8.1.3: Verifiable High-Altitude Completion Certificates', () => {
+    test('Cryptographic Certificate Code (CERT-YYYY-XXXXX) & digital signature generation', () => {
+      const code1 = generateCertificateCode('bk_test_100', '2026-10-28');
+      const code2 = generateCertificateCode('bk_test_100', '2026-10-28');
+      const code3 = generateCertificateCode('bk_test_200', '2026-10-28');
+
+      // 1. Format CERT-YYYY-XXXXX
+      assert.match(code1, /^CERT-2026-[A-Z0-9]{5}$/, 'Certificate code must match CERT-YYYY-XXXXX pattern');
+      assert.strictEqual(code1, code2, 'generateCertificateCode must be deterministic for identical inputs');
+      assert.notStrictEqual(code1, code3, 'Different bookings must produce distinct verification codes');
+
+      // 2. Digital Signature
+      const sig1 = generateDigitalSignature(code1, 'Alex Morgan', 5364, 'Everest Base Camp Trek');
+      const sig2 = generateDigitalSignature(code1, 'Alex Morgan', 5364, 'Everest Base Camp Trek');
+      const tamperedSig = generateDigitalSignature(code1, 'Alex Morgan', 8848, 'Everest Base Camp Trek');
+
+      assert.strictEqual(sig1.length, 64, 'Digital signature must be 64-char HMAC SHA-256 hex string');
+      assert.strictEqual(sig1, sig2, 'Signature must be deterministic for identical credentials');
+      assert.notStrictEqual(sig1, tamperedSig, 'Altering elevation must invalidate signature hash');
+    });
+
+    test('Database schema, persistence, and ACID certificate operations in SQLite', () => {
+      // 1. Ensure table exists
+      const tableInfo = db.prepare("PRAGMA table_info(certificates)").all();
+      assert.ok(tableInfo.length >= 10, 'certificates table must have at least 10 columns');
+      const colNames = tableInfo.map((c) => c.name);
+      assert.ok(colNames.includes('id'), 'Must have id');
+      assert.ok(colNames.includes('booking_id'), 'Must have booking_id');
+      assert.ok(colNames.includes('verification_code'), 'Must have verification_code');
+      assert.ok(colNames.includes('digital_signature_hash'), 'Must have digital_signature_hash');
+
+      // 2. Create test booking to attach certificate
+      const testBookingId = `bk_cert_test_${Date.now()}`;
+      const trail = getAllTrails()[0];
+      const now = new Date().toISOString();
+
+      db.prepare(`
+        INSERT INTO bookings (
+          id, trail_id, full_name, email, phone, start_date, travelers, total_price, status, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        testBookingId,
+        trail.id,
+        'Sarah Jenkins',
+        'sarah.jenkins@example.com',
+        '+15550198',
+        '2026-10-15',
+        1,
+        1450,
+        'CONFIRMED',
+        now
+      );
+
+      // 3. Issue certificate using library
+      const cert = issueHighAltitudeCertificate(testBookingId);
+      assert.ok(cert, 'Must return created certificate');
+      assert.strictEqual(cert.bookingId, testBookingId);
+      assert.strictEqual(cert.adventurerName, 'Sarah Jenkins');
+      assert.strictEqual(cert.trailName, trail.name);
+      assert.match(cert.verificationCode, /^CERT-2026-[A-Z0-9]{5}$/);
+      assert.ok(cert.digitalSignatureHash.length === 64);
+
+      // 4. Retrieve by ID, by Booking ID, and by Verification Code
+      const byId = getCertificateById(cert.id);
+      assert.ok(byId, 'getCertificateById must return record');
+      assert.strictEqual(byId.id, cert.id);
+
+      const byBooking = getCertificateByBookingId(testBookingId);
+      assert.ok(byBooking, 'getCertificateByBookingId must return record');
+      assert.strictEqual(byBooking.verificationCode, cert.verificationCode);
+
+      const byCode = getCertificateByVerificationCode(cert.verificationCode);
+      assert.ok(byCode, 'getCertificateByVerificationCode must return record');
+      assert.strictEqual(byCode.adventurerName, 'Sarah Jenkins');
+
+      // 5. Calling issueHighAltitudeCertificate again returns existing record (idempotent)
+      const certSecond = issueHighAltitudeCertificate(testBookingId);
+      assert.strictEqual(certSecond.id, cert.id, 'Issuance must be idempotent');
+
+      // 6. Cannot issue certificate for CANCELLED booking
+      const cancelledBookingId = `bk_cancelled_${Date.now()}`;
+      db.prepare(`
+        INSERT INTO bookings (
+          id, trail_id, full_name, email, phone, start_date, travelers, total_price, status, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        cancelledBookingId,
+        trail.id,
+        'Cancelled Trekker',
+        'cancelled@example.com',
+        '+15550999',
+        '2026-10-15',
+        1,
+        1450,
+        'CANCELLED',
+        now
+      );
+      assert.throws(
+        () => issueHighAltitudeCertificate(cancelledBookingId),
+        /cancelled/i,
+        'Must reject issuing certificate for cancelled booking'
+      );
+    });
+
+    test('Cryptographic verification integrity & tamper detection', () => {
+      const allTrails = getAllTrails();
+      const testBookingId = `bk_tamper_test_${Date.now()}`;
+      const now = new Date().toISOString();
+
+      db.prepare(`
+        INSERT INTO bookings (
+          id, trail_id, full_name, email, phone, start_date, travelers, total_price, status, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        testBookingId,
+        allTrails[0].id,
+        'David Chen',
+        'david@example.com',
+        '+15550299',
+        '2026-11-01',
+        1,
+        1550,
+        'CONFIRMED',
+        now
+      );
+
+      const cert = issueHighAltitudeCertificate(testBookingId);
+
+      // 1. Valid verification
+      const verifySuccess = verifyCertificate(cert.verificationCode);
+      assert.strictEqual(verifySuccess.valid, true, 'Real certificate must verify as valid');
+      assert.strictEqual(verifySuccess.certificate?.adventurerName, 'David Chen');
+
+      // 2. Non-existent verification code
+      const verifyNotFound = verifyCertificate('CERT-2099-FAKEX');
+      assert.strictEqual(verifyNotFound.valid, false, 'Non-existent certificate must fail verification');
+      assert.ok(verifyNotFound.error?.includes('not found'), 'Must explain error');
+
+      // 3. Tampered signature detection
+      db.prepare('UPDATE certificates SET digital_signature_hash = ? WHERE id = ?').run(
+        'tampered00000000000000000000000000000000000000000000000000000000',
+        cert.id
+      );
+      const verifyTampered = verifyCertificate(cert.verificationCode);
+      assert.strictEqual(verifyTampered.valid, false, 'Tampered certificate signature must fail');
+      assert.ok(verifyTampered.error?.includes('signature mismatch'), 'Must detect altered signature');
+    });
+
+    test('API Route Handlers contract verification for /api/certificates/[id]', () => {
+      const routePath = path.join(process.cwd(), 'src/app/api/certificates/[id]/route.ts');
+      assert.ok(fs.existsSync(routePath), 'Certificate API route file must exist');
+
+      const routeSrc = fs.readFileSync(routePath, 'utf8');
+      assert.ok(routeSrc.includes('export async function GET'), 'Must export GET handler');
+      assert.ok(routeSrc.includes('verifyCertificate'), 'Must invoke verifyCertificate');
+      assert.ok(routeSrc.includes('issueHighAltitudeCertificate'), 'Must support issuing for bookings');
+    });
+
+    test('UI Integration: Official Certificate page, @media print PDF optimization & Dashboard wiring', () => {
+      const certPagePath = path.join(process.cwd(), 'src/app/dashboard/certificates/[id]/page.tsx');
+      const dashboardPath = path.join(process.cwd(), 'src/app/dashboard/page.tsx');
+
+      assert.ok(fs.existsSync(certPagePath), 'Certificate page must exist');
+      assert.ok(fs.existsSync(dashboardPath), 'Dashboard page must exist');
+
+      const certPageSrc = fs.readFileSync(certPagePath, 'utf8');
+      const dashboardSrc = fs.readFileSync(dashboardPath, 'utf8');
+
+      // Certificate Page
+      assert.ok(certPageSrc.includes("'use client'"), 'Certificate page must be a client component');
+      assert.ok(certPageSrc.includes('data-slot="base"'), 'Must implement data-slot="base"');
+      assert.ok(certPageSrc.includes('window.print()'), 'Must wire window.print() for 1-click PDF download');
+      assert.ok(certPageSrc.includes('@media print'), 'Must include @media print optimized CSS');
+      assert.ok(certPageSrc.includes('border-4 border-[#B68D40]'), 'Must render commemorative gold alpine border');
+      assert.ok(certPageSrc.includes('Pasang Sherpa, IFMGA'), 'Must render Chief Guide credentials');
+      assert.ok(certPageSrc.includes('SUMMIT SEAL'), 'Must render commemorative summit seal');
+
+      // Dashboard Wiring
+      assert.ok(dashboardSrc.includes('/dashboard/certificates/'), 'Dashboard must link to certificates');
+      assert.ok(dashboardSrc.includes('View Official Certificate'), 'Dashboard must feature View Official Certificate CTA');
     });
   });
 });

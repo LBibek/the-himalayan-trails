@@ -357,3 +357,5 @@ export * from './acclimatization';
 export * from './gear';
 export * from './routes';
 export * from './teahouses';
+export * from './matchmaker';
+export * from './certificate';

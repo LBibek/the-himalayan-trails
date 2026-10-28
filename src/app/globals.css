@@ -109,3 +109,54 @@ body {
   animation-play-state: paused;
 }
 
+/* ─────────────────────────────────────────────────────────────── */
+/* Alpine Sun-Glare & Ultra-High-Contrast Mode (4,500m+)           */
+/* ─────────────────────────────────────────────────────────────── */
+html[data-alpine-glare="true"],
+body[data-alpine-glare="true"] {
+  --background: #000000;
+  --foreground: #ffffff;
+  --surface: #000000;
+  --surface-foreground: #ffffff;
+  --overlay: #080808;
+  --overlay-foreground: #ffffff;
+  --muted: #111111;
+  --muted-foreground: #facc15;
+  --accent: #facc15;
+  --accent-foreground: #000000;
+  --default: #141414;
+  --default-foreground: #ffffff;
+  --border: #facc15;
+  --separator: #facc15;
+  --focus: #facc15;
+  background-color: #000000 !important;
+  color: #ffffff !important;
+}
+
+html[data-alpine-glare="true"] button,
+html[data-alpine-glare="true"] [role="button"],
+html[data-alpine-glare="true"] [data-slot="trigger"],
+html[data-alpine-glare="true"] input,
+html[data-alpine-glare="true"] select,
+body[data-alpine-glare="true"] button,
+body[data-alpine-glare="true"] [role="button"],
+body[data-alpine-glare="true"] [data-slot="trigger"],
+body[data-alpine-glare="true"] input,
+body[data-alpine-glare="true"] select {
+  min-height: 56px;
+  min-width: 56px;
+}
+
+html[data-alpine-glare="true"] a,
+html[data-alpine-glare="true"] button,
+html[data-alpine-glare="true"] input,
+html[data-alpine-glare="true"] select {
+  font-weight: 700;
+}
+
+html[data-alpine-glare="true"] .border,
+html[data-alpine-glare="true"] .border-white\/10,
+html[data-alpine-glare="true"] .border-neutral-800 {
+  border-color: #facc15 !important;
+}
+

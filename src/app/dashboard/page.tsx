@@ -16,7 +16,8 @@ import {
   Printer,
   Sparkles,
   ArrowRight,
-  CheckCircle2
+  CheckCircle2,
+  Award
 } from 'lucide-react';
 
 interface UserInfo {
@@ -326,6 +327,17 @@ export default function DashboardPage() {
                         <Printer className="w-3.5 h-3.5" />
                         Download / Print Official Voucher
                       </Link>
+
+                      {booking.status !== 'CANCELLED' && (
+                        <Link
+                          href={`/dashboard/certificates/${booking.id}`}
+                          data-slot="trigger"
+                          className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-[#E2C085] hover:text-white font-extrabold text-xs transition-colors border border-[#B68D40]/40"
+                        >
+                          <Award className="w-3.5 h-3.5 text-[#B68D40]" />
+                          View Official Certificate
+                        </Link>
+                      )}
 
                       {booking.trailSlug && (
                         <Link

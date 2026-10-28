@@ -29,6 +29,7 @@ import DroneFlightConsole from '@/components/map/DroneFlightConsole';
 import FloatingMapPanel from '@/components/ui/FloatingMapPanel';
 import type { DroneFlightTelemetry } from '@/lib/map/types';
 import { ItineraryDay } from '@/types';
+import AlpineGlareToggle from '@/components/ui/AlpineGlareToggle';
 
 interface CesiumGlobeMapProps {
   initialCenter?: GeoPoint;
@@ -842,6 +843,9 @@ export default function CesiumGlobeMap({
                 >
                   Summit
                 </button>
+                <div className="pl-1">
+                  <AlpineGlareToggle variant="map-floating" />
+                </div>
               </div>
             </div>
           </div>

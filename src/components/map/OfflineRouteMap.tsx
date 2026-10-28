@@ -6,6 +6,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Landmark } from '@/types';
 import { Mountain, Compass } from 'lucide-react';
+import AlpineGlareToggle from '@/components/ui/AlpineGlareToggle';
 
 interface OfflineRouteMapProps {
   routeCoordinates: [number, number, number?][];
@@ -181,6 +182,11 @@ export default function OfflineRouteMap({
             Cached
           </span>
         </div>
+      </div>
+
+      {/* Floating Alpine Glare Toggle */}
+      <div className="absolute top-3 right-3 z-[400] pointer-events-auto">
+        <AlpineGlareToggle variant="map-floating" />
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import fs from 'node:fs';
-import type { Trail, Landmark, Itinerary, ItineraryDay, Story, WeatherReport, Booking, ContactMessage, Inquiry, SharedTrail, User, HimalayanRange, Guide, Teahouse, TeahouseReservation, TrailConditionReport } from '../types';
+import type { Trail, Landmark, Itinerary, ItineraryDay, Story, WeatherReport, Booking, ContactMessage, Inquiry, SharedTrail, User, HimalayanRange, Guide, Teahouse, TeahouseReservation, TrailConditionReport, HighAltitudeCertificate } from '../types';
 import crypto from 'node:crypto';
 
 function hashPassword(password: string): string {
@@ -497,6 +497,26 @@ export function initializeSchema(db: DatabaseSync) {
       gear_recommended TEXT,
       upvotes INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL
+    );
+  `);
+
+  // High-Altitude Completion Certificates table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS certificates (
+      id TEXT PRIMARY KEY,
+      booking_id TEXT NOT NULL UNIQUE,
+      verification_code TEXT NOT NULL UNIQUE,
+      adventurer_name TEXT NOT NULL,
+      trail_name TEXT NOT NULL,
+      trail_slug TEXT NOT NULL,
+      max_elevation INTEGER NOT NULL,
+      total_distance_km REAL NOT NULL,
+      completion_date TEXT NOT NULL,
+      chief_guide_name TEXT NOT NULL,
+      chief_guide_title TEXT NOT NULL,
+      digital_signature_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE
     );
   `);
 
@@ -2097,6 +2117,7 @@ export function getBookingById(id: string): (Booking & {
   endPoint?: string;
   durationDays?: number;
   maxElevation?: number;
+  trailDistanceKm?: number;
   image?: string;
   guideName?: string;
   guideLicense?: string;
@@ -2113,6 +2134,7 @@ export function getBookingById(id: string): (Booking & {
            t.end_point as trail_end_point,
            t.duration_days as trail_duration_days,
            t.max_elevation as trail_max_elevation,
+           t.distance_km as trail_distance_km,
            t.image as trail_image,
            g.name as guide_name,
            g.license_number as guide_license,
@@ -2158,6 +2180,7 @@ export function getBookingById(id: string): (Booking & {
     endPoint: (row.trail_end_point as string) || undefined,
     durationDays: row.trail_duration_days ? Number(row.trail_duration_days) : undefined,
     maxElevation: row.trail_max_elevation ? Number(row.trail_max_elevation) : undefined,
+    trailDistanceKm: row.trail_distance_km ? Number(row.trail_distance_km) : undefined,
     image: (row.trail_image as string) || undefined,
     guideName: (row.guide_name as string) || undefined,
     guideLicense: (row.guide_license as string) || undefined,
@@ -3224,6 +3247,117 @@ export function upvoteTrailConditionReport(id: string): { id: string; upvotes: n
     throw new Error(`Trail condition report with ID ${id} not found`);
   }
   return { id: row.id, upvotes: Number(row.upvotes) };
+}
+
+/* ─────────────────────────────────────────────────────────────── */
+/* High-Altitude Completion Certificates Helper Functions          */
+/* ─────────────────────────────────────────────────────────────── */
+
+export function getCertificateById(id: string): HighAltitudeCertificate | null {
+  const db = getDatabase();
+  const row = db.prepare('SELECT * FROM certificates WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  return {
+    id: row.id as string,
+    bookingId: row.booking_id as string,
+    verificationCode: row.verification_code as string,
+    adventurerName: row.adventurer_name as string,
+    trailName: row.trail_name as string,
+    trailSlug: row.trail_slug as string,
+    maxElevation: Number(row.max_elevation),
+    totalDistanceKm: Number(row.total_distance_km),
+    completionDate: row.completion_date as string,
+    chiefGuideName: row.chief_guide_name as string,
+    chiefGuideTitle: row.chief_guide_title as string,
+    digitalSignatureHash: row.digital_signature_hash as string,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function getCertificateByBookingId(bookingId: string): HighAltitudeCertificate | null {
+  const db = getDatabase();
+  const row = db.prepare('SELECT * FROM certificates WHERE booking_id = ?').get(bookingId) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  return {
+    id: row.id as string,
+    bookingId: row.booking_id as string,
+    verificationCode: row.verification_code as string,
+    adventurerName: row.adventurer_name as string,
+    trailName: row.trail_name as string,
+    trailSlug: row.trail_slug as string,
+    maxElevation: Number(row.max_elevation),
+    totalDistanceKm: Number(row.total_distance_km),
+    completionDate: row.completion_date as string,
+    chiefGuideName: row.chief_guide_name as string,
+    chiefGuideTitle: row.chief_guide_title as string,
+    digitalSignatureHash: row.digital_signature_hash as string,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function getCertificateByVerificationCode(code: string): HighAltitudeCertificate | null {
+  const db = getDatabase();
+  const row = db.prepare('SELECT * FROM certificates WHERE verification_code = ?').get(code) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  return {
+    id: row.id as string,
+    bookingId: row.booking_id as string,
+    verificationCode: row.verification_code as string,
+    adventurerName: row.adventurer_name as string,
+    trailName: row.trail_name as string,
+    trailSlug: row.trail_slug as string,
+    maxElevation: Number(row.max_elevation),
+    totalDistanceKm: Number(row.total_distance_km),
+    completionDate: row.completion_date as string,
+    chiefGuideName: row.chief_guide_name as string,
+    chiefGuideTitle: row.chief_guide_title as string,
+    digitalSignatureHash: row.digital_signature_hash as string,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function createCertificate(data: Omit<HighAltitudeCertificate, 'id' | 'createdAt'> & { id?: string; createdAt?: string }): HighAltitudeCertificate {
+  const db = getDatabase();
+  const id = data.id || `cert_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const now = data.createdAt || new Date().toISOString();
+
+  db.prepare(`
+    INSERT INTO certificates (
+      id, booking_id, verification_code, adventurer_name, trail_name,
+      trail_slug, max_elevation, total_distance_km, completion_date,
+      chief_guide_name, chief_guide_title, digital_signature_hash, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    data.bookingId,
+    data.verificationCode,
+    data.adventurerName,
+    data.trailName,
+    data.trailSlug,
+    data.maxElevation,
+    data.totalDistanceKm,
+    data.completionDate,
+    data.chiefGuideName,
+    data.chiefGuideTitle,
+    data.digitalSignatureHash,
+    now
+  );
+
+  return {
+    id,
+    bookingId: data.bookingId,
+    verificationCode: data.verificationCode,
+    adventurerName: data.adventurerName,
+    trailName: data.trailName,
+    trailSlug: data.trailSlug,
+    maxElevation: data.maxElevation,
+    totalDistanceKm: data.totalDistanceKm,
+    completionDate: data.completionDate,
+    chiefGuideName: data.chiefGuideName,
+    chiefGuideTitle: data.chiefGuideTitle,
+    digitalSignatureHash: data.digitalSignatureHash,
+    createdAt: now,
+  };
 }
 
 
