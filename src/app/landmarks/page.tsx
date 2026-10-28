@@ -4,6 +4,8 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { MapPin, ExternalLink, ShieldCheck, Loader2, AlertCircle } from 'lucide-react';
 import { Landmark } from '@/types';
+import AudioPronunciationPlayer from '@/components/ui/AudioPronunciationPlayer';
+import { getCulturalLoreByLandmarkName } from '@/lib/culturalHeritage';
 
 export default function LandmarksPage() {
   const [landmarks, setLandmarks] = useState<Landmark[]>([]);
@@ -132,6 +134,26 @@ export default function LandmarksPage() {
                     <p className="text-xs text-slate-400 leading-relaxed">
                       {landmark.description}
                     </p>
+
+                    {(() => {
+                      const lore = getCulturalLoreByLandmarkName(landmark.name);
+                      if (!lore) return null;
+                      return (
+                        <div className="pt-1">
+                          <AudioPronunciationPlayer
+                            variant="compact"
+                            item={{
+                              name: lore.name,
+                              nativeScript: lore.nativeScript,
+                              phonetics: lore.phonetics,
+                              syllables: lore.syllables,
+                              englishMeaning: lore.englishMeaning,
+                              tibetanFrequencyHz: lore.tibetanFrequencyHz,
+                            }}
+                          />
+                        </div>
+                      );
+                    })()}
 
                     <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-[11px] space-y-1">
                       <div className="text-slate-400 flex items-center gap-1 font-semibold">

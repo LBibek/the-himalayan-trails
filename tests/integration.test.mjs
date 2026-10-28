@@ -70,6 +70,23 @@ import {
   issueHighAltitudeCertificate,
   verifyCertificate
 } from '../src/lib/certificates.ts';
+import {
+  formatEmergencySosMessage,
+  generateSmsUri,
+  calculateToblerHikingSpeed,
+  calculateTrekkingTimeMinutes,
+  formatTrekkingTime,
+  findNextLodgeOrCheckpoint,
+  HIMALAYAN_EMERGENCY_CONTACTS
+} from '../src/lib/emergencySos.ts';
+import {
+  HIMALAYAN_CULTURAL_REGISTRY,
+  BUDDHIST_TRAIL_ETIQUETTE,
+  getAllCulturalLore,
+  getCulturalLoreById,
+  getCulturalLoreByLandmarkName,
+  getEtiquetteGuidelines
+} from '../src/lib/culturalHeritage.ts';
 
 describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () => {
   let db;
@@ -5188,6 +5205,399 @@ describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () =>
       // Dashboard Wiring
       assert.ok(dashboardSrc.includes('/dashboard/certificates/'), 'Dashboard must link to certificates');
       assert.ok(dashboardSrc.includes('View Official Certificate'), 'Dashboard must feature View Official Certificate CTA');
+    });
+  });
+
+  describe('36. Work Package 8.2: In-Field Mountain Safety & Cultural Companion', () => {
+    test('formatEmergencySosMessage compresses survival telemetry into strictly <= 160 characters', () => {
+      // 1. Standard Case matching canonical specification
+      const standardSos = formatEmergencySosMessage({
+        condition: 'AMS/HAPE/HACE',
+        partySize: 2,
+        casualtiesCount: 1,
+        latitude: 27.9892,
+        longitude: 86.8291,
+        altitudeMeters: 4940,
+        checkpoint: 'Lobuche',
+        batteryLevel: 22,
+        contactNumber: '+97714123456',
+        requirements: 'HELI RESCUE O2',
+      });
+
+      assert.ok(standardSos.includes('SOS! 2 PAX (1 HAPE/HACE).'), 'Must format PAX and casualties');
+      assert.ok(standardSos.includes('LOC: 27.9892N, 86.8291E (4940m Lobuche)'), 'Must include coordinates, altitude and checkpoint');
+      assert.ok(standardSos.includes('BAT: 22%.'), 'Must include battery status');
+      assert.ok(standardSos.includes('CONTACT: +97714123456.'), 'Must include emergency contact');
+      assert.ok(standardSos.includes('REQ: HELI RESCUE O2.'), 'Must include extraction requirements');
+      assert.ok(standardSos.length <= 160, `Standard SOS length (${standardSos.length}) must be <= 160 characters`);
+
+      // 2. Extreme length case with verbose checkpoint and custom text
+      const extremeSos = formatEmergencySosMessage({
+        condition: 'FRACTURE/TRAUMA',
+        partySize: 6,
+        casualtiesCount: 3,
+        latitude: 28.7945123,
+        longitude: 83.9123456,
+        altitudeMeters: 5416,
+        checkpoint: 'Thorong High Pass Glacial Crest South Col Sanctuary',
+        batteryLevel: 9,
+        contactNumber: '+977-1-4123456-EXTENSION-99',
+        requirements: 'HELI EVAC + O2 REQ STRETCHER IMMEDIATE DOCTOR',
+      });
+
+      assert.ok(extremeSos.length <= 160, `Extreme payload length (${extremeSos.length}) must strictly remain <= 160 characters`);
+      assert.ok(extremeSos.includes('SOS!'), 'Must preserve SOS marker');
+      // 3. Preservation of non-heli requirements under extreme length compression
+      const doctorAdviceMsg = formatEmergencySosMessage({
+        condition: 'AMS/HAPE/HACE',
+        partySize: 8,
+        casualtiesCount: 2,
+        latitude: 27.9892,
+        longitude: 86.8291,
+        altitudeMeters: 4940,
+        checkpoint: 'Lobuche High Himalayan Ridge Moraine Outpost',
+        contactNumber: '+97714123456',
+        requirements: 'DOCTOR ADVICE URGENT',
+      });
+      assert.ok(doctorAdviceMsg.length <= 160, 'Must not exceed 160 chars');
+      assert.ok(doctorAdviceMsg.includes('DOC ADVICE') || doctorAdviceMsg.includes('DOCTOR'), 'Must preserve doctor advice request instead of falsely converting to HELI O2');
+
+      const groundSarMsg = formatEmergencySosMessage({
+        condition: 'LOST/BLIZZARD',
+        partySize: 4,
+        casualtiesCount: 4,
+        latitude: 28.1,
+        longitude: 85.5,
+        altitudeMeters: 4200,
+        checkpoint: 'Gosaikunda Sacred High Pass Sanctuary',
+        requirements: 'GROUND SAR TEAM',
+      });
+      assert.ok(groundSarMsg.length <= 160);
+      assert.ok(groundSarMsg.includes('SAR TEAM'), 'Must abbreviate ground SAR team cleanly without converting to HELI O2');
+
+      // 4. Non-finite or undefined coordinate resilience
+      const fallbackCoordMsg = formatEmergencySosMessage({
+        condition: 'AVALANCHE',
+        partySize: 3,
+        casualtiesCount: 1,
+        latitude: NaN,
+        longitude: NaN,
+      });
+      assert.ok(fallbackCoordMsg.includes('0.0000N, 0.0000E'), 'Must fallback to 0.0000 coordinates if NaN');
+      assert.ok(fallbackCoordMsg.length <= 160);
+
+      // 5. Various condition tags
+      const traumaMsg = formatEmergencySosMessage({
+        condition: 'FRACTURE/TRAUMA',
+        partySize: 1,
+        casualtiesCount: 1,
+        latitude: 27.8,
+        longitude: 86.7,
+      });
+      assert.ok(traumaMsg.includes('TRAUMA'), 'Must abbreviate condition cleanly');
+      assert.ok(traumaMsg.length <= 160);
+
+      const blizzardMsg = formatEmergencySosMessage({
+        condition: 'LOST/BLIZZARD',
+        partySize: 4,
+        casualtiesCount: 4,
+        latitude: 28.1,
+        longitude: 85.5,
+      });
+      assert.ok(blizzardMsg.includes('BLIZZARD'), 'Must abbreviate blizzard condition');
+      assert.ok(blizzardMsg.length <= 160);
+    });
+
+    test('generateSmsUri generates valid RFC-compliant SMS protocol URI with encoded body', () => {
+      const uri = generateSmsUri('+977-1-4123456', 'SOS! 2 PAX. LOC: 27.9892N, 86.8291E');
+      assert.ok(uri.startsWith('sms:+97714123456?body='), 'Must sanitize phone and set body param');
+      assert.ok(uri.includes(encodeURIComponent('SOS! 2 PAX.')), 'Must URL-encode SMS payload');
+    });
+
+    test('HIMALAYAN_EMERGENCY_CONTACTS includes verified SAR dispatch hotlines', () => {
+      assert.ok(HIMALAYAN_EMERGENCY_CONTACTS.length >= 3, 'Must contain at least 3 emergency contacts');
+
+      const sarHeli = HIMALAYAN_EMERGENCY_CONTACTS.find((c) => c.phone.includes('4123456'));
+      assert.ok(sarHeli, 'Nepal SAR Heli Ops contact must exist');
+      assert.ok(sarHeli?.frequency?.includes('156.800 MHz'), 'Must specify VHF Marine Ch 16 distress line');
+
+      const hra = HIMALAYAN_EMERGENCY_CONTACTS.find((c) => c.name.includes('Himalayan Rescue Association'));
+      assert.ok(hra, 'HRA contact must exist');
+
+      const police = HIMALAYAN_EMERGENCY_CONTACTS.find((c) => c.phone === '1144');
+      assert.ok(police, 'Tourist Police 1144 hotline must exist');
+    });
+
+    test("Tobler's Hiking Function mathematical physics calculations", () => {
+      // Flat ground (slope = 0)
+      const flatSpeed = calculateToblerHikingSpeed(0, 3.0);
+      assert.strictEqual(flatSpeed, 3.0, 'Flat terrain must match 3.0 km/h baseline');
+
+      // Moderate ascent (slope = +0.15: 150m climb per km)
+      const climbSpeed = calculateToblerHikingSpeed(0.15, 3.0);
+      assert.ok(climbSpeed < 3.0, 'Ascent speed must decrease due to gravity');
+      assert.ok(climbSpeed >= 0.5, 'Ascent speed must remain bounded >= 0.5 km/h');
+
+      // Gentle descent (slope = -0.05: slight downhill optimum)
+      const gentleDescentSpeed = calculateToblerHikingSpeed(-0.05, 3.0);
+      assert.ok(gentleDescentSpeed > 3.0, 'Gentle descent must increase velocity');
+
+      // Steep descent (slope = -0.30: steep technical downhill braking)
+      const steepDescentSpeed = calculateToblerHikingSpeed(-0.30, 3.0);
+      assert.ok(steepDescentSpeed < gentleDescentSpeed, 'Steep technical descent must require braking');
+
+      // Trekking time calculation
+      // 3.4 km flat: 3.4 / 3.0 = 1.133 hrs = ~68 minutes
+      const flatMins = calculateTrekkingTimeMinutes(3.4, 0, 3.0);
+      assert.ok(flatMins >= 65 && flatMins <= 70, `Flat 3.4km should take ~68m, got ${flatMins}`);
+
+      // 3.4 km with +210m climb: Tobler adjusts for vertical climb
+      const climbMins = calculateTrekkingTimeMinutes(3.4, 210, 3.0);
+      assert.ok(climbMins > flatMins, 'Climb must take longer than flat terrain');
+      assert.ok(climbMins >= 70 && climbMins <= 90, `Climb 3.4km +210m should take ~75-85m, got ${climbMins}`);
+
+      // Formatted trekking time string
+      assert.strictEqual(formatTrekkingTime(75), '~1h 15m');
+      assert.strictEqual(formatTrekkingTime(45), '~45m');
+      assert.strictEqual(formatTrekkingTime(120), '~2h');
+    });
+
+    test('findNextLodgeOrCheckpoint identifies upcoming lodge and formats tactical HUD strip', () => {
+      // Mock trail route from Dingboche (4,410m) to Lobuche (4,940m) to Gorak Shep (5,164m)
+      const routeCoordinates = [
+        [27.892, 86.832, 4410], // 0: Dingboche
+        [27.915, 86.828, 4620], // 1: Thokla
+        [27.940, 86.825, 4730], // 2: Thokla Pass
+        [27.9892, 86.8291, 4940], // 3: Lobuche
+        [28.012, 86.835, 5164], // 4: Gorak Shep
+      ];
+
+      const mockLandmarks = [
+        {
+          id: 'lm-dingboche',
+          name: 'Dingboche',
+          category: 'Village',
+          elevation: 4410,
+          region: 'Khumbu',
+          coordinates: { lat: 27.892, lng: 86.832 },
+          image: '',
+          description: 'Acclimatization village',
+          permitRequired: 'Khumbu Permit',
+          associatedTrail: 'everest-base-camp',
+        },
+        {
+          id: 'lm-lobuche',
+          name: 'Lobuche',
+          category: 'Lodge',
+          elevation: 4940,
+          region: 'Khumbu',
+          coordinates: { lat: 27.9892, lng: 86.8291 },
+          image: '',
+          description: 'High altitude teahouse settlement',
+          permitRequired: 'Khumbu Permit',
+          associatedTrail: 'everest-base-camp',
+        },
+        {
+          id: 'lm-gorakshep',
+          name: 'Gorak Shep',
+          category: 'Lodge',
+          elevation: 5164,
+          region: 'Khumbu',
+          coordinates: { lat: 28.012, lng: 86.835 },
+          image: '',
+          description: 'Final outpost before Everest Base Camp',
+          permitRequired: 'Khumbu Permit',
+          associatedTrail: 'everest-base-camp',
+        },
+      ];
+
+      // Trekker positioned at Thokla Pass (index 2) climbing toward Lobuche
+      const currentPos = [27.940, 86.825];
+      const result = findNextLodgeOrCheckpoint(
+        currentPos,
+        routeCoordinates,
+        mockLandmarks,
+        4730
+      );
+
+      assert.ok(result.nextLandmark, 'Must identify next landmark');
+      assert.strictEqual(result.nextLandmark?.name, 'Lobuche', 'Next lodge must be Lobuche');
+      assert.ok(result.distanceKm > 0, 'Distance must be positive');
+      assert.strictEqual(result.elevationDeltaM, 210, 'Elevation delta must be 4940 - 4730 = 210m');
+      assert.ok(result.estimatedMinutes > 0, 'Estimated minutes must be calculated');
+      assert.ok(result.formattedHud.startsWith('📍 Next: Lobuche (4,940m)'), 'HUD must start with landmark name and elevation');
+      assert.ok(result.formattedHud.includes('+210m climb'), 'HUD must indicate climb');
+      assert.ok(result.formattedHud.includes('ahead'), 'HUD must indicate ahead');
+
+      // Trekker positioned at the trail terminus (index 4: Gorak Shep / Destination)
+      const arrivedPos = [28.012, 86.835];
+      const arrivedResult = findNextLodgeOrCheckpoint(
+        arrivedPos,
+        routeCoordinates,
+        mockLandmarks,
+        5164
+      );
+      assert.ok(arrivedResult.formattedHud.includes('Destination Reached'), 'HUD must indicate destination reached at terminus');
+      assert.strictEqual(arrivedResult.distanceKm, 0, 'Distance must be 0 at destination');
+      assert.strictEqual(arrivedResult.elevationDeltaM, 0, 'Elevation delta must be 0 at destination');
+      assert.strictEqual(arrivedResult.estimatedMinutes, 0, 'Estimated minutes must be 0 at destination');
+    });
+
+    test('Sherpa Cultural Heritage Registry data integrity and linguistic completeness', () => {
+      const allLore = getAllCulturalLore();
+      assert.ok(allLore.length >= 7, 'Must register at least 7 iconic Himalayan cultural entities');
+
+      // 1. Chomolungma
+      const chomolungma = getCulturalLoreById('chomolungma');
+      assert.ok(chomolungma, 'Chomolungma must be registered');
+      assert.strictEqual(chomolungma?.name, 'Chomolungma');
+      assert.strictEqual(chomolungma?.phonetics, 'Cho-mo-lung-ma');
+      assert.deepStrictEqual(chomolungma?.syllables, ['Cho', 'mo', 'lung', 'ma']);
+      assert.ok(chomolungma?.englishMeaning.includes('Mother Goddess'));
+      assert.strictEqual(chomolungma?.elevationMeters, 8848.86);
+      assert.strictEqual(chomolungma?.tibetanFrequencyHz, 432);
+
+      // 2. Lhotse
+      const lhotse = getCulturalLoreById('lhotse');
+      assert.ok(lhotse, 'Lhotse must be registered');
+      assert.strictEqual(lhotse?.phonetics, 'Lho-tse');
+      assert.strictEqual(lhotse?.englishMeaning, 'South Peak');
+
+      // 3. Ama Dablam
+      const amaDablam = getCulturalLoreById('ama-dablam');
+      assert.ok(amaDablam, 'Ama Dablam must be registered');
+      assert.strictEqual(amaDablam?.phonetics, 'Ah-mah Dah-blahm');
+      assert.ok(amaDablam?.englishMeaning.includes("Mother's Necklace"));
+
+      // 4. Tengboche
+      const tengboche = getCulturalLoreById('tengboche');
+      assert.ok(tengboche, 'Tengboche must be registered');
+      assert.strictEqual(tengboche?.phonetics, 'Teng-bo-che');
+      assert.ok(tengboche?.lore.includes('Mani Rimdu'));
+
+      // 5. Thorong La
+      const thorongLa = getCulturalLoreById('thorong-la');
+      assert.ok(thorongLa, 'Thorong La must be registered');
+      assert.strictEqual(thorongLa?.elevationMeters, 5416);
+      assert.strictEqual(thorongLa?.phonetics, 'Tho-rong Lah');
+
+      // 6. Muktinath
+      const muktinath = getCulturalLoreById('muktinath');
+      assert.ok(muktinath, 'Muktinath must be registered');
+      assert.ok(muktinath?.englishMeaning.includes('Place of Liberation') || muktinath?.englishMeaning.includes('Hundred Sacred Waters'));
+
+      // 7. Kyanjin Gompa
+      const kyanjin = getCulturalLoreById('kyanjin-gompa');
+      assert.ok(kyanjin, 'Kyanjin Gompa must be registered');
+      assert.strictEqual(kyanjin?.phonetics, 'Kyan-jin Gom-pah');
+
+      // 8. Machapuchare
+      const machapuchare = getCulturalLoreById('machapuchare');
+      assert.ok(machapuchare, 'Machapuchare must be registered');
+      assert.ok(machapuchare?.lore.includes('unclimbed') || machapuchare?.lore.includes('sacred'));
+
+      // Landmark name lookup helper
+      const lookup1 = getCulturalLoreByLandmarkName('Tengboche Monastery');
+      assert.strictEqual(lookup1?.id, 'tengboche', 'Must resolve Tengboche from partial string');
+
+      const lookup2 = getCulturalLoreByLandmarkName('Mount Everest (Chomolungma)');
+      assert.strictEqual(lookup2?.id, 'chomolungma', 'Must resolve Chomolungma');
+
+      const lookup3 = getCulturalLoreByLandmarkName('Mount Everest');
+      assert.strictEqual(lookup3?.id, 'chomolungma', 'Must resolve Chomolungma from Mount Everest alias');
+
+      const lookup4 = getCulturalLoreByLandmarkName('Everest Base Camp');
+      assert.strictEqual(lookup4?.id, 'chomolungma', 'Must resolve Chomolungma from Everest Base Camp alias');
+
+      const lookup5 = getCulturalLoreByLandmarkName('Thorong La Pass');
+      assert.strictEqual(lookup5?.id, 'thorong-la', 'Must resolve Thorong La from pass alias');
+    });
+
+    test('Buddhist Trail Etiquette & Mountain Philosophy Guide completeness', () => {
+      const etiquette = getEtiquetteGuidelines();
+      assert.ok(etiquette.length >= 5, 'Must contain at least 5 Buddhist etiquette practices');
+
+      const kora = etiquette.find((e) => e.id === 'clockwise-kora');
+      assert.ok(kora, 'Clockwise Kora rule must exist');
+      assert.ok(kora?.detailedPractice.includes('clockwise'), 'Must explain clockwise circumambulation');
+
+      const gear = etiquette.find((e) => e.id === 'dining-gear-respect');
+      assert.ok(gear, 'Gear respect taboo must exist');
+      assert.strictEqual(gear?.severity, 'Strict Taboo');
+
+      const mountain = etiquette.find((e) => e.id === 'sacred-mountain-sanctity');
+      assert.ok(mountain, 'Mountain sanctity rule must exist');
+
+      const gompa = etiquette.find((e) => e.id === 'monastery-puja-etiquette');
+      assert.ok(gompa, 'Monastery puja etiquette must exist');
+
+      const flags = etiquette.find((e) => e.id === 'prayer-flags-and-mani-stones');
+      assert.ok(flags, 'Prayer flags & mani stone dignity must exist');
+    });
+
+    test('UI Integration: EmergencySosModal, OfflineRouteMap scrubber, AudioPronunciationPlayer and Pages', () => {
+      const sosModalPath = path.join(process.cwd(), 'src/components/offline/EmergencySosModal.tsx');
+      const offlineMapPath = path.join(process.cwd(), 'src/components/map/OfflineRouteMap.tsx');
+      const audioPlayerPath = path.join(process.cwd(), 'src/components/ui/AudioPronunciationPlayer.tsx');
+      const offlinePagePath = path.join(process.cwd(), 'src/app/offline/page.tsx');
+      const trailPagePath = path.join(process.cwd(), 'src/app/trails/[id]/page.tsx');
+      const landmarksPagePath = path.join(process.cwd(), 'src/app/landmarks/page.tsx');
+      const discoveryHubPath = path.join(process.cwd(), 'src/components/explorer/UnifiedDiscoveryHub.tsx');
+
+      assert.ok(fs.existsSync(sosModalPath), 'EmergencySosModal.tsx must exist');
+      assert.ok(fs.existsSync(offlineMapPath), 'OfflineRouteMap.tsx must exist');
+      assert.ok(fs.existsSync(audioPlayerPath), 'AudioPronunciationPlayer.tsx must exist');
+      assert.ok(fs.existsSync(offlinePagePath), 'src/app/offline/page.tsx must exist');
+      assert.ok(fs.existsSync(trailPagePath), 'src/app/trails/[id]/page.tsx must exist');
+      assert.ok(fs.existsSync(landmarksPagePath), 'src/app/landmarks/page.tsx must exist');
+      assert.ok(fs.existsSync(discoveryHubPath), 'src/components/explorer/UnifiedDiscoveryHub.tsx must exist');
+
+      const sosModalSrc = fs.readFileSync(sosModalPath, 'utf8');
+      const offlineMapSrc = fs.readFileSync(offlineMapPath, 'utf8');
+      const audioPlayerSrc = fs.readFileSync(audioPlayerPath, 'utf8');
+      const offlinePageSrc = fs.readFileSync(offlinePagePath, 'utf8');
+      const trailPageSrc = fs.readFileSync(trailPagePath, 'utf8');
+      const landmarksPageSrc = fs.readFileSync(landmarksPagePath, 'utf8');
+      const discoveryHubSrc = fs.readFileSync(discoveryHubPath, 'utf8');
+
+      // EmergencySosModal contracts
+      assert.ok(sosModalSrc.includes('data-slot="base"'), 'EmergencySosModal must implement data-slot="base"');
+      assert.ok(sosModalSrc.includes('data-slot="header"'), 'EmergencySosModal must implement data-slot="header"');
+      assert.ok(sosModalSrc.includes('data-slot="body"'), 'EmergencySosModal must implement data-slot="body"');
+      assert.ok(sosModalSrc.includes('data-slot="footer"'), 'EmergencySosModal must implement data-slot="footer"');
+      assert.ok(sosModalSrc.includes('Send SMS Dispatch'), 'Must feature Send SMS Dispatch button');
+      assert.ok(sosModalSrc.includes('Copy SOS Payload'), 'Must feature Copy SOS Payload button');
+      assert.ok(sosModalSrc.includes('formatEmergencySosMessage'), 'Must invoke formatEmergencySosMessage');
+      assert.ok(sosModalSrc.includes('/ 160 chars'), 'Must display 160 characters SMS boundary meter');
+
+      // OfflineRouteMap Scrubber & HUD contracts
+      assert.ok(offlineMapSrc.includes('findNextLodgeOrCheckpoint'), 'OfflineRouteMap must invoke findNextLodgeOrCheckpoint');
+      assert.ok(offlineMapSrc.includes('type="range"'), 'OfflineRouteMap must feature interactive scrubber range slider');
+      assert.ok(offlineMapSrc.includes('GPS My Location'), 'OfflineRouteMap must feature GPS location snapping');
+      assert.ok(offlineMapSrc.includes('trekker-position-beacon'), 'OfflineRouteMap must render animated trekker position beacon');
+      assert.ok(offlineMapSrc.includes('useAlpineGlare'), 'OfflineRouteMap must support Alpine Sun-Glare mode');
+      assert.ok(offlineMapSrc.includes('haversineDistanceKm'), 'OfflineRouteMap must use haversine geodesic calculation');
+
+      // AudioPronunciationPlayer contracts
+      assert.ok(audioPlayerSrc.includes('AudioContext'), 'AudioPronunciationPlayer must use Web Audio API oscillator synthesis');
+      assert.ok(audioPlayerSrc.includes('speechSynthesis'), 'AudioPronunciationPlayer must support speech synthesis');
+      assert.ok(audioPlayerSrc.includes('data-slot="base"'), 'AudioPronunciationPlayer must implement HeroUI data-slot="base"');
+      assert.ok(audioPlayerSrc.includes('animate-bounce'), 'AudioPronunciationPlayer must render animated frequency waves');
+      assert.ok(audioPlayerSrc.includes('stopAudio'), 'AudioPronunciationPlayer must stop audio and active oscillators cleanly');
+
+      // Offline Hub Page wiring
+      assert.ok(offlinePageSrc.includes('EmergencySosModal'), 'Offline Hub page must mount EmergencySosModal');
+      assert.ok(offlinePageSrc.includes('Satellite / 2G SOS Dispatch'), 'Offline Hub page must feature SOS action button');
+      assert.ok(offlinePageSrc.includes('Sherpa Culture & Etiquette'), 'Offline Hub page must have Sherpa culture tab');
+      assert.ok(offlinePageSrc.includes('AudioPronunciationPlayer'), 'Offline Hub page must feature AudioPronunciationPlayer');
+
+      // Trail Detail Page wiring
+      assert.ok(trailPageSrc.includes('AudioPronunciationPlayer'), 'Trail Detail page must feature AudioPronunciationPlayer');
+      assert.ok(trailPageSrc.includes('Sherpa Cultural Companion'), 'Trail Detail page must feature Sherpa Cultural Companion section');
+
+      // Landmarks Discovery Page and Discovery Hub wiring
+      assert.ok(landmarksPageSrc.includes('AudioPronunciationPlayer'), 'Landmarks Discovery page must feature AudioPronunciationPlayer');
+      assert.ok(discoveryHubSrc.includes('AudioPronunciationPlayer'), 'Discovery Hub LandmarkQuickSpecs must feature AudioPronunciationPlayer');
     });
   });
 });

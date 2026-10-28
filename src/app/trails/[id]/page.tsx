@@ -31,6 +31,12 @@ import {
   calculatePackSize,
   generateEmergencyGuide,
 } from '@/lib/offline/trailStorage';
+import AudioPronunciationPlayer from '@/components/ui/AudioPronunciationPlayer';
+import {
+  getAllCulturalLore,
+  getCulturalLoreByLandmarkName,
+  getEtiquetteGuidelines,
+} from '@/lib/culturalHeritage';
 
 const CesiumGlobeMap = dynamic(() => import('@/components/map/CesiumGlobeMap'), {
   ssr: false,
@@ -707,6 +713,26 @@ export default function TrailDetailPage() {
                           <p className="text-xs font-bold text-white truncate">{label}</p>
                           {lm && <p className="text-[10px] text-slate-400">{lm.elevation.toLocaleString()}m · {lm.category}</p>}
                         </div>
+                        {lm && getCulturalLoreByLandmarkName(lm.name) && (
+                          <div className="shrink-0">
+                            {(() => {
+                              const cl = getCulturalLoreByLandmarkName(lm.name)!;
+                              return (
+                                <AudioPronunciationPlayer
+                                  variant="compact"
+                                  item={{
+                                    name: cl.name,
+                                    nativeScript: cl.nativeScript,
+                                    phonetics: cl.phonetics,
+                                    syllables: cl.syllables,
+                                    englishMeaning: cl.englishMeaning,
+                                    tibetanFrequencyHz: cl.tibetanFrequencyHz,
+                                  }}
+                                />
+                              );
+                            })()}
+                          </div>
+                        )}
                         <span className="text-[10px] text-[#B68D40] font-bold shrink-0">#{i + 1}</span>
                         {lm && (
                           <Link href={`/map?lat=${lm.coordinates.lat}&lng=${lm.coordinates.lng}&zoom=14`} className="text-[10px] text-slate-400 hover:text-[#B68D40] transition shrink-0">
@@ -719,6 +745,81 @@ export default function TrailDetailPage() {
                 </div>
               </div>
             )}
+
+            {/* ──────── 6.1 SHERPA CULTURAL COMPANION & BUDDHIST TRAIL ETIQUETTE ──────── */}
+            <div data-slot="body" className="p-6 rounded-3xl backdrop-blur-xl bg-slate-900/80 border border-[#B68D40]/30 shadow-2xl space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded-full bg-[#B68D40]/20 text-[#E2C085] text-[10px] font-black uppercase tracking-wider border border-[#B68D40]/40">
+                      Heritage &amp; Lore
+                    </span>
+                    <span className="text-xs text-slate-400">Sacred Mountain Etiquette</span>
+                  </div>
+                  <h2 className="text-lg font-extrabold text-white mt-1 flex items-center gap-2">
+                    <Sparkles className="h-5 w-5 text-[#B68D40]" />
+                    Sherpa Cultural Companion &amp; Native Pronunciation
+                  </h2>
+                </div>
+                <span className="text-xs text-slate-400">Authentic Tibetan Phonetics</span>
+              </div>
+
+              {/* Buddhist Trail Etiquette Guidelines */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold text-[#E2C085] uppercase tracking-wider">
+                  Mandatory Buddhist Trail Etiquette
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {getEtiquetteGuidelines().slice(0, 4).map((rule) => (
+                    <div
+                      key={rule.id}
+                      className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-950/60 text-purple-300 border border-purple-500/30 font-bold">
+                          {rule.nepaliTibetanTerm}
+                        </span>
+                        <span
+                          className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                            rule.severity === 'Strict Taboo'
+                              ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                              : 'bg-[#B68D40]/20 text-[#E2C085] border border-[#B68D40]/40'
+                          }`}
+                        >
+                          {rule.severity}
+                        </span>
+                      </div>
+                      <h4 className="text-xs font-bold text-white">{rule.title}</h4>
+                      <p className="text-[11px] text-slate-300 leading-relaxed">{rule.summary}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Region-relevant or iconic peaks pronunciation cards */}
+              <div className="space-y-3 pt-2">
+                <h3 className="text-xs font-bold text-[#E2C085] uppercase tracking-wider">
+                  Native Audio Pronunciations
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {getAllCulturalLore().slice(0, 4).map((item) => (
+                    <AudioPronunciationPlayer
+                      key={item.id}
+                      variant="card"
+                      item={{
+                        name: item.name,
+                        nativeScript: item.nativeScript,
+                        phonetics: item.phonetics,
+                        syllables: item.syllables,
+                        englishMeaning: item.englishMeaning,
+                        audioGuideNote: item.lore,
+                        tibetanFrequencyHz: item.tibetanFrequencyHz,
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
 
             {/* ──────── 3D GLOBE CTA ──────── */}
             <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-[#B68D40]/20 via-[#B68D40]/10 to-transparent border border-[#B68D40]/40 backdrop-blur-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">

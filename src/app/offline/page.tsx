@@ -27,6 +27,9 @@ import {
   Sparkles,
   RefreshCw,
   Search,
+  AlertOctagon,
+  Send,
+  BookOpen,
 } from 'lucide-react';
 import {
   AreaChart,
@@ -45,6 +48,13 @@ import {
   calculateLakeLouiseScore,
   LAKE_LOUISE_CRITERIA,
 } from '@/lib/offline/trailStorage';
+import EmergencySosModal from '@/components/offline/EmergencySosModal';
+import AudioPronunciationPlayer from '@/components/ui/AudioPronunciationPlayer';
+import {
+  getAllCulturalLore,
+  getCulturalLoreByLandmarkName,
+  getEtiquetteGuidelines,
+} from '@/lib/culturalHeritage';
 
 const OfflineRouteMap = dynamic(() => import('@/components/map/OfflineRouteMap'), {
   ssr: false,
@@ -64,11 +74,12 @@ function OfflineHubContent() {
 
   const [packs, setPacks] = useState<OfflineTrailPack[]>([]);
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'map' | 'elevation' | 'itinerary' | 'landmarks' | 'emergency'>('map');
+  const [activeTab, setActiveTab] = useState<'map' | 'elevation' | 'itinerary' | 'landmarks' | 'culture' | 'emergency'>('map');
   const [isSimulatedOffline, setIsSimulatedOffline] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSosModalOpen, setIsSosModalOpen] = useState(false);
 
   // Lake Louise AMS interactive state
   const [amsScores, setAmsScores] = useState({
@@ -237,6 +248,15 @@ function OfflineHubContent() {
             {/* Quick Action Controls */}
             <div className="flex flex-wrap items-center gap-3">
               <button
+                onClick={() => setIsSosModalOpen(true)}
+                data-slot="trigger"
+                className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black flex items-center gap-2 transition shadow-lg shadow-rose-950/60 focus-visible:ring-2 focus-visible:ring-rose-400"
+              >
+                <AlertOctagon className="w-4 h-4 text-white animate-pulse" />
+                <span>Satellite / 2G SOS Dispatch</span>
+              </button>
+
+              <button
                 onClick={toggleSimulateOffline}
                 data-slot="trigger"
                 data-pressed={isSimulatedOffline}
@@ -252,9 +272,9 @@ function OfflineHubContent() {
 
               <a
                 href="tel:+97714123456"
-                className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-extrabold flex items-center gap-2 transition shadow-lg shadow-rose-900/30 focus-visible:ring-2 focus-visible:ring-rose-400"
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-2 transition border border-slate-700 focus-visible:ring-2 focus-visible:ring-rose-400"
               >
-                <PhoneCall className="w-4 h-4" />
+                <PhoneCall className="w-4 h-4 text-rose-400" />
                 <span>Helicopter SAR: +977-1-4123456</span>
               </a>
             </div>
@@ -462,6 +482,7 @@ function OfflineHubContent() {
                     { key: 'elevation', label: 'Elevation Profile', icon: TrendingUp },
                     { key: 'itinerary', label: 'Stages & Itinerary', icon: Calendar },
                     { key: 'landmarks', label: `Landmarks (${selectedPack.landmarks?.length || 0})`, icon: Mountain },
+                    { key: 'culture', label: 'Sherpa Culture & Etiquette', icon: Sparkles },
                     { key: 'emergency', label: 'Emergency & SAR Guide', icon: AlertTriangle, highlight: true },
                   ].map((t) => {
                     const Icon = t.icon;
@@ -607,24 +628,43 @@ function OfflineHubContent() {
                 {activeTab === 'landmarks' && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 animate-in fade-in duration-200">
                     {selectedPack.landmarks && selectedPack.landmarks.length > 0 ? (
-                      selectedPack.landmarks.map((lm) => (
-                        <div
-                          key={lm.id}
-                          className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-1.5"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
-                              {lm.category}
-                            </span>
-                            <span className="text-xs font-bold text-[#B68D40]">{lm.elevation}m</span>
+                      selectedPack.landmarks.map((lm) => {
+                        const culturalLore = getCulturalLoreByLandmarkName(lm.name);
+                        return (
+                          <div
+                            key={lm.id}
+                            className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-2"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                                {lm.category}
+                              </span>
+                              <span className="text-xs font-bold text-[#B68D40]">{lm.elevation}m</span>
+                            </div>
+                            <h4 className="text-xs font-bold text-white">{lm.name}</h4>
+                            <p className="text-[11px] text-slate-400 line-clamp-2">{lm.description}</p>
+                            <p className="text-[10px] text-slate-500 font-mono">
+                              {lm.coordinates.lat.toFixed(4)}°N, {lm.coordinates.lng.toFixed(4)}°E
+                            </p>
+
+                            {culturalLore && (
+                              <div className="pt-2 border-t border-slate-900">
+                                <AudioPronunciationPlayer
+                                  variant="compact"
+                                  item={{
+                                    name: culturalLore.name,
+                                    nativeScript: culturalLore.nativeScript,
+                                    phonetics: culturalLore.phonetics,
+                                    syllables: culturalLore.syllables,
+                                    englishMeaning: culturalLore.englishMeaning,
+                                    tibetanFrequencyHz: culturalLore.tibetanFrequencyHz,
+                                  }}
+                                />
+                              </div>
+                            )}
                           </div>
-                          <h4 className="text-xs font-bold text-white">{lm.name}</h4>
-                          <p className="text-[11px] text-slate-400 line-clamp-2">{lm.description}</p>
-                          <p className="text-[10px] text-slate-500 font-mono">
-                            {lm.coordinates.lat.toFixed(4)}°N, {lm.coordinates.lng.toFixed(4)}°E
-                          </p>
-                        </div>
-                      ))
+                        );
+                      })
                     ) : (
                       <div className="col-span-2 text-center py-8 text-xs text-slate-400">
                         No landmark waypoints cached in this trail pack.
@@ -633,9 +673,120 @@ function OfflineHubContent() {
                   </div>
                 )}
 
-                {/* Tab 5: High-Altitude Emergency & SAR Guide */}
+                {/* Tab 5: Sherpa Cultural Heritage & Native Audio Pronunciation */}
+                {activeTab === 'culture' && (
+                  <div className="space-y-6 animate-in fade-in duration-200">
+                    {/* Cultural Heritage Header */}
+                    <div className="p-5 rounded-2xl bg-slate-950/80 border border-[#B68D40]/30 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-[#B68D40]" />
+                        <h3 className="text-sm font-extrabold text-white">
+                          Sherpa &amp; Tibetan Cultural Heritage Companion
+                        </h3>
+                      </div>
+                      <p className="text-xs text-slate-300 leading-relaxed">
+                        Authentic Tibetan and Sherpa phonetics, native syllable breakdowns, spiritual mountain lore, and essential Buddhist trail etiquette for respectful trekking in the sacred Himalayas.
+                      </p>
+                    </div>
+
+                    {/* Buddhist Trail Etiquette & Mountain Philosophy Guide */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-black text-[#E2C085] uppercase tracking-wider flex items-center gap-1.5">
+                          <BookOpen className="w-3.5 h-3.5 text-[#B68D40]" />
+                          Buddhist Trail Etiquette &amp; Mountain Philosophy
+                        </h4>
+                        <span className="text-[10px] text-slate-400">Mandatory Field Respect</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {getEtiquetteGuidelines().map((rule) => (
+                          <div
+                            key={rule.id}
+                            className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-2 hover:border-[#B68D40]/40 transition"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-950/60 text-purple-300 border border-purple-500/30 font-bold">
+                                {rule.nepaliTibetanTerm}
+                              </span>
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                  rule.severity === 'Strict Taboo'
+                                    ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                                    : 'bg-[#B68D40]/20 text-[#E2C085] border border-[#B68D40]/40'
+                                }`}
+                              >
+                                {rule.severity}
+                              </span>
+                            </div>
+                            <h5 className="text-xs font-extrabold text-white">{rule.title}</h5>
+                            <p className="text-xs text-[#E2C085] font-medium">{rule.summary}</p>
+                            <p className="text-[11px] text-slate-300 leading-relaxed pt-1 border-t border-slate-900">
+                              {rule.detailedPractice}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Native Audio Pronunciation Showcase */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-black text-[#E2C085] uppercase tracking-wider flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-[#B68D40]" />
+                          Sacred Peaks, Passes &amp; Monasteries Pronunciation
+                        </h4>
+                        <span className="text-[10px] text-slate-400">Web Audio API Synthesis</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {getAllCulturalLore().map((item) => (
+                          <AudioPronunciationPlayer
+                            key={item.id}
+                            variant="card"
+                            item={{
+                              name: item.name,
+                              nativeScript: item.nativeScript,
+                              phonetics: item.phonetics,
+                              syllables: item.syllables,
+                              englishMeaning: item.englishMeaning,
+                              audioGuideNote: item.lore,
+                              tibetanFrequencyHz: item.tibetanFrequencyHz,
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Tab 6: High-Altitude Emergency & SAR Guide */}
                 {activeTab === 'emergency' && (
                   <div className="space-y-6 animate-in fade-in duration-200">
+
+                    {/* Satellite / 2G SMS Emergency SOS Banner */}
+                    <div className="p-5 rounded-2xl bg-rose-950/40 border border-rose-500/50 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <AlertOctagon className="w-5 h-5 text-rose-500 animate-pulse" />
+                          <h3 className="text-sm font-extrabold text-white">
+                            One-Tap Satellite / 2G SMS Emergency SOS Dispatch
+                          </h3>
+                        </div>
+                        <p className="text-xs text-rose-200 max-w-xl leading-relaxed">
+                          Low-bandwidth telemetry generator compressing patient status, casualty count, GPS coordinates, and SAR extraction needs into an ultra-dense string &le; 160 characters for standard SMS, Garmin inReach, ZOLEO, or Iridium satellite terminals.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setIsSosModalOpen(true)}
+                        className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black shadow-lg shadow-rose-950/50 transition flex items-center gap-2 shrink-0 focus-visible:ring-2 focus-visible:ring-rose-400"
+                      >
+                        <Send className="w-4 h-4" />
+                        <span>Generate SOS Dispatch</span>
+                      </button>
+                    </div>
 
                     {/* Interactive Lake Louise AMS Diagnostic Calculator */}
                     <div className="p-5 rounded-2xl bg-slate-950/80 border border-amber-500/30 space-y-4">
@@ -800,6 +951,19 @@ function OfflineHubContent() {
         </div>
 
       </div>
+
+      {/* Emergency Satellite / 2G SMS SOS Modal */}
+      <EmergencySosModal
+        isOpen={isSosModalOpen}
+        onClose={() => setIsSosModalOpen(false)}
+        defaultTrailName={selectedPack?.trail.name}
+        defaultCoords={
+          selectedPack?.routeCoordinates && selectedPack.routeCoordinates.length > 0
+            ? [selectedPack.routeCoordinates[0][0], selectedPack.routeCoordinates[0][1]]
+            : undefined
+        }
+        defaultAltitude={selectedPack?.trail.maxElevation}
+      />
     </div>
   );
 }

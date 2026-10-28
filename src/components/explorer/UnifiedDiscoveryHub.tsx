@@ -50,6 +50,8 @@ import { ROUTE_TRACKS } from '@/data/routeTracks';
 import ElevationProfileChart from '@/components/map/ElevationProfileChart';
 import FloatingMapPanel from '@/components/ui/FloatingMapPanel';
 import { HIMALAYAN_SUMMITS, SUMMIT_TOURS, ApexSummit } from '@/data/summitTours';
+import AudioPronunciationPlayer from '@/components/ui/AudioPronunciationPlayer';
+import { getCulturalLoreByLandmarkName } from '@/lib/culturalHeritage';
 
 // Himalayan regional coordinate presets for one-click navigator camera fly-to
 export const REGION_FOCUS_COORDS: Record<string, { center: [number, number]; zoom: number }> = {
@@ -541,6 +543,27 @@ function LandmarkQuickSpecs({ landmark, onBack, onFocusMap }: LandmarkQuickSpecs
             <span>{landmark.region || 'Nepal'} • {landmark.coordinates.lat.toFixed(4)}°N, {landmark.coordinates.lng.toFixed(4)}°E</span>
           </div>
         </div>
+
+        {(() => {
+          const culturalLore = getCulturalLoreByLandmarkName(landmark.name);
+          if (!culturalLore) return null;
+          return (
+            <div className="pt-1">
+              <AudioPronunciationPlayer
+                variant="card"
+                item={{
+                  name: culturalLore.name,
+                  nativeScript: culturalLore.nativeScript,
+                  phonetics: culturalLore.phonetics,
+                  syllables: culturalLore.syllables,
+                  englishMeaning: culturalLore.englishMeaning,
+                  audioGuideNote: culturalLore.lore,
+                  tibetanFrequencyHz: culturalLore.tibetanFrequencyHz,
+                }}
+              />
+            </div>
+          );
+        })()}
 
         {/* Key Metrics */}
         <div className="grid grid-cols-2 gap-2 p-2.5 rounded-2xl bg-neutral-900/90 border border-neutral-800 text-left">
