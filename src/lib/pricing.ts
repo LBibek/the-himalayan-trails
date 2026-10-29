@@ -181,6 +181,14 @@ export function generateReceiptNumber(): string {
 }
 
 /**
+ * Generates an individual split-deposit receipt number in format REC-2026-GRP-XXXXX.
+ */
+export function generateGroupReceiptNumber(): string {
+  const digits = Math.floor(10000 + Math.random() * 90000);
+  return `REC-2026-GRP-${digits}`;
+}
+
+/**
  * Generates a verification authenticity hash for official expedition vouchers.
  */
 export function generateVoucherAuthenticityHash(

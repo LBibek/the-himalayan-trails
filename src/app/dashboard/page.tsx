@@ -17,8 +17,10 @@ import {
   Sparkles,
   ArrowRight,
   CheckCircle2,
-  Award
+  Award,
+  Share2
 } from 'lucide-react';
+import { GroupExpeditionWithDetails } from '@/types';
 
 interface UserInfo {
   id: string;
@@ -56,6 +58,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<UserInfo | null>(null);
   const [bookings, setBookings] = useState<UserBooking[]>([]);
+  const [groupExpeditions, setGroupExpeditions] = useState<GroupExpeditionWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
 
@@ -77,6 +80,13 @@ export default function DashboardPage() {
         if (bookingsRes.ok) {
           const bookingsData = await bookingsRes.json();
           setBookings(bookingsData.bookings || []);
+        }
+
+        // Fetch group expeditions (Sprint 8.3)
+        const groupRes = await fetch(`/api/user/group-expeditions?email=${encodeURIComponent(authData.user.email)}`);
+        if (groupRes.ok) {
+          const groupData = await groupRes.json();
+          setGroupExpeditions(groupData.expeditions || []);
         }
       } catch (err) {
         console.error('Failed to load dashboard:', err);
@@ -348,6 +358,174 @@ export default function DashboardPage() {
                           <ChevronRight className="w-3.5 h-3.5" />
                         </Link>
                       )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* My Group Expeditions Section (Sprint 8.3) */}
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-bold text-white tracking-tight">My Group Expeditions</h2>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-[#B68D40]/20 text-[#E2C085] border border-[#B68D40]/30">
+                  Sprint 8.3
+                </span>
+              </div>
+              <p className="text-xs text-gray-400">Collaborative team treks and split-deposit status</p>
+            </div>
+            <Link
+              href="/trails"
+              className="text-xs text-[#E2C085] hover:text-white font-semibold flex items-center gap-1 transition"
+            >
+              <span>Organize New Trip</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+
+          {groupExpeditions.length === 0 ? (
+            <div className="p-8 rounded-2xl bg-neutral-900/40 border border-neutral-800 text-center space-y-3">
+              <Users className="w-10 h-10 text-gray-600 mx-auto" />
+              <h3 className="text-base font-semibold text-gray-200">No Active Group Expeditions</h3>
+              <p className="text-xs text-gray-400 max-w-sm mx-auto">
+                Organize a team trek on any Himalayan trail, split the 20% deposit across climbers, and vote on high-pass side trips.
+              </p>
+              <Link
+                href="/trails"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-[#E2C085] border border-[#B68D40]/40 text-xs font-bold transition"
+              >
+                Start a Group Expedition
+              </Link>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4">
+              {groupExpeditions.map((exp) => {
+                const userMember = user
+                  ? exp.members.find((m) => m.memberEmail.toLowerCase() === user.email.toLowerCase())
+                  : null;
+                const isUserPaid = userMember && userMember.paymentStatus !== 'UNPAID';
+                const isConfirmed = exp.paidMembersCount >= exp.targetGroupSize || exp.status === 'CONFIRMED';
+                const progressPct = Math.round((exp.paidMembersCount / Math.max(1, exp.targetGroupSize)) * 100);
+
+                return (
+                  <div
+                    key={exp.id}
+                    data-slot="base"
+                    className="p-6 rounded-2xl bg-neutral-900/70 border border-neutral-800 hover:border-[#B68D40]/40 transition-all flex flex-col md:flex-row justify-between gap-6"
+                  >
+                    <div data-slot="body" className="space-y-3.5 flex-1">
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <span
+                          data-slot="indicator"
+                          className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border flex items-center gap-1.5 ${
+                            isConfirmed
+                              ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                              : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                          }`}
+                        >
+                          {isConfirmed ? (
+                            <>
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                              Expedition Confirmed
+                            </>
+                          ) : (
+                            <>
+                              <Clock className="w-3.5 h-3.5 text-amber-400" />
+                              Organizing ({exp.paidMembersCount} of {exp.targetGroupSize} Paid)
+                            </>
+                          )}
+                        </span>
+
+                        <span className="text-xs font-mono text-slate-400 bg-slate-800/80 px-2.5 py-0.5 rounded-full border border-slate-700">
+                          {exp.shareToken}
+                        </span>
+
+                        {userMember && (
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                              isUserPaid
+                                ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-500/30'
+                                : 'bg-amber-950/60 text-amber-300 border border-amber-500/30'
+                            }`}
+                          >
+                            Your Status: {isUserPaid ? 'Deposit Paid' : 'Deposit Unpaid ($' + userMember.shareAmountUsd.toFixed(2) + ')'}
+                          </span>
+                        )}
+                      </div>
+
+                      <div>
+                        <h3 className="text-lg font-bold text-white tracking-tight">
+                          {exp.expeditionTitle}
+                        </h3>
+                        <p className="text-xs text-slate-400">
+                          Route: <strong className="text-slate-200">{exp.trail?.name || exp.trailId}</strong> • Led by <strong className="text-slate-200">{exp.leaderName}</strong>
+                        </p>
+                      </div>
+
+                      {/* Mini Payment & Roster Progress Bar */}
+                      <div className="space-y-1.5 max-w-md">
+                        <div className="flex justify-between text-xs text-slate-300 font-mono">
+                          <span>Team Deposit Share: ${exp.depositPerPersonUsd.toFixed(2)} / climber</span>
+                          <span className="font-bold text-[#E2C085]">{progressPct}% Complete</span>
+                        </div>
+                        <div className="w-full h-2.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                          <div
+                            className="h-full bg-gradient-to-r from-[#B68D40] to-amber-400 rounded-full transition-all duration-500"
+                            style={{ width: `${Math.max(6, progressPct)}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Team Roster Quick Avatars */}
+                      <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
+                        <span className="text-slate-500 text-[11px] uppercase font-bold tracking-wider">Roster:</span>
+                        {exp.members.map((m) => {
+                          const paid = m.paymentStatus !== 'UNPAID';
+                          return (
+                            <span
+                              key={m.id}
+                              className={`px-2.5 py-1 rounded-lg border text-[11px] font-semibold flex items-center gap-1.5 ${
+                                paid
+                                  ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
+                                  : 'bg-slate-800/80 border-slate-700 text-slate-300'
+                              }`}
+                            >
+                              <span className={`w-2 h-2 rounded-full ${paid ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                              {m.memberName.split(' ')[0]}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div data-slot="footer" className="flex md:flex-col justify-end gap-2.5 shrink-0 md:min-w-[210px]">
+                      <Link
+                        href={`/trips/join/${exp.shareToken}`}
+                        data-slot="trigger"
+                        className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#B68D40] to-[#E2C085] hover:opacity-95 text-black font-extrabold text-xs shadow-md shadow-[#B68D40]/20 transition-all focus-visible:ring-2 focus-visible:ring-[#B68D40]"
+                      >
+                        <Users className="w-3.5 h-3.5 text-black" />
+                        <span>Manage Expedition &amp; Votes</span>
+                      </Link>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (typeof window !== 'undefined') {
+                            const inviteUrl = `${window.location.origin}/trips/join/${exp.shareToken}`;
+                            navigator.clipboard.writeText(inviteUrl);
+                            alert('Expedition invite link copied to clipboard!');
+                          }
+                        }}
+                        className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs font-bold text-gray-200 transition-colors border border-neutral-700/60"
+                      >
+                        <Share2 className="w-3.5 h-3.5 text-[#B68D40]" />
+                        <span>Copy Invite Link</span>
+                      </button>
                     </div>
                   </div>
                 );

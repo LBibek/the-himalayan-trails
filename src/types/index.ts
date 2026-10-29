@@ -359,3 +359,4 @@ export * from './routes';
 export * from './teahouses';
 export * from './matchmaker';
 export * from './certificate';
+export * from './expeditions';

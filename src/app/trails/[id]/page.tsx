@@ -37,6 +37,7 @@ import {
   getCulturalLoreByLandmarkName,
   getEtiquetteGuidelines,
 } from '@/lib/culturalHeritage';
+import CreateExpeditionModal from '@/components/expeditions/CreateExpeditionModal';
 
 const CesiumGlobeMap = dynamic(() => import('@/components/map/CesiumGlobeMap'), {
   ssr: false,
@@ -178,6 +179,7 @@ export default function TrailDetailPage() {
     remainingBalance: number;
     voucherUrl: string;
   } | null>(null);
+  const [isGroupExpeditionModalOpen, setIsGroupExpeditionModalOpen] = useState(false);
 
   // 3D Alpine Theater Mode
   const [isTheaterModeOpen, setIsTheaterModeOpen] = useState(false);
@@ -1611,6 +1613,16 @@ export default function TrailDetailPage() {
                       <CreditCard className="w-4 h-4 text-black" />
                       <span>Proceed to Payment (${dueToday.toLocaleString()})</span>
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsGroupExpeditionModalOpen(true)}
+                      data-slot="trigger"
+                      className="w-full mt-2.5 py-3 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-[#B68D40]/40 text-[#E2C085] font-bold text-xs flex items-center justify-center gap-2 transition focus-visible:ring-2 focus-visible:ring-[#B68D40]"
+                    >
+                      <Users className="w-4 h-4 text-[#B68D40]" />
+                      <span>Start a Group Expedition &amp; Split Costs</span>
+                    </button>
                   </form>
                 )}
 
@@ -2022,6 +2034,16 @@ export default function TrailDetailPage() {
           setSelectedReserveTeahouse(null);
         }}
       />
+
+      {/* Group Expedition Modal (Sprint 8.3) */}
+      {trail && (
+        <CreateExpeditionModal
+          isOpen={isGroupExpeditionModalOpen}
+          onClose={() => setIsGroupExpeditionModalOpen(false)}
+          trail={trail}
+          initialDepositShare={187.50}
+        />
+      )}
     </div>
   );
 }

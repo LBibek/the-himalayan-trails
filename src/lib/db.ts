@@ -1,8 +1,13 @@
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import fs from 'node:fs';
-import type { Trail, Landmark, Itinerary, ItineraryDay, Story, WeatherReport, Booking, ContactMessage, Inquiry, SharedTrail, User, HimalayanRange, Guide, Teahouse, TeahouseReservation, TrailConditionReport, HighAltitudeCertificate } from '../types';
+import type { Trail, Landmark, Itinerary, ItineraryDay, Story, WeatherReport, Booking, ContactMessage, Inquiry, SharedTrail, User, HimalayanRange, Guide, Teahouse, TeahouseReservation, TrailConditionReport, HighAltitudeCertificate, GroupExpedition, GroupMember, GroupExpeditionWithDetails, GroupSideTripOption, GroupGearOption, GroupSideTripTally } from '../types';
 import crypto from 'node:crypto';
+
+export function generateGroupReceiptNumber(): string {
+  const digits = Math.floor(10000 + Math.random() * 90000);
+  return `REC-2026-GRP-${digits}`;
+}
 
 function hashPassword(password: string): string {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -520,6 +525,43 @@ export function initializeSchema(db: DatabaseSync) {
     );
   `);
 
+  // Group Expeditions table (Sprint 8.3)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS group_expeditions (
+      id TEXT PRIMARY KEY,
+      share_token TEXT UNIQUE NOT NULL,
+      trail_id TEXT NOT NULL,
+      leader_user_id TEXT,
+      leader_name TEXT NOT NULL,
+      leader_email TEXT NOT NULL,
+      expedition_title TEXT NOT NULL,
+      target_start_date TEXT NOT NULL,
+      target_group_size INTEGER NOT NULL,
+      itinerary_customization TEXT,
+      status TEXT NOT NULL DEFAULT 'ORGANIZING',
+      created_at TEXT NOT NULL
+    );
+  `);
+
+  // Group Members table (Sprint 8.3)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS group_members (
+      id TEXT PRIMARY KEY,
+      expedition_id TEXT NOT NULL,
+      member_name TEXT NOT NULL,
+      member_email TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'MEMBER',
+      side_trip_votes TEXT,
+      personal_gear_rentals TEXT,
+      share_amount_usd REAL NOT NULL,
+      payment_status TEXT NOT NULL DEFAULT 'UNPAID',
+      receipt_number TEXT,
+      paid_at TEXT,
+      joined_at TEXT NOT NULL,
+      FOREIGN KEY (expedition_id) REFERENCES group_expeditions(id) ON DELETE CASCADE
+    );
+  `);
+
   // Ensure route_coordinates column exists on trails table
   try {
     db.exec('ALTER TABLE trails ADD COLUMN route_coordinates TEXT;');
@@ -554,6 +596,16 @@ export function initializeSchema(db: DatabaseSync) {
     const condCount = db.prepare('SELECT COUNT(*) as count FROM trail_condition_reports').get() as { count: number };
     if (!condCount || condCount.count === 0) {
       seedOfficialTrailConditionReports(db);
+    }
+  } catch {
+    // ignore
+  }
+
+  // Ensure authentic group expeditions are seeded if table is empty
+  try {
+    const expCount = db.prepare('SELECT COUNT(*) as count FROM group_expeditions').get() as { count: number };
+    if (!expCount || expCount.count === 0) {
+      seedOfficialGroupExpeditions(db);
     }
   } catch {
     // ignore
@@ -3358,6 +3410,738 @@ export function createCertificate(data: Omit<HighAltitudeCertificate, 'id' | 'cr
     digitalSignatureHash: data.digitalSignatureHash,
     createdAt: now,
   };
+}
+
+// ───────────────────────────────────────────────────────────────
+// Sprint 8.3: Collaborative Expedition Sharing & Split-Deposit Checkout
+// ───────────────────────────────────────────────────────────────
+
+export const DEFAULT_HIMALAYAN_SIDE_TRIPS: Record<string, GroupSideTripOption[]> = {
+  'ebc-trek': [
+    {
+      id: 'side-trip-kala-patthar',
+      name: 'Kala Patthar Sunrise',
+      elevationMeters: 5644,
+      elevationGainMeters: 410,
+      durationHours: 3.5,
+      description: 'Iconic pre-dawn summit ascent offering panoramic sunrise views over Mt. Everest, Nuptse, and the Khumbu Glacier.',
+      highlight: 'Highest unobstructed viewpoint of Mount Everest summit pyramid'
+    },
+    {
+      id: 'side-trip-gokyo-lakes',
+      name: 'Gokyo Lakes Detour',
+      elevationMeters: 5420,
+      elevationGainMeters: 750,
+      durationHours: 6.5,
+      description: 'Detour across Cho La Pass to the sacred turquoise glacial lakes of Gokyo Valley and Gokyo Ri summit.',
+      highlight: 'Sacred turquoise alpine lakes and Ngozumpa Glacier traverse'
+    },
+    {
+      id: 'side-trip-ama-dablam-bc',
+      name: 'Ama Dablam Base Camp Hike',
+      elevationMeters: 4600,
+      elevationGainMeters: 600,
+      durationHours: 4.5,
+      description: 'Acclimatization day hike climbing to the foot of Ama Dablam, widely regarded as the Matterhorn of the Himalayas.',
+      highlight: 'Intimate close-up view of the southwest ridge of Ama Dablam'
+    }
+  ],
+  'annapurna-circuit': [
+    {
+      id: 'side-trip-tilicho-lake',
+      name: 'Tilicho Lake Excursion',
+      elevationMeters: 4919,
+      elevationGainMeters: 1400,
+      durationHours: 8.0,
+      description: 'Dramatic high-altitude side trip from Manang to one of the highest alpine glacial lakes on Earth.',
+      highlight: 'Glacial amphitheater surrounded by Tilicho Peak & Great Barrier'
+    },
+    {
+      id: 'side-trip-poon-hill',
+      name: 'Poon Hill Dawn Ascent',
+      elevationMeters: 3210,
+      elevationGainMeters: 350,
+      durationHours: 2.0,
+      description: 'Pre-dawn climb to view the glowing golden sunrise across the Annapurna and Dhaulagiri mountain massifs.',
+      highlight: 'World-renowned 360-degree Himalayan sunrise panorama'
+    },
+    {
+      id: 'side-trip-ice-lake',
+      name: 'Ice Lake (Kicho Tal) Climb',
+      elevationMeters: 4620,
+      elevationGainMeters: 1100,
+      durationHours: 6.0,
+      description: 'Challenging acclimatization climb above Braga village to crystal turquoise sacred alpine lakes.',
+      highlight: 'Stunning aerial view across the entire Pisang and Manang valley'
+    }
+  ],
+  'default': [
+    {
+      id: 'side-trip-kala-patthar',
+      name: 'Kala Patthar Sunrise',
+      elevationMeters: 5644,
+      elevationGainMeters: 410,
+      durationHours: 3.5,
+      description: 'Pre-dawn summit ascent offering panoramic views over the highest peaks of the Himalayas.',
+      highlight: 'High alpine panoramic sunrise viewpoint'
+    },
+    {
+      id: 'side-trip-tilicho-lake',
+      name: 'Tilicho Lake Excursion',
+      elevationMeters: 4919,
+      elevationGainMeters: 1400,
+      durationHours: 8.0,
+      description: 'Dramatic high-altitude side trip to an authentic high alpine glacial lake.',
+      highlight: 'Glacial cirque amphitheater'
+    },
+    {
+      id: 'side-trip-gokyo-ri',
+      name: 'Gokyo Ri Summit',
+      elevationMeters: 5357,
+      elevationGainMeters: 600,
+      durationHours: 4.5,
+      description: 'Acclimatization peak climb above the Gokyo glacial lakes with panoramic views of 4 eight-thousanders.',
+      highlight: 'Four 8,000m summits visible from one spot'
+    }
+  ]
+};
+
+export const DEFAULT_HIMALAYAN_GEAR_OPTIONS: GroupGearOption[] = [
+  {
+    id: 'gear-sleeping-bag-20c',
+    name: '-20C Down Sleeping Bag',
+    dailyRateUsd: 5,
+    weightKg: 1.8,
+    category: 'SLEEPING',
+    description: '800-fill goose down expedition sleeping bag rated for extreme sub-zero Himalayan nights.'
+  },
+  {
+    id: 'gear-crampons-spikes',
+    name: 'Crampons / Microspikes',
+    dailyRateUsd: 3,
+    weightKg: 0.8,
+    category: 'FOOTWEAR',
+    description: 'Hardened steel 10-point traction spikes for verglas, frozen high passes, and icy moraines.'
+  },
+  {
+    id: 'gear-trekking-poles',
+    name: 'Carbon Trekking Poles',
+    dailyRateUsd: 2,
+    weightKg: 0.45,
+    category: 'ACCESSORY',
+    description: 'Ultra-light carbon fiber 3-section collapsible trekking poles with quick-lock flick mechanism.'
+  },
+  {
+    id: 'gear-hardshell-parka',
+    name: 'GORE-TEX Pro Expedition Parka',
+    dailyRateUsd: 4,
+    weightKg: 0.9,
+    category: 'CLOTHING',
+    description: '3-layer waterproof, windproof breathable technical mountain shell with helmet-compatible hood.'
+  },
+  {
+    id: 'gear-alpine-headlamp',
+    name: '450-Lumen Alpine Headlamp',
+    dailyRateUsd: 1.5,
+    weightKg: 0.2,
+    category: 'ACCESSORY',
+    description: 'Waterproof high-output LED headlamp with red night-vision mode and cold-resistant rechargeable battery.'
+  }
+];
+
+export function seedOfficialGroupExpeditions(db: DatabaseSync) {
+  const insertExp = db.prepare(`
+    INSERT OR IGNORE INTO group_expeditions (
+      id, share_token, trail_id, leader_user_id, leader_name, leader_email,
+      expedition_title, target_start_date, target_group_size,
+      itinerary_customization, status, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const insertMember = db.prepare(`
+    INSERT OR IGNORE INTO group_members (
+      id, expedition_id, member_name, member_email, role,
+      side_trip_votes, personal_gear_rentals, share_amount_usd,
+      payment_status, receipt_number, paid_at, joined_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const now = new Date().toISOString();
+
+  // 1. Team Sagarmatha 2026 (Everest Base Camp - 3 of 4 Members Confirmed)
+  const exp1Id = 'grp_exp_sagarmatha_2026';
+  const exp1Token = 'exp-sagarmatha-2026-x8k';
+  insertExp.run(
+    exp1Id,
+    exp1Token,
+    'ebc-trek',
+    'usr_admin_1',
+    'Tenzing Norgay Jr.',
+    'tenzing@expeditions.org',
+    'Team Sagarmatha 2026: EBC & Kala Patthar Ascent',
+    '2026-11-15',
+    4,
+    JSON.stringify({
+      availableSideTrips: DEFAULT_HIMALAYAN_SIDE_TRIPS['ebc-trek'],
+      gearRentalCatalog: DEFAULT_HIMALAYAN_GEAR_OPTIONS,
+      targetSummit: 'Kala Patthar (5,644m)'
+    }),
+    'ORGANIZING',
+    '2026-10-15T08:00:00Z'
+  );
+
+  insertMember.run(
+    'grp_mbr_tenzing_1',
+    exp1Id,
+    'Tenzing Norgay Jr.',
+    'tenzing@expeditions.org',
+    'LEADER',
+    JSON.stringify(['Kala Patthar Sunrise', 'Ama Dablam Base Camp Hike']),
+    JSON.stringify(['-20C Down Sleeping Bag', 'Crampons / Microspikes']),
+    187.50,
+    'DEPOSIT_PAID',
+    'REC-2026-GRP-74821',
+    '2026-10-15T08:30:00Z',
+    '2026-10-15T08:00:00Z'
+  );
+
+  insertMember.run(
+    'grp_mbr_alex_2',
+    exp1Id,
+    'Alex Morgan',
+    'alex@example.com',
+    'MEMBER',
+    JSON.stringify(['Kala Patthar Sunrise', 'Gokyo Lakes Detour']),
+    JSON.stringify(['-20C Down Sleeping Bag', 'Carbon Trekking Poles']),
+    187.50,
+    'DEPOSIT_PAID',
+    'REC-2026-GRP-89214',
+    '2026-10-16T11:45:00Z',
+    '2026-10-16T10:00:00Z'
+  );
+
+  insertMember.run(
+    'grp_mbr_sarah_3',
+    exp1Id,
+    'Sarah Jenkins',
+    'sarah.j@alpine-club.uk',
+    'MEMBER',
+    JSON.stringify(['Kala Patthar Sunrise']),
+    JSON.stringify(['Crampons / Microspikes']),
+    187.50,
+    'DEPOSIT_PAID',
+    'REC-2026-GRP-91043',
+    '2026-10-18T14:20:00Z',
+    '2026-10-17T16:30:00Z'
+  );
+
+  // 2. Annapurna High-Pass Traverse
+  const exp2Id = 'grp_exp_annapurna_2026';
+  const exp2Token = 'exp-annapurna-traverse-2026-p4m';
+  insertExp.run(
+    exp2Id,
+    exp2Token,
+    'annapurna-circuit',
+    'usr_guide_maya',
+    'Maya Sherpa',
+    'maya@himalayantrails.com',
+    'Annapurna High-Pass Traverse: Thorong La & Tilicho Lake',
+    '2026-10-08',
+    4,
+    JSON.stringify({
+      availableSideTrips: DEFAULT_HIMALAYAN_SIDE_TRIPS['annapurna-circuit'],
+      gearRentalCatalog: DEFAULT_HIMALAYAN_GEAR_OPTIONS,
+      targetSummit: 'Thorong La Pass (5,416m)'
+    }),
+    'ORGANIZING',
+    '2026-10-01T08:00:00Z'
+  );
+
+  insertMember.run(
+    'grp_mbr_maya_1',
+    exp2Id,
+    'Maya Sherpa',
+    'maya@himalayantrails.com',
+    'LEADER',
+    JSON.stringify(['Tilicho Lake Excursion', 'Poon Hill Dawn Ascent']),
+    JSON.stringify(['-20C Down Sleeping Bag', 'Crampons / Microspikes']),
+    187.50,
+    'DEPOSIT_PAID',
+    'REC-2026-GRP-33102',
+    '2026-10-01T09:00:00Z',
+    '2026-10-01T08:00:00Z'
+  );
+
+  insertMember.run(
+    'grp_mbr_liam_2',
+    exp2Id,
+    'Liam O\'Connor',
+    'liam@dublin-climbers.ie',
+    'MEMBER',
+    JSON.stringify(['Tilicho Lake Excursion']),
+    JSON.stringify(['Carbon Trekking Poles']),
+    187.50,
+    'DEPOSIT_PAID',
+    'REC-2026-GRP-44192',
+    '2026-10-02T13:15:00Z',
+    '2026-10-02T12:00:00Z'
+  );
+
+  insertMember.run(
+    'grp_mbr_elena_3',
+    exp2Id,
+    'Elena Rostova',
+    'elena@alpinist.org',
+    'MEMBER',
+    JSON.stringify(['Tilicho Lake Excursion']),
+    JSON.stringify(['-20C Down Sleeping Bag']),
+    187.50,
+    'UNPAID',
+    null,
+    null,
+    '2026-10-03T15:30:00Z'
+  );
+}
+
+function parseJsonArray(val: string | null | undefined): string[] {
+  if (!val) return [];
+  try {
+    const parsed = JSON.parse(val);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function createGroupExpedition(data: {
+  trailId: string;
+  leaderUserId?: string;
+  leaderName: string;
+  leaderEmail: string;
+  expeditionTitle: string;
+  targetStartDate: string;
+  targetGroupSize: number;
+  itineraryCustomization?: any;
+  shareToken?: string;
+  shareAmountUsd?: number;
+}): GroupExpeditionWithDetails {
+  const db = getDatabase();
+  const id = `grp_exp_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+  const now = new Date().toISOString();
+
+  // Find trail
+  const trail = getTrailById(data.trailId) || getTrailBySlug(data.trailId);
+  const trailSlug = trail?.slug || data.trailId.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+  // Generate share token if not supplied
+  const shareToken = data.shareToken && data.shareToken.trim().length > 0
+    ? data.shareToken.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '')
+    : `exp-${trailSlug}-${new Date().getFullYear()}-${crypto.randomBytes(3).toString('hex')}`;
+
+  const targetGroupSize = Math.max(2, Math.min(20, Math.floor(data.targetGroupSize || 4)));
+  const defaultShareAmount = typeof data.shareAmountUsd === 'number' && data.shareAmountUsd > 0
+    ? data.shareAmountUsd
+    : 187.50;
+
+  const customization = data.itineraryCustomization || {
+    availableSideTrips: DEFAULT_HIMALAYAN_SIDE_TRIPS[data.trailId] || DEFAULT_HIMALAYAN_SIDE_TRIPS.default,
+    gearRentalCatalog: DEFAULT_HIMALAYAN_GEAR_OPTIONS
+  };
+
+  db.prepare(`
+    INSERT INTO group_expeditions (
+      id, share_token, trail_id, leader_user_id, leader_name, leader_email,
+      expedition_title, target_start_date, target_group_size,
+      itinerary_customization, status, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ORGANIZING', ?)
+  `).run(
+    id,
+    shareToken,
+    trail?.id || data.trailId,
+    data.leaderUserId || null,
+    data.leaderName,
+    data.leaderEmail.toLowerCase(),
+    data.expeditionTitle,
+    data.targetStartDate,
+    targetGroupSize,
+    JSON.stringify(customization),
+    now
+  );
+
+  // Auto-register leader as first team member
+  const leaderMemberId = `grp_mbr_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+  db.prepare(`
+    INSERT INTO group_members (
+      id, expedition_id, member_name, member_email, role,
+      side_trip_votes, personal_gear_rentals, share_amount_usd,
+      payment_status, receipt_number, paid_at, joined_at
+    ) VALUES (?, ?, ?, ?, 'LEADER', '[]', '[]', ?, 'UNPAID', NULL, NULL, ?)
+  `).run(
+    leaderMemberId,
+    id,
+    data.leaderName,
+    data.leaderEmail.toLowerCase(),
+    defaultShareAmount,
+    now
+  );
+
+  const created = getGroupExpeditionByToken(shareToken);
+  if (!created) {
+    throw new Error('Failed to retrieve newly created group expedition');
+  }
+  return created;
+}
+
+export function getGroupExpeditionByToken(tokenOrId: string): GroupExpeditionWithDetails | null {
+  const db = getDatabase();
+  const row = db.prepare(`
+    SELECT * FROM group_expeditions
+    WHERE share_token = ? OR id = ?
+  `).get(tokenOrId, tokenOrId) as Record<string, unknown> | undefined;
+
+  if (!row) return null;
+
+  const expeditionId = row.id as string;
+  const trailId = row.trail_id as string;
+
+  // Retrieve trail
+  const trail = getTrailById(trailId) || getTrailBySlug(trailId);
+
+  // Retrieve members
+  const memberRows = db.prepare(`
+    SELECT * FROM group_members
+    WHERE expedition_id = ?
+    ORDER BY joined_at ASC
+  `).all(expeditionId) as Record<string, unknown>[];
+
+  const members: GroupMember[] = memberRows.map((m) => ({
+    id: m.id as string,
+    expeditionId: m.expedition_id as string,
+    memberName: m.member_name as string,
+    memberEmail: m.member_email as string,
+    role: (m.role as 'LEADER' | 'MEMBER') || 'MEMBER',
+    sideTripVotes: parseJsonArray(m.side_trip_votes as string),
+    personalGearRentals: parseJsonArray(m.personal_gear_rentals as string),
+    shareAmountUsd: Number(m.share_amount_usd || 187.50),
+    paymentStatus: (m.payment_status as 'UNPAID' | 'DEPOSIT_PAID' | 'PAID_FULL') || 'UNPAID',
+    receiptNumber: (m.receipt_number as string) || undefined,
+    paidAt: (m.paid_at as string) || undefined,
+    joinedAt: m.joined_at as string
+  }));
+
+  // Parse itinerary customization
+  let customization: any = {};
+  try {
+    customization = row.itinerary_customization ? JSON.parse(row.itinerary_customization as string) : {};
+  } catch {
+    customization = {};
+  }
+
+  const availableSideTrips: GroupSideTripOption[] = customization.availableSideTrips
+    || DEFAULT_HIMALAYAN_SIDE_TRIPS[trailId]
+    || DEFAULT_HIMALAYAN_SIDE_TRIPS.default;
+
+  const availableGearOptions: GroupGearOption[] = customization.gearRentalCatalog
+    || DEFAULT_HIMALAYAN_GEAR_OPTIONS;
+
+  // Compute live tallies for side trips
+  const sideTripTallies: GroupSideTripTally[] = availableSideTrips.map((st) => {
+    const voters = members.filter((m) => m.sideTripVotes.some((v) =>
+      v.toLowerCase() === st.name.toLowerCase() || v.toLowerCase() === st.id.toLowerCase()
+    ));
+    return {
+      id: st.id,
+      name: st.name,
+      elevationMeters: st.elevationMeters,
+      elevationGainMeters: st.elevationGainMeters,
+      durationHours: st.durationHours,
+      description: st.description,
+      votesCount: voters.length,
+      voterNames: voters.map((v) => v.memberName)
+    };
+  });
+
+  const paidMembersCount = members.filter((m) => m.paymentStatus !== 'UNPAID').length;
+  const targetGroupSize = Number(row.target_group_size || 4);
+  const totalCollectedUsd = members
+    .filter((m) => m.paymentStatus !== 'UNPAID')
+    .reduce((sum, m) => sum + m.shareAmountUsd, 0);
+
+  const depositPerPersonUsd = members[0]?.shareAmountUsd || 187.50;
+  const isFullyFunded = paidMembersCount >= targetGroupSize;
+
+  let currentStatus = row.status as 'ORGANIZING' | 'CONFIRMED' | 'EXPEDITION_READY' | 'CANCELLED';
+  if (isFullyFunded && currentStatus === 'ORGANIZING') {
+    currentStatus = 'CONFIRMED';
+    try {
+      db.prepare('UPDATE group_expeditions SET status = ? WHERE id = ?').run(currentStatus, expeditionId);
+    } catch {}
+  }
+
+  return {
+    id: expeditionId,
+    shareToken: row.share_token as string,
+    trailId,
+    leaderUserId: (row.leader_user_id as string) || undefined,
+    leaderName: row.leader_name as string,
+    leaderEmail: row.leader_email as string,
+    expeditionTitle: row.expedition_title as string,
+    targetStartDate: row.target_start_date as string,
+    targetGroupSize,
+    itineraryCustomization: customization,
+    status: currentStatus,
+    createdAt: row.created_at as string,
+    trail: trail ? {
+      id: trail.id,
+      slug: trail.slug,
+      name: trail.name,
+      region: trail.region,
+      difficulty: trail.difficulty,
+      distanceKm: trail.distanceKm,
+      durationDays: trail.durationDays,
+      maxElevation: trail.maxElevation,
+      elevationGain: trail.elevationGain,
+      image: trail.image,
+      startPoint: trail.startPoint,
+      endPoint: trail.endPoint
+    } : undefined,
+    members,
+    paidMembersCount,
+    totalMembersCount: members.length,
+    depositPerPersonUsd,
+    totalCollectedUsd,
+    sideTripTallies,
+    availableSideTrips,
+    availableGearOptions,
+    isFullyFunded,
+    inviteLink: `/trips/join/${row.share_token as string}`
+  };
+}
+
+export function joinGroupExpedition(
+  expeditionIdOrToken: string,
+  memberData: {
+    memberName: string;
+    memberEmail: string;
+    sideTripVotes?: string[];
+    personalGearRentals?: string[];
+    shareAmountUsd?: number;
+  }
+): GroupMember {
+  const db = getDatabase();
+  const expRow = db.prepare(`
+    SELECT * FROM group_expeditions
+    WHERE id = ? OR share_token = ?
+  `).get(expeditionIdOrToken, expeditionIdOrToken) as Record<string, unknown> | undefined;
+
+  if (!expRow) {
+    throw new Error(`Group expedition '${expeditionIdOrToken}' not found`);
+  }
+
+  const expeditionId = expRow.id as string;
+  const cleanEmail = memberData.memberEmail.trim().toLowerCase();
+  const cleanName = memberData.memberName.trim();
+
+  // Check if already a member
+  const existingMember = db.prepare(`
+    SELECT * FROM group_members
+    WHERE expedition_id = ? AND LOWER(member_email) = ?
+  `).get(expeditionId, cleanEmail) as Record<string, unknown> | undefined;
+
+  if (existingMember) {
+    throw new Error(`Adventurer with email '${cleanEmail}' has already joined this expedition`);
+  }
+
+  // Check capacity limits
+  const currentMembersCount = (db.prepare(`
+    SELECT COUNT(*) as count FROM group_members WHERE expedition_id = ?
+  `).get(expeditionId) as { count: number }).count;
+  const targetGroupSize = Number(expRow.target_group_size || 4);
+  if (currentMembersCount >= targetGroupSize) {
+    throw new Error(`Cannot join: group expedition has reached maximum capacity of ${targetGroupSize} members`);
+  }
+
+  // Insert new member
+  const newMemberId = `grp_mbr_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+  const now = new Date().toISOString();
+  const shareAmount = typeof memberData.shareAmountUsd === 'number' && memberData.shareAmountUsd > 0
+    ? memberData.shareAmountUsd
+    : 187.50;
+
+  db.prepare(`
+    INSERT INTO group_members (
+      id, expedition_id, member_name, member_email, role,
+      side_trip_votes, personal_gear_rentals, share_amount_usd,
+      payment_status, receipt_number, paid_at, joined_at
+    ) VALUES (?, ?, ?, ?, 'MEMBER', ?, ?, ?, 'UNPAID', NULL, NULL, ?)
+  `).run(
+    newMemberId,
+    expeditionId,
+    cleanName,
+    cleanEmail,
+    JSON.stringify(memberData.sideTripVotes || []),
+    JSON.stringify(memberData.personalGearRentals || []),
+    shareAmount,
+    now
+  );
+
+  return {
+    id: newMemberId,
+    expeditionId,
+    memberName: cleanName,
+    memberEmail: cleanEmail,
+    role: 'MEMBER',
+    sideTripVotes: memberData.sideTripVotes || [],
+    personalGearRentals: memberData.personalGearRentals || [],
+    shareAmountUsd: shareAmount,
+    paymentStatus: 'UNPAID',
+    joinedAt: now
+  };
+}
+
+export function voteGroupSideTrip(memberId: string, sideTripIdOrName: string): {
+  memberId: string;
+  sideTripVotes: string[];
+} {
+  const db = getDatabase();
+  const memberRow = db.prepare('SELECT * FROM group_members WHERE id = ?').get(memberId) as Record<string, unknown> | undefined;
+  if (!memberRow) {
+    throw new Error(`Group member with ID ${memberId} not found`);
+  }
+
+  let votes = parseJsonArray(memberRow.side_trip_votes as string);
+  const cleanTarget = sideTripIdOrName.trim();
+
+  const existingIndex = votes.findIndex((v) => v.toLowerCase() === cleanTarget.toLowerCase());
+  if (existingIndex >= 0) {
+    // Toggle off
+    votes.splice(existingIndex, 1);
+  } else {
+    // Toggle on
+    votes.push(cleanTarget);
+  }
+
+  db.prepare('UPDATE group_members SET side_trip_votes = ? WHERE id = ?').run(
+    JSON.stringify(votes),
+    memberId
+  );
+
+  return {
+    memberId,
+    sideTripVotes: votes
+  };
+}
+
+export function processGroupMemberPayment(
+  memberId: string,
+  paymentData?: {
+    paymentMethod?: string;
+    cardLast4?: string;
+    amountUsd?: number;
+  }
+): {
+  success: boolean;
+  memberId: string;
+  receiptNumber: string;
+  paidAt: string;
+  amountPaid: number;
+  paymentStatus: 'DEPOSIT_PAID';
+  expeditionStatus: string;
+  paidMembersCount: number;
+  targetGroupSize: number;
+} {
+  const db = getDatabase();
+
+  db.exec('BEGIN TRANSACTION;');
+  try {
+    const memberRow = db.prepare('SELECT * FROM group_members WHERE id = ?').get(memberId) as Record<string, unknown> | undefined;
+    if (!memberRow) {
+      throw new Error(`Group member with ID '${memberId}' not found in roster`);
+    }
+
+    const expeditionId = memberRow.expedition_id as string;
+    const expRow = db.prepare('SELECT * FROM group_expeditions WHERE id = ?').get(expeditionId) as Record<string, unknown> | undefined;
+    if (!expRow) {
+      throw new Error(`Parent group expedition '${expeditionId}' not found`);
+    }
+
+    const receiptNumber = generateGroupReceiptNumber();
+    const paidAt = new Date().toISOString();
+    const amountPaid = typeof paymentData?.amountUsd === 'number' && paymentData.amountUsd > 0
+      ? paymentData.amountUsd
+      : Number(memberRow.share_amount_usd || 187.50);
+
+    db.prepare(`
+      UPDATE group_members
+      SET payment_status = 'DEPOSIT_PAID',
+          receipt_number = ?,
+          paid_at = ?,
+          share_amount_usd = ?
+      WHERE id = ?
+    `).run(receiptNumber, paidAt, amountPaid, memberId);
+
+    // Count paid members
+    const countRow = db.prepare(`
+      SELECT COUNT(*) as count
+      FROM group_members
+      WHERE expedition_id = ? AND payment_status != 'UNPAID'
+    `).get(expeditionId) as { count: number };
+
+    const paidMembersCount = countRow ? Number(countRow.count) : 1;
+    const targetGroupSize = Number(expRow.target_group_size || 4);
+
+    let expeditionStatus = expRow.status as string;
+    if (paidMembersCount >= targetGroupSize && expeditionStatus === 'ORGANIZING') {
+      expeditionStatus = 'CONFIRMED';
+      db.prepare('UPDATE group_expeditions SET status = ? WHERE id = ?').run(expeditionStatus, expeditionId);
+    }
+
+    db.exec('COMMIT;');
+
+    return {
+      success: true,
+      memberId,
+      receiptNumber,
+      paidAt,
+      amountPaid,
+      paymentStatus: 'DEPOSIT_PAID',
+      expeditionStatus,
+      paidMembersCount,
+      targetGroupSize
+    };
+  } catch (err) {
+    try {
+      db.exec('ROLLBACK;');
+    } catch {}
+    throw err;
+  }
+}
+
+export function getGroupExpeditionsForUser(emailOrUserId: string): GroupExpeditionWithDetails[] {
+  const db = getDatabase();
+  const clean = emailOrUserId.trim().toLowerCase();
+
+  const rows = db.prepare(`
+    SELECT DISTINCT ge.*
+    FROM group_expeditions ge
+    LEFT JOIN group_members gm ON ge.id = gm.expedition_id
+    WHERE ge.leader_user_id = ?
+       OR LOWER(ge.leader_email) = ?
+       OR LOWER(gm.member_email) = ?
+    ORDER BY ge.created_at DESC
+  `).all(emailOrUserId, clean, clean) as Record<string, unknown>[];
+
+  return rows
+    .map((r) => getGroupExpeditionByToken(r.share_token as string))
+    .filter((e): e is GroupExpeditionWithDetails => e !== null);
+}
+
+export function getAllGroupExpeditions(): GroupExpeditionWithDetails[] {
+  const db = getDatabase();
+  const rows = db.prepare('SELECT share_token FROM group_expeditions ORDER BY created_at DESC').all() as Record<string, unknown>[];
+  return rows
+    .map((r) => getGroupExpeditionByToken(r.share_token as string))
+    .filter((e): e is GroupExpeditionWithDetails => e !== null);
 }
 
 

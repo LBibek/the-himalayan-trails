@@ -11,7 +11,8 @@ import {
   createCheckoutSessionToken,
   verifyCheckoutSessionToken,
   generateReceiptNumber,
-  generateVoucherAuthenticityHash
+  generateVoucherAuthenticityHash,
+  generateGroupReceiptNumber
 } from '../src/lib/pricing.ts';
 import {
   getGuides,
@@ -31,7 +32,14 @@ import {
   getCertificateById,
   getCertificateByBookingId,
   getCertificateByVerificationCode,
-  createCertificate
+  createCertificate,
+  createGroupExpedition,
+  getGroupExpeditionByToken,
+  joinGroupExpedition,
+  voteGroupSideTrip,
+  processGroupMemberPayment,
+  getGroupExpeditionsForUser,
+  getAllGroupExpeditions
 } from '../src/lib/db.ts';
 import {
   calculateEstimatedSpO2,
@@ -5600,6 +5608,186 @@ describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () =>
       assert.ok(discoveryHubSrc.includes('AudioPronunciationPlayer'), 'Discovery Hub LandmarkQuickSpecs must feature AudioPronunciationPlayer');
     });
   });
+
+  describe('37. Work Package 8.3: Collaborative Expedition Sharing & Split-Deposit Checkout', () => {
+    test('Database schema: group_expeditions and group_members tables and foreign key integrity', () => {
+      const db = new DatabaseSync(path.join(process.cwd(), 'data', 'himalayan_trails.db'));
+      const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(t => t.name);
+      assert.ok(tables.includes('group_expeditions'), 'group_expeditions table must exist');
+      assert.ok(tables.includes('group_members'), 'group_members table must exist');
+
+      const expCols = db.prepare("PRAGMA table_info(group_expeditions)").all().map(c => c.name);
+      assert.ok(expCols.includes('share_token'), 'group_expeditions must include share_token');
+      assert.ok(expCols.includes('target_group_size'), 'group_expeditions must include target_group_size');
+      assert.ok(expCols.includes('itinerary_customization'), 'group_expeditions must include itinerary_customization');
+
+      const memberCols = db.prepare("PRAGMA table_info(group_members)").all().map(c => c.name);
+      assert.ok(memberCols.includes('expedition_id'), 'group_members must include expedition_id');
+      assert.ok(memberCols.includes('side_trip_votes'), 'group_members must include side_trip_votes');
+      assert.ok(memberCols.includes('share_amount_usd'), 'group_members must include share_amount_usd');
+      assert.ok(memberCols.includes('payment_status'), 'group_members must include payment_status');
+      assert.ok(memberCols.includes('receipt_number'), 'group_members must include receipt_number');
+    });
+
+    test('Group expedition lifecycle: creation, leader auto-join, and share token retrieval', () => {
+      const uniqueSuffix = Date.now().toString().slice(-6);
+      const expedition = createGroupExpedition({
+        trailId: 'ebc-trek',
+        leaderName: 'Tenzing Norgay',
+        leaderEmail: `tenzing_${uniqueSuffix}@example.com`,
+        expeditionTitle: `Khumbu Summit Team ${uniqueSuffix}`,
+        targetStartDate: '2026-10-15',
+        targetGroupSize: 3,
+        shareAmountUsd: 187.50
+      });
+
+      assert.ok(expedition.id.startsWith('grp_exp_'), 'Expedition ID must have grp_exp_ prefix');
+      assert.ok(expedition.shareToken.length > 5, 'Share token must be a valid non-empty string');
+      assert.strictEqual(expedition.targetGroupSize, 3);
+      assert.strictEqual(expedition.status, 'ORGANIZING');
+      assert.strictEqual(expedition.members.length, 1, 'Leader must be automatically joined as member #1');
+      assert.strictEqual(expedition.members[0].role, 'LEADER');
+      assert.strictEqual(expedition.members[0].paymentStatus, 'UNPAID');
+
+      // Retrieve by token
+      const fetched = getGroupExpeditionByToken(expedition.shareToken);
+      assert.ok(fetched, 'Must retrieve expedition by share token');
+      assert.strictEqual(fetched.id, expedition.id);
+      assert.strictEqual(fetched.leaderEmail, `tenzing_${uniqueSuffix}@example.com`);
+      assert.strictEqual(fetched.paidMembersCount, 0);
+      assert.strictEqual(fetched.targetGroupSize, 3);
+    });
+
+    test('Adding team members: capacity limits, duplicate email prevention, and side-trip voting', () => {
+      const uniqueSuffix = Date.now().toString().slice(-6);
+      const expedition = createGroupExpedition({
+        trailId: 'ebc-trek',
+        leaderName: 'Edmund Leader',
+        leaderEmail: `leader_${uniqueSuffix}@example.com`,
+        expeditionTitle: `Team Everest ${uniqueSuffix}`,
+        targetStartDate: '2026-11-01',
+        targetGroupSize: 2
+      });
+
+      // Member 2 joins
+      const member2 = joinGroupExpedition(expedition.id, {
+        memberName: 'Member Two',
+        memberEmail: `member2_${uniqueSuffix}@example.com`,
+        sideTripVotes: ['kala-patthar-sunrise'],
+        personalGearRentals: ['-20C Down Sleeping Bag']
+      });
+      assert.ok(member2.id.startsWith('grp_mbr_'));
+      assert.strictEqual(member2.role, 'MEMBER');
+      assert.strictEqual(member2.paymentStatus, 'UNPAID');
+
+      // Duplicate email rejection
+      assert.throws(() => {
+        joinGroupExpedition(expedition.id, {
+          memberName: 'Member Two Imposter',
+          memberEmail: `member2_${uniqueSuffix}@example.com`
+        });
+      }, /already joined/i);
+
+      // Capacity reached rejection (targetGroupSize = 2)
+      assert.throws(() => {
+        joinGroupExpedition(expedition.id, {
+          memberName: 'Member Three Overflow',
+          memberEmail: `member3_${uniqueSuffix}@example.com`
+        });
+      }, /capacity/i);
+
+      // Side-trip voting toggle
+      const voteResult1 = voteGroupSideTrip(member2.id, 'gokyo-ri-detour');
+      assert.ok(voteResult1.sideTripVotes.includes('gokyo-ri-detour'), 'Should add vote');
+      const voteResult2 = voteGroupSideTrip(member2.id, 'gokyo-ri-detour');
+      assert.ok(!voteResult2.sideTripVotes.includes('gokyo-ri-detour'), 'Toggling should remove vote');
+    });
+
+    test('Split-deposit payment processing: ACID transactions, receipt generation, and status progression', () => {
+      const uniqueSuffix = Date.now().toString().slice(-6);
+      const expedition = createGroupExpedition({
+        trailId: 'ebc-trek',
+        leaderName: 'Pay Leader',
+        leaderEmail: `pay_leader_${uniqueSuffix}@example.com`,
+        expeditionTitle: `Payment Test Team ${uniqueSuffix}`,
+        targetStartDate: '2026-11-15',
+        targetGroupSize: 2,
+        shareAmountUsd: 200.00
+      });
+
+      const member2 = joinGroupExpedition(expedition.id, {
+        memberName: 'Pay Member 2',
+        memberEmail: `pay_member2_${uniqueSuffix}@example.com`
+      });
+
+      // Receipt number formatting check
+      const receiptNum = generateGroupReceiptNumber();
+      assert.ok(receiptNum.startsWith('REC-2026-GRP-'), 'Receipt number must follow REC-2026-GRP-XXXXX format');
+
+      // Leader pays deposit
+      const leaderMember = expedition.members[0];
+      const paidLeader = processGroupMemberPayment(leaderMember.id, {
+        amountUsd: 200.00,
+        paymentOption: 'DEPOSIT',
+        cardLast4: '4242'
+      });
+      assert.strictEqual(paidLeader.paymentStatus, 'DEPOSIT_PAID');
+      assert.ok(paidLeader.receiptNumber?.startsWith('REC-2026-GRP-'));
+
+      // Check expedition status: 1 of 2 paid => still ORGANIZING
+      let state = getGroupExpeditionByToken(expedition.shareToken);
+      assert.strictEqual(state?.paidMembersCount, 1);
+      assert.strictEqual(state?.status, 'ORGANIZING');
+
+      // Member 2 pays deposit => 2 of 2 paid => status transitions to CONFIRMED
+      const paidMember2 = processGroupMemberPayment(member2.id, {
+        amountUsd: 200.00,
+        paymentOption: 'DEPOSIT',
+        cardLast4: '5555'
+      });
+      assert.strictEqual(paidMember2.paymentStatus, 'DEPOSIT_PAID');
+
+      state = getGroupExpeditionByToken(expedition.shareToken);
+      assert.strictEqual(state?.paidMembersCount, 2);
+      assert.strictEqual(state?.status, 'CONFIRMED', 'Expedition must automatically transition to CONFIRMED when all deposits are paid');
+    });
+
+    test('UI Integration: Shareable Join Page, Group Card, Dashboard wiring, and Trail Detail CTA', () => {
+      const joinPagePath = path.join(process.cwd(), 'src/app/trips/join/[token]/page.tsx');
+      const groupCardPath = path.join(process.cwd(), 'src/components/expeditions/GroupExpeditionCard.tsx');
+      const dashboardPath = path.join(process.cwd(), 'src/app/dashboard/page.tsx');
+      const trailPagePath = path.join(process.cwd(), 'src/app/trails/[id]/page.tsx');
+
+      assert.ok(fs.existsSync(joinPagePath), 'Join page must exist at src/app/trips/join/[token]/page.tsx');
+      assert.ok(fs.existsSync(groupCardPath), 'GroupExpeditionCard must exist');
+
+      const joinPageSrc = fs.readFileSync(joinPagePath, 'utf8');
+      const groupCardSrc = fs.readFileSync(groupCardPath, 'utf8');
+      const dashboardSrc = fs.readFileSync(dashboardPath, 'utf8');
+      const trailPageSrc = fs.readFileSync(trailPagePath, 'utf8');
+
+      // Join Page contracts
+      assert.ok(joinPageSrc.includes('data-slot="base"'), 'Join page must use HeroUI semantics');
+      assert.ok(joinPageSrc.includes('data-slot="header"'), 'Join page must implement header slot');
+      assert.ok(joinPageSrc.includes('data-slot="body"'), 'Join page must implement body slot');
+      assert.ok(joinPageSrc.includes('Pay Deposit'), 'Join page must feature Pay Deposit action');
+      assert.ok(joinPageSrc.includes('Copy Invite Link'), 'Join page must feature Copy Invite Link action');
+      assert.ok(joinPageSrc.includes('SideTripVotingBoard') || joinPageSrc.includes('Side-Trip Voting'), 'Join page must feature Side-Trip Voting board');
+      assert.ok(joinPageSrc.includes('GearChecklist') || joinPageSrc.includes('Personal Gear'), 'Join page must feature Personal Gear Rental checklist');
+
+      // Group Card contracts
+      assert.ok(groupCardSrc.includes('data-slot="base"'), 'GroupExpeditionCard must use HeroUI semantics');
+      assert.ok(groupCardSrc.includes('paidMembersCount'), 'GroupExpeditionCard must display confirmed member counts');
+
+      // Dashboard wiring
+      assert.ok(dashboardSrc.includes('Group Expeditions'), 'User Dashboard must feature Group Expeditions section');
+      assert.ok(dashboardSrc.includes('/api/user/group-expeditions'), 'Dashboard must fetch user group expeditions');
+
+      // Trail Detail Page CTA
+      assert.ok(trailPageSrc.includes('Start a Group Expedition') || trailPageSrc.includes('Group Expedition'), 'Trail Detail page must feature Group Expedition CTA');
+    });
+  });
+
 });
 
 
