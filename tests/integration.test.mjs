@@ -39,8 +39,19 @@ import {
   voteGroupSideTrip,
   processGroupMemberPayment,
   getGroupExpeditionsForUser,
-  getAllGroupExpeditions
+    getAllGroupExpeditions,
+  createOrUpdateGearManifest,
+  getGearManifestById,
+  getGearManifestsByExpeditionId,
+  getGearManifestsByEmail,
+  getAllGearManifests
 } from '../src/lib/db.ts';
+import {
+  assessPorterEthicsAndSafety,
+  calculateAltitudeExertionMultiplier,
+  IPPG_CONSTANTS,
+  MANIFEST_PRESETS
+} from '../src/lib/porterEthics.ts';
 import {
   calculateEstimatedSpO2,
   predictAmsRiskScore,
@@ -5785,6 +5796,172 @@ describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () =>
 
       // Trail Detail Page CTA
       assert.ok(trailPageSrc.includes('Start a Group Expedition') || trailPageSrc.includes('Group Expedition'), 'Trail Detail page must feature Group Expedition CTA');
+    });
+  });
+
+
+  // ==========================================
+  // 38. Work Package 9.1: Expedition Gear Weight & Porter Ethics Load Balancer
+  // ==========================================
+  describe('38. Work Package 9.1: Expedition Gear Weight & Porter Ethics Load Balancer', () => {
+    test('Altitude exertion multiplier & physiological strain physics', () => {
+      // Sea level / sub-alpine base (<=2500m)
+      assert.strictEqual(calculateAltitudeExertionMultiplier(1500), 1.0);
+      assert.strictEqual(calculateAltitudeExertionMultiplier(2500), 1.0);
+
+      // Namche Bazaar (3440m ~ 3500m)
+      const multNamche = calculateAltitudeExertionMultiplier(3500);
+      assert.strictEqual(multNamche, 1.12, 'At 3500m (+1000m), exertion multiplier must be 1.12 (+12%)');
+
+      // Dingboche (4410m ~ 4500m)
+      const multDingboche = calculateAltitudeExertionMultiplier(4500);
+      assert.strictEqual(multDingboche, 1.24, 'At 4500m (+2000m), exertion multiplier must be 1.24 (+24%)');
+
+      // Kala Patthar (5500m ~ 5644m)
+      const multKalaPatthar = calculateAltitudeExertionMultiplier(5500);
+      assert.strictEqual(multKalaPatthar, 1.36, 'At 5500m (+3000m), exertion multiplier must be 1.36 (+36%)');
+
+      // Monotonic scaling
+      assert.ok(multKalaPatthar > multDingboche);
+      assert.ok(multDingboche > multNamche);
+    });
+
+    test('assessPorterEthicsAndSafety logic, ergonomic ratios & IPPG compliance', () => {
+      // 1. Safe Daypack (5kg on 70kg trekker = 7.1% body weight)
+      const safeAssessment = assessPorterEthicsAndSafety({
+        daypackWeightKg: 5.0,
+        duffelWeightKg: 10.0,
+        trekkerBodyWeightKg: 70,
+        groupSize: 2,
+        targetAltitudeMeters: 4500
+      });
+      assert.strictEqual(safeAssessment.daypackSafetyStatus, 'SAFE');
+      assert.strictEqual(safeAssessment.ippgCompliance, 'COMPLIANT');
+      assert.strictEqual(safeAssessment.portersRequired, 1);
+      assert.strictEqual(safeAssessment.estimatedDailyPorterWageNpr, 3000);
+      assert.strictEqual(safeAssessment.estimatedDailyPorterWageUsd, 22.50);
+      assert.strictEqual(safeAssessment.effectiveExertionKg, 6.2); // 5.0 * 1.24 = 6.2
+
+      // 2. Heavy Daypack Caution (12kg on 70kg trekker = 17.1% body weight)
+      const heavyAssessment = assessPorterEthicsAndSafety({
+        daypackWeightKg: 12.0,
+        duffelWeightKg: 10.0,
+        trekkerBodyWeightKg: 70,
+        groupSize: 2,
+        targetAltitudeMeters: 4500
+      });
+      assert.strictEqual(heavyAssessment.daypackSafetyStatus, 'CAUTION');
+
+      // 3. Dangerous Daypack (>20% body weight)
+      const dangerousAssessment = assessPorterEthicsAndSafety({
+        daypackWeightKg: 16.0,
+        duffelWeightKg: 10.0,
+        trekkerBodyWeightKg: 70,
+        groupSize: 2,
+        targetAltitudeMeters: 4500
+      });
+      assert.strictEqual(dangerousAssessment.daypackSafetyStatus, 'DANGEROUS');
+
+      // 4. Team of 4 with 22kg duffels each => 88kg total duffel => requires 4 porters
+      const groupAssessment = assessPorterEthicsAndSafety({
+        daypackWeightKg: 6.0,
+        duffelWeightKg: 22.0,
+        trekkerBodyWeightKg: 75,
+        groupSize: 4,
+        targetAltitudeMeters: 5364
+      });
+      assert.strictEqual(groupAssessment.totalDuffelKg, 88.0);
+      assert.strictEqual(groupAssessment.portersRequired, 4); // ceil(88 / 25) = 4 porters (22kg/porter <= 25kg)
+      assert.strictEqual(groupAssessment.ippgCompliance, 'WARNING'); // >20kg/porter
+      assert.strictEqual(groupAssessment.estimatedDailyPorterWageNpr, 12000); // 4 * 3000
+    });
+
+    test('Database schema, persistence, and ACID operations for gear manifests', () => {
+      const uniqueSuffix = Date.now().toString().slice(-6);
+      const manifest = createOrUpdateGearManifest({
+        trekkerName: 'Ang Rita',
+        trekkerEmail: `angrita_${uniqueSuffix}@example.com`,
+        bodyWeightKg: 72,
+        targetAltitudeM: 5364,
+        groupSize: 2,
+        daypackWeightKg: 5.5,
+        duffelWeightKg: 11.5,
+        items: [
+          { itemId: 'layer-down-parka', name: '800-Fill Down Parka', category: 'Alpine Technical Layering', weightGrams: 680, carrier: 'daypack' },
+          { itemId: 'sleep-bag-down', name: '-20C Down Bag', category: 'Sleep System & Warmth', weightGrams: 1450, carrier: 'duffel' }
+        ],
+        notes: 'Pre-flight Lukla pack check'
+      });
+
+      assert.ok(manifest.id.startsWith('gman_'), 'Manifest ID must start with gman_');
+      assert.strictEqual(manifest.trekkerName, 'Ang Rita');
+      assert.strictEqual(manifest.daypackWeightKg, 5.5);
+      assert.strictEqual(manifest.duffelWeightKg, 11.5);
+      assert.strictEqual(manifest.totalWeightKg, 17.0);
+      assert.strictEqual(manifest.ippgCompliance, 'WARNING', '23kg for 1 porter exceeds 20kg optimal target threshold so triggers WARNING');
+
+      // Retrieve by ID
+      const fetched = getGearManifestById(manifest.id);
+      assert.ok(fetched !== null);
+      assert.strictEqual(fetched?.id, manifest.id);
+      assert.strictEqual(fetched?.items.length, 2);
+
+      // Retrieve by Email
+      const emailResults = getGearManifestsByEmail(`angrita_${uniqueSuffix}@example.com`);
+      assert.ok(emailResults.length >= 1);
+      assert.strictEqual(emailResults[0].id, manifest.id);
+
+      // Update existing manifest
+      const updated = createOrUpdateGearManifest({
+        id: manifest.id,
+        trekkerName: 'Ang Rita Updated',
+        daypackWeightKg: 6.0,
+        duffelWeightKg: 12.0
+      });
+      assert.strictEqual(updated.id, manifest.id);
+      assert.strictEqual(updated.trekkerName, 'Ang Rita Updated');
+      assert.strictEqual(updated.totalWeightKg, 18.0);
+    });
+
+    test('API Route Handlers contract verification for /api/logistics/gear-manifest', () => {
+      const apiPath = path.join(process.cwd(), 'src/app/api/logistics/gear-manifest/route.ts');
+      assert.ok(fs.existsSync(apiPath), 'API route file must exist');
+
+      const src = fs.readFileSync(apiPath, 'utf8');
+      assert.ok(src.includes('export async function GET'), 'Must export GET handler');
+      assert.ok(src.includes('export async function POST'), 'Must export POST handler');
+      assert.ok(src.includes("evaluate === 'true'"), 'GET handler must support evaluate parameter');
+      assert.ok(src.includes('createOrUpdateGearManifest'), 'POST handler must persist manifest');
+      assert.ok(src.includes('assessPorterEthicsAndSafety'), 'POST handler must compute assessment');
+    });
+
+    test('UI Integration: Gear balancer page, GearWeightBalancer component, Join page cross-wiring', () => {
+      const componentPath = path.join(process.cwd(), 'src/components/logistics/GearWeightBalancer.tsx');
+      const pagePath = path.join(process.cwd(), 'src/app/logistics/gear-balancer/page.tsx');
+      const joinPagePath = path.join(process.cwd(), 'src/app/trips/join/[token]/page.tsx');
+
+      assert.ok(fs.existsSync(componentPath), 'GearWeightBalancer component must exist');
+      assert.ok(fs.existsSync(pagePath), 'Gear Balancer page must exist');
+
+      const compSrc = fs.readFileSync(componentPath, 'utf8');
+      const pageSrc = fs.readFileSync(pagePath, 'utf8');
+      const joinSrc = fs.readFileSync(joinPagePath, 'utf8');
+
+      // HeroUI Compound slots contracts
+      assert.ok(compSrc.includes('data-slot="base"'), 'Component must implement base slot');
+      assert.ok(compSrc.includes('data-slot="header"'), 'Component must implement header slot');
+      assert.ok(compSrc.includes('data-slot="body"'), 'Component must implement body slot');
+      assert.ok(compSrc.includes('data-slot="footer"'), 'Component must implement footer slot');
+      assert.ok(compSrc.includes('data-slot="indicator"'), 'Component must implement indicator slot');
+      assert.ok(compSrc.includes('focus-visible:ring'), 'Component must follow React Aria focus standards');
+
+      // Page contracts
+      assert.ok(pageSrc.includes('data-slot="base"'), 'Page must implement base slot');
+      assert.ok(pageSrc.includes('GearWeightBalancer'), 'Page must render GearWeightBalancer');
+      assert.ok(pageSrc.includes('IPPG'), 'Page must reference IPPG guidelines');
+
+      // Join Page cross-wiring
+      assert.ok(joinSrc.includes('GearWeightBalancer'), 'Join page must cross-wire GearWeightBalancer');
     });
   });
 

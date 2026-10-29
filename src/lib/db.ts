@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import fs from 'node:fs';
-import type { Trail, Landmark, Itinerary, ItineraryDay, Story, WeatherReport, Booking, ContactMessage, Inquiry, SharedTrail, User, HimalayanRange, Guide, Teahouse, TeahouseReservation, TrailConditionReport, HighAltitudeCertificate, GroupExpedition, GroupMember, GroupExpeditionWithDetails, GroupSideTripOption, GroupGearOption, GroupSideTripTally } from '../types';
+import type { Trail, Landmark, Itinerary, ItineraryDay, Story, WeatherReport, Booking, ContactMessage, Inquiry, SharedTrail, User, HimalayanRange, Guide, Teahouse, TeahouseReservation, TrailConditionReport, HighAltitudeCertificate, GroupExpedition, GroupMember, GroupExpeditionWithDetails, GroupSideTripOption, GroupGearOption, GroupSideTripTally, GearManifest, ManifestItemEntry } from '../types';
 import crypto from 'node:crypto';
 
 export function generateGroupReceiptNumber(): string {
@@ -562,6 +562,30 @@ export function initializeSchema(db: DatabaseSync) {
     );
   `);
 
+  // Gear Manifests table (Sprint 9.1 - Porter Ethics & Load Balancer)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS gear_manifests (
+      id TEXT PRIMARY KEY,
+      expedition_id TEXT,
+      booking_id TEXT,
+      trekker_name TEXT NOT NULL,
+      trekker_email TEXT,
+      body_weight_kg REAL NOT NULL DEFAULT 70.0,
+      target_altitude_m INTEGER NOT NULL DEFAULT 4500,
+      group_size INTEGER NOT NULL DEFAULT 1,
+      daypack_weight_kg REAL NOT NULL,
+      duffel_weight_kg REAL NOT NULL,
+      total_weight_kg REAL NOT NULL,
+      effective_exertion_kg REAL NOT NULL,
+      porter_count_recommended INTEGER NOT NULL DEFAULT 1,
+      ippg_compliance TEXT NOT NULL DEFAULT 'COMPLIANT',
+      items_json TEXT NOT NULL DEFAULT '[]',
+      notes TEXT,
+      created_at TEXT NOT NULL
+    );
+  `);
+
+
   // Ensure route_coordinates column exists on trails table
   try {
     db.exec('ALTER TABLE trails ADD COLUMN route_coordinates TEXT;');
@@ -606,6 +630,16 @@ export function initializeSchema(db: DatabaseSync) {
     const expCount = db.prepare('SELECT COUNT(*) as count FROM group_expeditions').get() as { count: number };
     if (!expCount || expCount.count === 0) {
       seedOfficialGroupExpeditions(db);
+    }
+  } catch {
+    // ignore
+  }
+
+  // Ensure authentic gear manifests are seeded if table is empty
+  try {
+    const manCount = db.prepare('SELECT COUNT(*) as count FROM gear_manifests').get() as { count: number };
+    if (!manCount || manCount.count === 0) {
+      seedOfficialGearManifests(db);
     }
   } catch {
     // ignore
@@ -4145,3 +4179,258 @@ export function getAllGroupExpeditions(): GroupExpeditionWithDetails[] {
 }
 
 
+
+
+// ==========================================
+// GEAR MANIFEST & PORTER LOAD BALANCER (Sprint 9.1)
+// ==========================================
+
+export function createOrUpdateGearManifest(data: {
+  id?: string;
+  expeditionId?: string;
+  bookingId?: string;
+  trekkerName: string;
+  trekkerEmail?: string;
+  bodyWeightKg?: number;
+  targetAltitudeM?: number;
+  groupSize?: number;
+  daypackWeightKg: number;
+  duffelWeightKg: number;
+  items?: ManifestItemEntry[];
+  notes?: string;
+}): GearManifest {
+  const db = getDatabase();
+  const id = data.id || `gman_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+  const now = new Date().toISOString();
+  const trekkerName = (data.trekkerName || 'Expedition Trekker').trim();
+  const trekkerEmail = data.trekkerEmail?.trim().toLowerCase() || null;
+  const bodyWeightKg = Number(data.bodyWeightKg) || 70.0;
+  const targetAltitudeM = Number(data.targetAltitudeM) || 4500;
+  const groupSize = Math.max(1, Math.floor(Number(data.groupSize) || 1));
+  const daypackWeightKg = Math.round((Number(data.daypackWeightKg) || 0) * 10) / 10;
+  const duffelWeightKg = Math.round((Number(data.duffelWeightKg) || 0) * 10) / 10;
+  const totalWeightKg = Math.round((daypackWeightKg + duffelWeightKg) * 10) / 10;
+
+  // Altitude factor
+  const deltaThousands = Math.max(0, (targetAltitudeM - 2500) / 1000);
+  const altitudeMultiplier = 1.0 + deltaThousands * 0.12;
+  const effectiveExertionKg = Math.round(daypackWeightKg * altitudeMultiplier * 10) / 10;
+
+  // Porter recommendation & compliance
+  const totalDuffelKg = duffelWeightKg * groupSize;
+  const porterCountRecommended = Math.max(1, Math.ceil(totalDuffelKg / 25.0));
+  const avgPorterLoad = totalDuffelKg / porterCountRecommended;
+
+  let ippgCompliance: 'COMPLIANT' | 'WARNING' | 'VIOLATION' = 'COMPLIANT';
+  if (avgPorterLoad > 25.0) {
+    ippgCompliance = 'VIOLATION';
+  } else if (avgPorterLoad > 20.0) {
+    ippgCompliance = 'WARNING';
+  }
+
+  const itemsJson = JSON.stringify(data.items || []);
+
+  const existing = db.prepare('SELECT id FROM gear_manifests WHERE id = ?').get(id);
+  if (existing) {
+    db.prepare(`
+      UPDATE gear_manifests
+      SET expedition_id = ?,
+          booking_id = ?,
+          trekker_name = ?,
+          trekker_email = ?,
+          body_weight_kg = ?,
+          target_altitude_m = ?,
+          group_size = ?,
+          daypack_weight_kg = ?,
+          duffel_weight_kg = ?,
+          total_weight_kg = ?,
+          effective_exertion_kg = ?,
+          porter_count_recommended = ?,
+          ippg_compliance = ?,
+          items_json = ?,
+          notes = ?
+      WHERE id = ?
+    `).run(
+      data.expeditionId || null,
+      data.bookingId || null,
+      trekkerName,
+      trekkerEmail,
+      bodyWeightKg,
+      targetAltitudeM,
+      groupSize,
+      daypackWeightKg,
+      duffelWeightKg,
+      totalWeightKg,
+      effectiveExertionKg,
+      porterCountRecommended,
+      ippgCompliance,
+      itemsJson,
+      data.notes || null,
+      id
+    );
+  } else {
+    db.prepare(`
+      INSERT INTO gear_manifests (
+        id, expedition_id, booking_id, trekker_name, trekker_email,
+        body_weight_kg, target_altitude_m, group_size, daypack_weight_kg,
+        duffel_weight_kg, total_weight_kg, effective_exertion_kg,
+        porter_count_recommended, ippg_compliance, items_json, notes, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.expeditionId || null,
+      data.bookingId || null,
+      trekkerName,
+      trekkerEmail,
+      bodyWeightKg,
+      targetAltitudeM,
+      groupSize,
+      daypackWeightKg,
+      duffelWeightKg,
+      totalWeightKg,
+      effectiveExertionKg,
+      porterCountRecommended,
+      ippgCompliance,
+      itemsJson,
+      data.notes || null,
+      now
+    );
+  }
+
+  return {
+    id,
+    expeditionId: data.expeditionId || undefined,
+    bookingId: data.bookingId || undefined,
+    trekkerName,
+    trekkerEmail: trekkerEmail || undefined,
+    bodyWeightKg,
+    targetAltitudeM,
+    groupSize,
+    daypackWeightKg,
+    duffelWeightKg,
+    totalWeightKg,
+    effectiveExertionKg,
+    porterCountRecommended,
+    ippgCompliance,
+    items: data.items || [],
+    notes: data.notes || undefined,
+    createdAt: now
+  };
+}
+
+export function getGearManifestById(id: string): GearManifest | null {
+  const db = getDatabase();
+  const row = db.prepare('SELECT * FROM gear_manifests WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+  if (!row) return null;
+
+  let items: ManifestItemEntry[] = [];
+  try {
+    items = JSON.parse((row.items_json as string) || '[]');
+  } catch {
+    items = [];
+  }
+
+  return {
+    id: row.id as string,
+    expeditionId: (row.expedition_id as string) || undefined,
+    bookingId: (row.booking_id as string) || undefined,
+    trekkerName: row.trekker_name as string,
+    trekkerEmail: (row.trekker_email as string) || undefined,
+    bodyWeightKg: Number(row.body_weight_kg || 70.0),
+    targetAltitudeM: Number(row.target_altitude_m || 4500),
+    groupSize: Number(row.group_size || 1),
+    daypackWeightKg: Number(row.daypack_weight_kg || 0),
+    duffelWeightKg: Number(row.duffel_weight_kg || 0),
+    totalWeightKg: Number(row.total_weight_kg || 0),
+    effectiveExertionKg: Number(row.effective_exertion_kg || 0),
+    porterCountRecommended: Number(row.porter_count_recommended || 1),
+    ippgCompliance: (row.ippg_compliance as 'COMPLIANT' | 'WARNING' | 'VIOLATION') || 'COMPLIANT',
+    items,
+    notes: (row.notes as string) || undefined,
+    createdAt: row.created_at as string
+  };
+}
+
+export function getGearManifestsByExpeditionId(expeditionId: string): GearManifest[] {
+  const db = getDatabase();
+  const rows = db.prepare('SELECT id FROM gear_manifests WHERE expedition_id = ? ORDER BY created_at DESC').all(expeditionId) as Record<string, unknown>[];
+  return rows.map((r) => getGearManifestById(r.id as string)).filter((m): m is GearManifest => m !== null);
+}
+
+export function getGearManifestsByEmail(email: string): GearManifest[] {
+  const db = getDatabase();
+  const clean = email.trim().toLowerCase();
+  const rows = db.prepare('SELECT id FROM gear_manifests WHERE LOWER(trekker_email) = ? ORDER BY created_at DESC').all(clean) as Record<string, unknown>[];
+  return rows.map((r) => getGearManifestById(r.id as string)).filter((m): m is GearManifest => m !== null);
+}
+
+export function getAllGearManifests(): GearManifest[] {
+  const db = getDatabase();
+  const rows = db.prepare('SELECT id FROM gear_manifests ORDER BY created_at DESC').all() as Record<string, unknown>[];
+  return rows.map((r) => getGearManifestById(r.id as string)).filter((m): m is GearManifest => m !== null);
+}
+
+
+export function seedOfficialGearManifests(db: DatabaseSync) {
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO gear_manifests (
+      id, expedition_id, booking_id, trekker_name, trekker_email,
+      body_weight_kg, target_altitude_m, group_size, daypack_weight_kg,
+      duffel_weight_kg, total_weight_kg, effective_exertion_kg,
+      porter_count_recommended, ippg_compliance, items_json, notes, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  // 1. Tenzing Norgay Jr. - Team Sagarmatha EBC
+  insert.run(
+    'gman_ebc_sagarmatha_tenzing',
+    'grp_exp_sagarmatha_2026',
+    null,
+    'Tenzing Norgay Jr.',
+    'tenzing@expeditions.org',
+    74.0,
+    5364,
+    4,
+    5.8,
+    11.4,
+    17.2,
+    7.8,
+    2,
+    'COMPLIANT',
+    JSON.stringify([
+      { itemId: 'layer-down-jacket', name: '800-Fill Expedition Down Parka', category: 'Alpine Technical Layering', weightGrams: 680, carrier: 'daypack' },
+      { itemId: 'microspikes', name: 'Kahtoola Steel Microspikes', category: 'Footwear & Mountain Traction', weightGrams: 380, carrier: 'daypack' },
+      { itemId: 'hydration-bottles', name: '2x 1L Insulated Wide-Mouth Hydration', category: 'Packs & Load Carrying', weightGrams: 2400, carrier: 'daypack' },
+      { itemId: 'med-altitude-kit', name: 'AMS & Wilderness First Aid Kit', category: 'High-Altitude Medical & First Aid', weightGrams: 520, carrier: 'daypack' },
+      { itemId: 'sleep-bag-down', name: '-20°C Down Expedition Sleeping Bag', category: 'Sleep System & Warmth', weightGrams: 1450, carrier: 'duffel' }
+    ]),
+    'Fully optimized for EBC & Kala Patthar alpine traverse.',
+    '2026-10-16T10:00:00Z'
+  );
+
+  // 2. Sarah Jenkins - Annapurna High-Pass Circuit
+  insert.run(
+    'gman_annapurna_circuit_sarah',
+    null,
+    'bkg_act_1',
+    'Sarah Jenkins',
+    'sarah.j@example.com',
+    63.0,
+    5416,
+    2,
+    5.4,
+    10.8,
+    16.2,
+    7.3,
+    1,
+    'COMPLIANT',
+    JSON.stringify([
+      { itemId: 'layer-down-jacket', name: '800-Fill Expedition Down Parka', category: 'Alpine Technical Layering', weightGrams: 680, carrier: 'daypack' },
+      { itemId: 'shell-jacket', name: 'GORE-TEX Alpine 3L Hardshell', category: 'Alpine Technical Layering', weightGrams: 440, carrier: 'daypack' },
+      { itemId: 'hydration-bottles', name: '2x 1L Insulated Wide-Mouth Hydration', category: 'Packs & Load Carrying', weightGrams: 2400, carrier: 'daypack' },
+      { itemId: 'sleep-bag-down', name: '-20°C Down Expedition Sleeping Bag', category: 'Sleep System & Warmth', weightGrams: 1450, carrier: 'duffel' }
+    ]),
+    'Thorong La Pass packing plan adhering to IPPG ethical load limits.',
+    '2026-10-18T14:30:00Z'
+  );
+}

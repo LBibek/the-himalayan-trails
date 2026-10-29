@@ -28,6 +28,7 @@ import SideTripVotingBoard from '@/components/expeditions/SideTripVotingBoard';
 import GearChecklist from '@/components/expeditions/GearChecklist';
 import SplitPaymentModal from '@/components/expeditions/SplitPaymentModal';
 import JoinExpeditionModal from '@/components/expeditions/JoinExpeditionModal';
+import GearWeightBalancer from '@/components/logistics/GearWeightBalancer';
 
 export default function JoinExpeditionPage() {
   const params = useParams();
@@ -414,6 +415,15 @@ export default function JoinExpeditionPage() {
           activeMember={activeMember}
           selectedGear={selectedGear}
           onToggleGear={handleToggleGear}
+        />
+
+        {/* 5. Expedition Gear Weight & Porter Load Balancer (Sprint 9.1) */}
+        <GearWeightBalancer
+          expeditionId={expedition.id}
+          initialTrekkerName={activeMember ? activeMember.memberName : expedition.leaderName}
+          initialTrekkerEmail={activeMember ? activeMember.memberEmail : expedition.leaderEmail}
+          initialGroupSize={expedition.targetGroupSize}
+          initialAltitudeM={5364}
         />
       </div>
 
