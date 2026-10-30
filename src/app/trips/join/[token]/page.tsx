@@ -29,6 +29,7 @@ import GearChecklist from '@/components/expeditions/GearChecklist';
 import SplitPaymentModal from '@/components/expeditions/SplitPaymentModal';
 import JoinExpeditionModal from '@/components/expeditions/JoinExpeditionModal';
 import GearWeightBalancer from '@/components/logistics/GearWeightBalancer';
+import TeamDispatchBoard from '@/components/expeditions/TeamDispatchBoard';
 
 export default function JoinExpeditionPage() {
   const params = useParams();
@@ -424,6 +425,12 @@ export default function JoinExpeditionPage() {
           initialTrekkerEmail={activeMember ? activeMember.memberEmail : expedition.leaderEmail}
           initialGroupSize={expedition.targetGroupSize}
           initialAltitudeM={5364}
+        />
+
+        {/* 6. Expedition Team Dispatch Board & Offline Chat (Sprint 9.2) */}
+        <TeamDispatchBoard
+          expedition={expedition}
+          activeMember={activeMember}
         />
       </div>
 

@@ -44,7 +44,9 @@ import {
   getGearManifestById,
   getGearManifestsByExpeditionId,
   getGearManifestsByEmail,
-  getAllGearManifests
+  getAllGearManifests,
+  createExpeditionMessage,
+  getExpeditionMessages
 } from '../src/lib/db.ts';
 import {
   assessPorterEthicsAndSafety,
@@ -5962,6 +5964,89 @@ describe('The Himalayan Trails — Comprehensive Full-Stack Verification', () =>
 
       // Join Page cross-wiring
       assert.ok(joinSrc.includes('GearWeightBalancer'), 'Join page must cross-wire GearWeightBalancer');
+    });
+  });
+
+
+  // ==========================================
+  // 39. Work Package 9.2: Expedition Team In-App Logistics Chat & Dispatch
+  // ==========================================
+  describe('39. Work Package 9.2: Expedition Team In-App Logistics Chat & Dispatch', () => {
+    test('Database schema, persistence, and ACID operations for expedition_messages', () => {
+      const expMessages = getExpeditionMessages('grp_exp_sagarmatha_2026');
+      assert.ok(expMessages.length >= 3, 'Seeded messages must exist for Sagarmatha expedition');
+
+      // Verify category tagging
+      assert.ok(expMessages.some((m) => m.category === 'LOGISTICS'));
+      assert.ok(expMessages.some((m) => m.category === 'WEATHER'));
+      assert.ok(expMessages.some((m) => m.category === 'GEAR'));
+
+      // Create a new dynamic message
+      const uniqueSuffix = Date.now().toString().slice(-6);
+      const newMsg = createExpeditionMessage({
+        expeditionId: 'grp_exp_sagarmatha_2026',
+        senderName: 'Lhakpa Sherpa',
+        senderEmail: `lhakpa_${uniqueSuffix}@sherpa.np`,
+        senderRole: 'GUIDE',
+        messageText: 'Icefall doctors have secured the route with aluminum ladders. Ready for departure.',
+        category: 'URGENT'
+      });
+
+      assert.ok(newMsg.id.startsWith('msg_'), 'Message ID must start with msg_');
+      assert.strictEqual(newMsg.senderRole, 'GUIDE');
+      assert.strictEqual(newMsg.category, 'URGENT');
+      assert.ok(newMsg.messageText.includes('Icefall doctors'));
+
+      // Empty text validation
+      assert.throws(() => {
+        createExpeditionMessage({
+          expeditionId: 'grp_exp_sagarmatha_2026',
+          senderName: 'Test',
+          messageText: '   '
+        });
+      }, /cannot be empty/i);
+
+      // Verify message appears in order
+      const updatedMessages = getExpeditionMessages('grp_exp_sagarmatha_2026');
+      const latest = updatedMessages[updatedMessages.length - 1];
+      assert.strictEqual(latest.id, newMsg.id);
+    });
+
+    test('API Route Handlers contract verification for /api/trips/[token]/messages', () => {
+      const apiPath = path.join(process.cwd(), 'src/app/api/trips/[token]/messages/route.ts');
+      assert.ok(fs.existsSync(apiPath), 'API route file must exist');
+
+      const src = fs.readFileSync(apiPath, 'utf8');
+      assert.ok(src.includes('export async function GET'), 'Must export GET handler');
+      assert.ok(src.includes('export async function POST'), 'Must export POST handler');
+      assert.ok(src.includes('getExpeditionMessages'), 'GET handler must retrieve messages');
+      assert.ok(src.includes('createExpeditionMessage'), 'POST handler must create message');
+      assert.ok(src.includes('status: 201'), 'POST handler must return 201 Created');
+    });
+
+    test('UI Integration: TeamDispatchBoard HeroUI contracts, Offline cache wiring & Join page integration', () => {
+      const componentPath = path.join(process.cwd(), 'src/components/expeditions/TeamDispatchBoard.tsx');
+      const joinPagePath = path.join(process.cwd(), 'src/app/trips/join/[token]/page.tsx');
+
+      assert.ok(fs.existsSync(componentPath), 'TeamDispatchBoard component must exist');
+
+      const compSrc = fs.readFileSync(componentPath, 'utf8');
+      const joinSrc = fs.readFileSync(joinPagePath, 'utf8');
+
+      // HeroUI Compound slots contracts
+      assert.ok(compSrc.includes('data-slot="base"'), 'Component must implement base slot');
+      assert.ok(compSrc.includes('data-slot="header"'), 'Component must implement header slot');
+      assert.ok(compSrc.includes('data-slot="body"'), 'Component must implement body slot');
+      assert.ok(compSrc.includes('data-slot="footer"'), 'Component must implement footer slot');
+      assert.ok(compSrc.includes('data-slot="indicator"'), 'Component must implement indicator slot');
+      assert.ok(compSrc.includes('focus-visible:ring'), 'Component must follow React Aria focus standards');
+
+      // Offline caching contracts
+      assert.ok(compSrc.includes('localStorage'), 'Component must cache messages locally for offline wilderness sync');
+      assert.ok(compSrc.includes('Offline Cache Mode'), 'Component must feature offline indicator');
+
+      // Join Page cross-wiring
+      assert.ok(joinSrc.includes('TeamDispatchBoard'), 'Join page must render TeamDispatchBoard');
     });
   });
 

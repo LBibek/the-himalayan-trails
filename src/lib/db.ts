@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import fs from 'node:fs';
-import type { Trail, Landmark, Itinerary, ItineraryDay, Story, WeatherReport, Booking, ContactMessage, Inquiry, SharedTrail, User, HimalayanRange, Guide, Teahouse, TeahouseReservation, TrailConditionReport, HighAltitudeCertificate, GroupExpedition, GroupMember, GroupExpeditionWithDetails, GroupSideTripOption, GroupGearOption, GroupSideTripTally, GearManifest, ManifestItemEntry } from '../types';
+import type { Trail, Landmark, Itinerary, ItineraryDay, Story, WeatherReport, Booking, ContactMessage, Inquiry, SharedTrail, User, HimalayanRange, Guide, Teahouse, TeahouseReservation, TrailConditionReport, HighAltitudeCertificate, GroupExpedition, GroupMember, GroupExpeditionWithDetails, GroupSideTripOption, GroupGearOption, GroupSideTripTally, GearManifest, ManifestItemEntry, ExpeditionMessage } from '../types';
 import crypto from 'node:crypto';
 
 export function generateGroupReceiptNumber(): string {
@@ -585,6 +585,22 @@ export function initializeSchema(db: DatabaseSync) {
     );
   `);
 
+  // Expedition Messages / Team Dispatch Chat table (Sprint 9.2)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS expedition_messages (
+      id TEXT PRIMARY KEY,
+      expedition_id TEXT NOT NULL,
+      sender_name TEXT NOT NULL,
+      sender_email TEXT,
+      sender_role TEXT NOT NULL DEFAULT 'MEMBER',
+      message_text TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'GENERAL',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (expedition_id) REFERENCES group_expeditions(id) ON DELETE CASCADE
+    );
+  `);
+
+
 
   // Ensure route_coordinates column exists on trails table
   try {
@@ -640,6 +656,16 @@ export function initializeSchema(db: DatabaseSync) {
     const manCount = db.prepare('SELECT COUNT(*) as count FROM gear_manifests').get() as { count: number };
     if (!manCount || manCount.count === 0) {
       seedOfficialGearManifests(db);
+    }
+  } catch {
+    // ignore
+  }
+
+  // Ensure authentic expedition messages are seeded if table is empty
+  try {
+    const msgCount = db.prepare('SELECT COUNT(*) as count FROM expedition_messages').get() as { count: number };
+    if (!msgCount || msgCount.count === 0) {
+      seedOfficialExpeditionMessages(db);
     }
   } catch {
     // ignore
@@ -4432,5 +4458,113 @@ export function seedOfficialGearManifests(db: DatabaseSync) {
     ]),
     'Thorong La Pass packing plan adhering to IPPG ethical load limits.',
     '2026-10-18T14:30:00Z'
+  );
+}
+
+
+// ==========================================
+// EXPEDITION TEAM DISPATCH CHAT (Sprint 9.2)
+// ==========================================
+
+export function createExpeditionMessage(data: {
+  expeditionId: string;
+  senderName: string;
+  senderEmail?: string;
+  senderRole?: 'LEADER' | 'MEMBER' | 'GUIDE' | 'SYSTEM';
+  messageText: string;
+  category?: 'GENERAL' | 'LOGISTICS' | 'GEAR' | 'URGENT' | 'WEATHER';
+}): ExpeditionMessage {
+  const db = getDatabase();
+  const id = `msg_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+  const now = new Date().toISOString();
+  const cleanExpId = data.expeditionId.trim();
+  const cleanName = (data.senderName || 'Expedition Member').trim();
+  const cleanEmail = data.senderEmail?.trim().toLowerCase() || null;
+  const role = data.senderRole || 'MEMBER';
+  const category = data.category || 'GENERAL';
+  const text = (data.messageText || '').trim();
+
+  if (!text) {
+    throw new Error('Message text cannot be empty');
+  }
+
+  db.prepare(`
+    INSERT INTO expedition_messages (
+      id, expedition_id, sender_name, sender_email, sender_role, message_text, category, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, cleanExpId, cleanName, cleanEmail, role, text, category, now);
+
+  return {
+    id,
+    expeditionId: cleanExpId,
+    senderName: cleanName,
+    senderEmail: cleanEmail || undefined,
+    senderRole: role,
+    messageText: text,
+    category,
+    createdAt: now
+  };
+}
+
+export function getExpeditionMessages(expeditionId: string): ExpeditionMessage[] {
+  const db = getDatabase();
+  const rows = db.prepare(`
+    SELECT * FROM expedition_messages
+    WHERE expedition_id = ?
+    ORDER BY created_at ASC
+  `).all(expeditionId.trim()) as Record<string, unknown>[];
+
+  return rows.map((r) => ({
+    id: r.id as string,
+    expeditionId: r.expedition_id as string,
+    senderName: r.sender_name as string,
+    senderEmail: (r.sender_email as string) || undefined,
+    senderRole: (r.sender_role as 'LEADER' | 'MEMBER' | 'GUIDE' | 'SYSTEM') || 'MEMBER',
+    messageText: r.message_text as string,
+    category: (r.category as 'GENERAL' | 'LOGISTICS' | 'GEAR' | 'URGENT' | 'WEATHER') || 'GENERAL',
+    createdAt: r.created_at as string
+  }));
+}
+
+export function seedOfficialExpeditionMessages(db: DatabaseSync) {
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO expedition_messages (
+      id, expedition_id, sender_name, sender_email, sender_role, message_text, category, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  // Sagarmatha 2026 pre-flight logistics discussion
+  const expId = 'grp_exp_sagarmatha_2026';
+  insert.run(
+    'msg_sagarmatha_welcome_1',
+    expId,
+    'Tenzing Norgay Jr.',
+    'tenzing@expeditions.org',
+    'LEADER',
+    'Welcome team! We have 3 of 4 spots filled. Remember that Lukla flights strictly enforce 15kg total baggage (10kg duffel + 5kg daypack). Review the Gear Balancer before packing.',
+    'LOGISTICS',
+    '2026-10-16T09:00:00Z'
+  );
+
+  insert.run(
+    'msg_sagarmatha_guide_2',
+    expId,
+    'Ang Dorjee Sherpa',
+    'guide.ang@himalayantrails.org',
+    'GUIDE',
+    'Namaste team! Snow conditions around Kala Patthar (5,644m) are crisp and stable. Microspikes are required for the dawn ascent.',
+    'WEATHER',
+    '2026-10-17T11:20:00Z'
+  );
+
+  insert.run(
+    'msg_sagarmatha_member_3',
+    expId,
+    'Elena Rostova',
+    'elena@expeditions.org',
+    'MEMBER',
+    'Deposit paid! I have reserved a -20C down sleeping bag from the rental gear checklist.',
+    'GEAR',
+    '2026-10-18T14:15:00Z'
   );
 }

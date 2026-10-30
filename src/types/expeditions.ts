@@ -65,6 +65,17 @@ export interface GroupSideTripTally {
   voterNames: string[];
 }
 
+export interface ExpeditionMessage {
+  id: string;
+  expeditionId: string;
+  senderName: string;
+  senderEmail?: string;
+  senderRole: 'LEADER' | 'MEMBER' | 'GUIDE' | 'SYSTEM';
+  messageText: string;
+  category: 'GENERAL' | 'LOGISTICS' | 'GEAR' | 'URGENT' | 'WEATHER';
+  createdAt: string;
+}
+
 export interface GroupExpeditionWithDetails extends GroupExpedition {
   trail?: {
     id: string;
